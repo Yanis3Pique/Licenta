@@ -217,26 +217,29 @@ namespace Licenta_v1.Controllers
 		// Get - Users/Edit/id
 		public async Task<IActionResult> Edit(string id)
 		{
-			if (id == null) return NotFound();
+			if (string.IsNullOrEmpty(id))
+				return NotFound();
 
+			// Gasesc userul dupa id
 			var user = await db.ApplicationUsers.FindAsync(id);
-			if (user == null) return NotFound();
+			if (user == null)
+				return NotFound();
 
+			// Iau toate rolurile
 			user.AllRoles = GetAllRoles();
 
-			var currentRoles = await _userManager.GetRolesAsync(user);
-			var currentRole = await _roleManager.FindByNameAsync(currentRoles.FirstOrDefault());
-
-			ViewBag.UserRole = currentRole.Id;
-
-			ViewBag.Regions = db.Regions.Select(r => new SelectListItem
-			{
-				Value = r.Id.ToString(),
-				Text = r.County
-			});
+			// Iau toate judetele
+			ViewBag.Regions = db.Regions
+				.Select(r => new SelectListItem
+				{
+					Value = r.Id.ToString(),
+					Text = r.County
+				})
+				.ToList();
 
 			return View(user);
 		}
+
 
 		// Post - Users/Edit/id
 		[HttpPost]
@@ -258,7 +261,8 @@ namespace Licenta_v1.Controllers
 				user.UserName = newData.UserName;
 				user.PhoneNumber = newData.PhoneNumber;
 				user.DateHired = newData.DateHired;
-				user.RegionId = newRegionId;
+				user.RegionId = newData.RegionId;
+				user.PhotoPath = newData.PhotoPath;
 
 				var roles = db.Roles.ToList();
 
@@ -283,6 +287,76 @@ namespace Licenta_v1.Controllers
 			});
 			return View(user);
 		}
+
+		// Get - Users/EmitDismissalProposal/id
+		[HttpPost]
+		public async Task<IActionResult> EmitDismissalProposal(string id)
+		{
+			if (id == null) return NotFound();
+
+			var user = await db.ApplicationUsers.FindAsync(id);
+			if (user == null) return NotFound();
+
+			// Daca nu e sofer sau dispecer nu am voie
+			var roles = await _userManager.GetRolesAsync(user);
+			if (!roles.Contains("Sofer") && !roles.Contains("Dispecer"))
+			{
+				ModelState.AddModelError("", "Poti emite cereri de concediere doar pentru soferi sau dispeceri!");
+				return RedirectToAction("Index");
+			}
+
+			if (roles.Contains("Sofer") || roles.Contains("Dispecer"))
+			{
+				// Daca deja am o data de concediere nu mai dam inca o data
+				if (user.DismissalNoticeDate != null)
+				{
+					ModelState.AddModelError("", "This driver already has a dismissal notice date.");
+					return RedirectToAction("Index");
+				}
+
+				if (roles.Contains("Sofer"))
+				{
+					// Daca soferul are livrari in curs, nu poate fi concediat
+					if (user.Deliveries?.Count > 0)
+					{
+						foreach (var delivery in user.Deliveries)
+						{
+							if (delivery.Status.Contains("InProgress"))
+							{
+								ModelState.AddModelError("", "Soferul nu poate fi concediat deoarece are livrari in curs!");
+								return RedirectToAction("Index");
+							}
+						}
+					}
+				}
+
+				// Altfel userului ii este trimisa o instiintare de concediere
+				user.DismissalNoticeDate = DateTime.Now;
+			}
+
+			// Daca userul e dispecer sau sofer si are mai putin de 90 de zile in firma, nu poate fi concediat
+			if (roles.Contains("Dispecer") || roles.Contains("Sofer"))
+			{
+				var daysSinceHired = (DateTime.Now - user.DateHired).Days;
+				if (daysSinceHired < 90)
+				{
+					ModelState.AddModelError("", "Acest utilizator se afla in perioada de proba si nu poate fi concediat!");
+					return RedirectToAction("Index");
+				}
+
+				if (user.DismissalNoticeDate == null)
+				{
+					user.DismissalNoticeDate = DateTime.Now;
+				}
+			}
+
+			db.Update(user);
+			await db.SaveChangesAsync();
+
+			TempData["Message"] = "Cerere de concediere emisa cu succes!";
+			return RedirectToAction("Index");
+		}
+
 
 		// Get - Users/Delete/id
 		[HttpPost]

@@ -1,19 +1,29 @@
+using DotNetEnv;
 using Licenta_v1.Data;
 using Licenta_v1.Models;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Identity.UI.Services;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
+Env.Load();
+var cheie_API_confirmare_email_Sendgrid = Env.GetString("Cheie_API_confirmare_email_SendGrid");
+var email_personal = Env.GetString("Email_personal");
+var nume_personal = Env.GetString("Nume_personal");
+
 // Add services to the container.
-var connectionString = builder.Configuration.GetConnectionString("DefaultConnection") ?? 
-    throw new InvalidOperationException("Connection string 'DefaultConnection' not found.");
+var connectionString = builder.Configuration.GetConnectionString("DefaultConnection") ??
+	throw new InvalidOperationException("Connection string 'DefaultConnection' not found.");
 builder.Services.AddDbContext<ApplicationDbContext>(options => options.UseSqlServer(connectionString));
 builder.Services.AddDatabaseDeveloperPageExceptionFilter();
 
 builder.Services.AddDefaultIdentity<ApplicationUser>(options => options.SignIn.RequireConfirmedAccount = true)
 	.AddRoles<IdentityRole>().AddEntityFrameworkStores<ApplicationDbContext>();
 builder.Services.AddControllersWithViews();
+
+builder.Services.AddTransient<IEmailSender, EmailConfirmationSender>(provider =>
+    new EmailConfirmationSender(cheie_API_confirmare_email_Sendgrid, email_personal, nume_personal));
 
 var app = builder.Build();
 

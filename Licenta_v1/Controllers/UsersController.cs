@@ -127,7 +127,7 @@ namespace Licenta_v1.Controllers
 			return View(users);
 		}
 
-		// Get - Users/Index-Clienti
+		// Get - Users/IndexClients
 		public async Task<IActionResult> IndexClients(string searchString, int? regionId, string sortOrder, int pageNumber = 1)
 		{
 			int pageSize = 10;
@@ -149,7 +149,7 @@ namespace Licenta_v1.Controllers
 			return View(users);
 		}
 
-		// Get - Users/Index-Soferi
+		// Get - Users/IndexDrivers
 		public async Task<IActionResult> IndexDrivers(string searchString, int? regionId, string sortOrder, int pageNumber = 1)
 		{
 			int pageSize = 10;
@@ -171,7 +171,7 @@ namespace Licenta_v1.Controllers
 			return View(users);
 		}
 
-		// Get - Users/Index-Dispeceri
+		// Get - Users/IndexDispatchers
 		public async Task<IActionResult> IndexDispatchers(string searchString, int? regionId, string sortOrder, int pageNumber = 1)
 		{
 			int pageSize = 10;

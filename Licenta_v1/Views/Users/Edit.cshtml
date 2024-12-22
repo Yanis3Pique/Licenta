@@ -1,0 +1,71 @@
+﻿@*
+    For more information on enabling MVC for empty projects, visit https://go.microsoft.com/fwlink/?LinkID=397860
+*@
+@model Licenta_v1.Models.ApplicationUser
+
+<h2 class="text-center mt-5">Edit User</h2>
+<br />
+<div class="container mt-5">
+    <div class="row">
+        <div class="col-md-6 offset-3">
+            @using (Html.BeginForm(actionName: "Edit", controllerName: "Users", method: FormMethod.Post, routeValues: new { id = Model.Id }))
+            {
+                @Html.LabelFor(model => model.UserName, "User Name")
+                <br />
+                @Html.EditorFor(model => model.UserName, new { htmlAttributes = new { @class = "form-control" } })
+                @Html.ValidationMessageFor(model => model.UserName, null, new { @class = "text-danger" })
+                <br />
+
+                @Html.LabelFor(model => model.FirstName, "First Name")
+                <br />
+                @Html.EditorFor(model => model.FirstName, new { htmlAttributes = new { @class = "form-control" } })
+                @Html.ValidationMessageFor(model => model.FirstName, null, new { @class = "text-danger" })
+                <br />
+
+                @Html.LabelFor(model => model.LastName, "Last Name")
+                <br />
+                @Html.EditorFor(model => model.LastName, new { htmlAttributes = new { @class = "form-control" } })
+                @Html.ValidationMessageFor(model => model.LastName, null, new { @class = "text-danger" })
+                <br />
+
+                @Html.LabelFor(model => model.Email, "Email")
+                <br />
+                @Html.EditorFor(model => model.Email, new { htmlAttributes = new { @class = "form-control" } })
+                @Html.ValidationMessageFor(model => model.Email, null, new { @class = "text-danger" })
+                <br />
+
+                @Html.LabelFor(model => model.PhoneNumber, "Phone Number")
+                <br />
+                @Html.EditorFor(model => model.PhoneNumber, new { htmlAttributes = new { @class = "form-control" } })
+                @Html.ValidationMessageFor(model => model.PhoneNumber, null, new { @class = "text-danger" })
+                <br />
+
+                @Html.Label("Region", "Region")
+                <br />
+                @Html.DropDownListFor(m => m.RegionId, new SelectList(ViewBag.Regions, "Id", "County", Model.RegionId), "Select Region", new { @class = "form-control" })
+                @Html.ValidationMessageFor(model => model.RegionId, null, new { @class = "text-danger" })
+                <br />
+
+                @Html.Label("Role", "Role")
+                <br />
+                @Html.DropDownList("newRole", new SelectList(Model.AllRoles, "Value", "Text"), "Select Role", new { @class = "form-control" })
+                @Html.ValidationMessage("newRole", null, new { @class = "text-danger" })
+                <br />
+
+                @Html.LabelFor(model => model.DateHired, "Date Hired")
+                <br />
+                @Html.EditorFor(model => model.DateHired, new { htmlAttributes = new { @class = "form-control", type = "date" } })
+                @Html.ValidationMessageFor(model => model.DateHired, null, new { @class = "text-danger" })
+                <br />
+
+                @Html.Label("Photo", "Photo Path")
+                <br />
+                @Html.TextBoxFor(model => model.PhotoPath, new { @class = "form-control" })
+                @Html.ValidationMessageFor(model => model.PhotoPath, null, new { @class = "text-danger" })
+                <br />
+
+                <button class="btn btn-sm btn-success" type="submit">Save Changes</button>
+            }
+        </div>
+    </div>
+</div>

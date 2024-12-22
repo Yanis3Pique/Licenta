@@ -65,6 +65,7 @@ namespace Licenta_v1.Models
 						EmailConfirmed = true,
 						PhoneNumber = "0735221044",
 						PhoneNumberConfirmed = true,
+						PhotoPath = "Images/Pique.jpg",
 						PasswordHash = hasherForPasswords.HashPassword(null, "Admin5576!"),
 					},
 					new ApplicationUser
@@ -80,6 +81,7 @@ namespace Licenta_v1.Models
 						EmailConfirmed = true,
 						PhoneNumber = "0753502075",
 						PhoneNumberConfirmed = true,
+						PhotoPath = "Images/Messi.jpg",
 						PasswordHash = hasherForPasswords.HashPassword(null, "Dispecer5576!"),
 					},
 					new ApplicationUser
@@ -95,6 +97,7 @@ namespace Licenta_v1.Models
 						EmailConfirmed = true,
 						PhoneNumber = "0771292251",
 						PhoneNumberConfirmed = true,
+						PhotoPath = "Images/Busquets.jpg",
 						PasswordHash = hasherForPasswords.HashPassword(null, "Sofer5576!"),
 					},
 					new ApplicationUser
@@ -110,6 +113,7 @@ namespace Licenta_v1.Models
 						EmailConfirmed = true,
 						PhoneNumber = "0722829817",
 						PhoneNumberConfirmed = true,
+						PhotoPath = "Images/Iniesta.jpg",
 						PasswordHash = hasherForPasswords.HashPassword(null, "Client5576!"),
 					}
 				);

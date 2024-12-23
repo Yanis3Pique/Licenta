@@ -47,20 +47,24 @@
                 <br />
                 @Html.DropDownListFor(m => m.RegionId,
                          ViewBag.Regions as IEnumerable<SelectListItem> ?? Enumerable.Empty<SelectListItem>(),
-                         "Select Region", new { @class = "form-control" })
+                         "Select Region", 
+                         new { @class = "form-control" })
                 @Html.ValidationMessageFor(model => model.RegionId, null, new { @class = "text-danger" })
                 <br />
 
+                <div class="form-group">
+                    @Html.Label("Role", "Role")
+                    @Html.DropDownList("newRole",
+                             new SelectList(Model.AllRoles, "Value", "Text", ViewBag.CurrentRole),
+                             "Select role",
+                             new { @class = "form-control", @required = "false" })
+                    @Html.ValidationMessage("newRole", null, new { @class = "text-danger" })
+                </div>
 
-                @Html.Label("Role", "Role")
-                <br />
-                @Html.DropDownList("newRole", new SelectList(Model.AllRoles, "Value", "Text"), "Select Role", new { @class = "form-control" })
-                @Html.ValidationMessage("newRole", null, new { @class = "text-danger" })
-                <br />
 
                 @Html.LabelFor(model => model.DateHired, "Date Hired")
                 <br />
-                @Html.EditorFor(model => model.DateHired, new { htmlAttributes = new { @class = "form-control", type = "date" } })
+                <input asp-for="DateHired" type="date" class="form-control" value="@Model.DateHired.ToString("yyyy-MM-dd")" />
                 @Html.ValidationMessageFor(model => model.DateHired, null, new { @class = "text-danger" })
                 <br />
 

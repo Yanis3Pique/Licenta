@@ -227,6 +227,9 @@ namespace Licenta_v1.Controllers
 
 			// Iau toate rolurile
 			user.AllRoles = GetAllRoles();
+			// Iau rolul userului curent
+			var currentRole = await _userManager.GetRolesAsync(user);
+			ViewBag.CurrentRole = currentRole.FirstOrDefault();
 
 			// Iau toate judetele
 			ViewBag.Regions = db.Regions
@@ -249,6 +252,12 @@ namespace Licenta_v1.Controllers
 
 			var user = await db.ApplicationUsers.FindAsync(id);
 			if (user == null) return NotFound();
+
+			// Mesaj custom de validare pentru rol
+			if (string.IsNullOrEmpty(newRole) || newRole == "Select role")
+			{
+				ModelState.AddModelError("newRole", "Please select a valid role for the user.");
+			}
 
 			user.AllRoles = GetAllRoles();
 

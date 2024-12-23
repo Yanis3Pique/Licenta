@@ -9,10 +9,10 @@
 
     <div class="row">
         <div class="col-md-4 text-center">
-            <img src="@(Url.Content("~/" + Model.PhotoPath))"
-                 class="card-img-top img-fluid mb-3"
+            <img src="@(Url.Content("~/" + (Model.PhotoPath ?? "Images/Default.jpg")))"
+                 class="card-img-top img-fluid"
                  alt="User Photo"
-                 style="max-width: 250px; max-height: 250px; object-fit: cover;">
+                 style="height: auto; max-height: 300px; object-fit: cover;">
         </div>
 
         <div class="col-md-8">

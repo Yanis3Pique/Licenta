@@ -32,11 +32,10 @@
     {
         <div class="col">
             <div class="card h-100 text-center">
-                <img src="@(Url.Content("~/" + user.PhotoPath))"
+                <img src="@(Url.Content("~/" + (user.PhotoPath ?? "Images/Default.jpg")))"
                      class="card-img-top img-fluid"
                      alt="User Photo"
                      style="height: auto; max-height: 300px; object-fit: cover;">
-
 
                 <div class="card-body">
                     <h4 class="card-title">@Html.DisplayFor(modelItem => user.FirstName) @Html.DisplayFor(modelItem => user.LastName)</h4>

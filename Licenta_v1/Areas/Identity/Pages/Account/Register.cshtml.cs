@@ -62,34 +62,39 @@ namespace Licenta_v1.Areas.Identity.Pages.Account
 
 		public class InputModel
 		{
-			[Required]
+			[Required(ErrorMessage = "The user name is mandatory.")]
 			[Display(Name = "User Name")]
 			public string UserName { get; set; }
 
-			[Required]
+			[Required(ErrorMessage = "The first name is mandatory")]
+			[MaxLength(50, ErrorMessage = "The first name must be maximum 50 characters in length")]
+			[MinLength(2, ErrorMessage = "The first name must be minimum 2 characters in length")]
 			[Display(Name = "First Name")]
 			public string FirstName { get; set; }
 
-			[Required]
+			[Required(ErrorMessage = "The last name is mandatory")]
+			[StringLength(50, ErrorMessage = "The last name must be maximum 50 characters in length")]
+			[MinLength(2, ErrorMessage = "The last name must be minimum 2 characters in length")]
 			[Display(Name = "Last Name")]
 			public string LastName { get; set; }
 
-			[Required]
-			[EmailAddress]
+			[Required(ErrorMessage = "The email is mandatory.")]
+			[EmailAddress(ErrorMessage = "Invalid email address.")]
 			[Display(Name = "Email")]
 			public string Email { get; set; }
 
-			[Required]
-			[Phone]
+			[Required(ErrorMessage = "The phone number is mandatory.")]
+			[Phone(ErrorMessage = "Invalid phone number.")]
+			[RegularExpression(@"^(\+4)?(07\d{8}|021\d{7}|02\d{8}|03\d{8})$", ErrorMessage = "Invalid phone number.")]
 			[Display(Name = "Phone Number")]
 			public string PhoneNumber { get; set; }
 
-			[Required]
+			[Required(ErrorMessage = "The region is mandatory")]
 			[Display(Name = "Region")]
-			public int RegionId { get; set; }
+			public int? RegionId { get; set; }
 
 			[Required]
-			[StringLength(100, ErrorMessage = "The {0} must be at least {2} and at max {1} characters long.", MinimumLength = 6)]
+			[StringLength(50, ErrorMessage = "The {0} must be at least {2} and at max {1} characters long.", MinimumLength = 6)]
 			[DataType(DataType.Password)]
 			[Display(Name = "Password")]
 			public string Password { get; set; }

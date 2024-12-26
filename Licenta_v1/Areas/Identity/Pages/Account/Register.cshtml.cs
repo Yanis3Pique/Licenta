@@ -62,46 +62,47 @@ namespace Licenta_v1.Areas.Identity.Pages.Account
 
 		public class InputModel
 		{
-			[Required(ErrorMessage = "The user name is mandatory.")]
+			[Required(ErrorMessage = "The user name is mandatory!")]
 			[Display(Name = "User Name")]
 			public string UserName { get; set; }
 
-			[Required(ErrorMessage = "The first name is mandatory")]
-			[MaxLength(50, ErrorMessage = "The first name must be maximum 50 characters in length")]
-			[MinLength(2, ErrorMessage = "The first name must be minimum 2 characters in length")]
+			[Required(ErrorMessage = "The first name is mandatory!")]
+			[MaxLength(50, ErrorMessage = "The first name must be maximum 50 characters in length!")]
+			[MinLength(2, ErrorMessage = "The first name must be minimum 2 characters in length!")]
 			[Display(Name = "First Name")]
 			public string FirstName { get; set; }
 
-			[Required(ErrorMessage = "The last name is mandatory")]
-			[StringLength(50, ErrorMessage = "The last name must be maximum 50 characters in length")]
-			[MinLength(2, ErrorMessage = "The last name must be minimum 2 characters in length")]
+			[Required(ErrorMessage = "The last name is mandatory!")]
+			[StringLength(50, ErrorMessage = "The last name must be maximum 50 characters in length!")]
+			[MinLength(2, ErrorMessage = "The last name must be minimum 2 characters in length!")]
 			[Display(Name = "Last Name")]
 			public string LastName { get; set; }
 
-			[Required(ErrorMessage = "The email is mandatory.")]
+			[Required(ErrorMessage = "The email is mandatory!")]
 			[EmailAddress(ErrorMessage = "Invalid email address.")]
 			[Display(Name = "Email")]
 			public string Email { get; set; }
 
-			[Required(ErrorMessage = "The phone number is mandatory.")]
-			[Phone(ErrorMessage = "Invalid phone number.")]
-			[RegularExpression(@"^(\+4)?(07\d{8}|021\d{7}|02\d{8}|03\d{8})$", ErrorMessage = "Invalid phone number.")]
+			[Required(ErrorMessage = "The phone number is mandatory!")]
+			[Phone(ErrorMessage = "Invalid phone number!")]
+			[RegularExpression(@"^(\+4)?(07\d{8}|021\d{7}|02\d{8}|03\d{8})$", ErrorMessage = "Invalid phone number!")]
 			[Display(Name = "Phone Number")]
 			public string PhoneNumber { get; set; }
 
-			[Required(ErrorMessage = "The region is mandatory")]
+			[Required(ErrorMessage = "The region is mandatory!")]
 			[Display(Name = "Region")]
 			public int? RegionId { get; set; }
 
-			[Required]
-			[StringLength(50, ErrorMessage = "The {0} must be at least {2} and at max {1} characters long.", MinimumLength = 6)]
+			[Required(ErrorMessage = "The password is manatory!")]
+			[StringLength(50, ErrorMessage = "The {0} must be at least {2} and at max {1} characters long!", MinimumLength = 6)]
 			[DataType(DataType.Password)]
 			[Display(Name = "Password")]
 			public string Password { get; set; }
 
+			[Required(ErrorMessage = "The password confirmation is mandatory!")]
 			[DataType(DataType.Password)]
 			[Display(Name = "Confirm password")]
-			[Compare("Password", ErrorMessage = "The password and confirmation password do not match.")]
+			[Compare("Password", ErrorMessage = "The password and confirmation password do not match!")]
 			public string ConfirmPassword { get; set; }
 		}
 
@@ -119,7 +120,7 @@ namespace Licenta_v1.Areas.Identity.Pages.Account
 			returnUrl ??= Url.Content("~/");
 			ExternalLogins = (await _signInManager.GetExternalAuthenticationSchemesAsync()).ToList();
 
-			// Reiau judetele din baza de date si le pun in dropdown in caz de eroare
+			// Repopulez judetele daca imi da eroare
 			PopulateRegions();
 
 			if (ModelState.IsValid)
@@ -135,6 +136,22 @@ namespace Licenta_v1.Areas.Identity.Pages.Account
 
 				await _userStore.SetUserNameAsync(user, Input.UserName, CancellationToken.None);
 				await _emailStore.SetEmailAsync(user, Input.Email, CancellationToken.None);
+
+				// Verific daca avem email duplicat in BD
+				if (await _userManager.FindByEmailAsync(Input.Email) != null)
+				{
+					ModelState.AddModelError(nameof(Input.Email), "This email is already registered. Please use a different email.");
+					return Page();
+				}
+
+				// Verific daca avem username duplicat in BD
+				if (await _userManager.FindByNameAsync(Input.UserName) != null)
+				{
+					ModelState.AddModelError(nameof(Input.UserName), "This username is already taken. Please choose another username.");
+					return Page();
+				}
+
+				// Creez userul si ma ocup de erori
 				var result = await _userManager.CreateAsync(user, Input.Password);
 
 				if (result.Succeeded)
@@ -151,9 +168,33 @@ namespace Licenta_v1.Areas.Identity.Pages.Account
 						values: new { area = "Identity", userId = userId, code = code, returnUrl = returnUrl },
 						protocol: Request.Scheme);
 
-					// Trimit cu API-ul, un email de confirmare
-					await _emailSender.SendEmailAsync(Input.Email, "Confirm your email",
-						$"Please confirm your account by <a href='{HtmlEncoder.Default.Encode(callbackUrl)}'>clicking here</a>.");
+					// Trimit mail de confirmare
+					await _emailSender.SendEmailAsync(
+					Input.Email,
+					"Confirm Your Email - EcoDelivery",
+					$@"
+						<div style='font-family: Arial, sans-serif; line-height: 1.6; max-width: 600px; margin: auto;'>
+							<div style='text-align: center; padding: 20px; background-color: #f4f4f4; border-bottom: 1px solid #ddd;'>
+								<img src='https://cdn.pixabay.com/photo/2024/04/01/14/43/ai-generated-8669101_1280.png' alt='EcoDelivery Logo' style='width: 120px; margin-bottom: 10px;' />
+								<h1 style='color: #333;'>EcoDelivery</h1>
+							</div>
+							<div style='padding: 20px; background-color: #ffffff;'>
+								<h2 style='color: #555;'>Welcome to EcoDelivery!</h2>
+								<p style='color: #666;'>Thank you for signing up with EcoDelivery. We're thrilled to have you onboard!</p>
+								<p style='color: #666;'>Please confirm your account by clicking the button below:</p>
+								<div style='text-align: center; margin: 20px 0;'>
+									<a href='{HtmlEncoder.Default.Encode(callbackUrl)}' style='display: inline-block; padding: 12px 20px; background-color: #28a745; color: #fff; text-decoration: none; border-radius: 5px; font-size: 16px;'>
+										Confirm Your Email
+									</a>
+								</div>
+								<p style='color: #666;'>If you did not sign up for EcoDelivery, please ignore this email or contact us at support@ecodelivery.com.</p>
+							</div>
+							<div style='text-align: center; padding: 10px; background-color: #f4f4f4; border-top: 1px solid #ddd;'>
+								<p style='color: #888; font-size: 12px;'>EcoDelivery, Inc. | Delivering Sustainably | All Rights Reserved</p>
+								<p style='color: #888; font-size: 12px;'>123 Green Road, Clean City, Earth</p>
+							</div>
+						</div>
+					");
 
 					if (_userManager.Options.SignIn.RequireConfirmedAccount)
 					{
@@ -165,15 +206,38 @@ namespace Licenta_v1.Areas.Identity.Pages.Account
 						return LocalRedirect(returnUrl);
 					}
 				}
+
+				// Mesaje de eroare pt diverse scenarii
 				foreach (var error in result.Errors)
 				{
-					ModelState.AddModelError(string.Empty, error.Description);
+					if (error.Code == "PasswordTooShort")
+					{
+						ModelState.AddModelError(nameof(Input.Password), "The password is too short. It must be at least 6 characters long.");
+					}
+					else if (error.Code == "PasswordRequiresNonAlphanumeric")
+					{
+						ModelState.AddModelError(nameof(Input.Password), "The password must contain at least one non-alphanumeric character.");
+					}
+					else if (error.Code == "PasswordRequiresUpper")
+					{
+						ModelState.AddModelError(nameof(Input.Password), "The password must contain at least one uppercase letter.");
+					}
+					else if (error.Code == "PasswordRequiresLower")
+					{
+						ModelState.AddModelError(nameof(Input.Password), "The password must contain at least one lowercase letter.");
+					}
+					else
+					{
+						ModelState.AddModelError(string.Empty, error.Description);
+					}
 				}
 			}
 
-			// Daca ajunsei aici, ceva nu a mers bine, reafisez pagina
+			// Daca am ajuns aici, nu-i bine si reiau
+			ModelState.AddModelError(string.Empty, "There was an error with your registration. Please review the form and try again.");
 			return Page();
 		}
+
 
 		// Helper pentru popularea dropdown-ului cu judete
 		private void PopulateRegions()

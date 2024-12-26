@@ -1,0 +1,64 @@
+﻿@model Licenta_v1.Models.ApplicationUser
+@{
+    ViewBag.Title = "Edit Your Profile";
+}
+
+@if (TempData["Error"] != null)
+{
+    <div class="alert alert-danger">@TempData["Error"]</div>
+}
+@if (TempData["Success"] != null)
+{
+    <div class="alert alert-success">@TempData["Success"]</div>
+}
+
+<h2 class="text-center mt-5">@ViewBag.Title</h2>
+<br />
+<div class="container mt-5">
+    <div class="row">
+        <div class="col-md-6 offset-3">
+            <!-- Use POST to submit changes -->
+            @using (Html.BeginForm("EditMyself", "Users", FormMethod.Post))
+            {
+                @Html.AntiForgeryToken()
+
+                <div class="form-group">
+                    @Html.LabelFor(m => m.UserName, "User Name")
+                    @Html.EditorFor(m => m.UserName, new { htmlAttributes = new { @class = "form-control" } })
+                    @Html.ValidationMessageFor(m => m.UserName, null, new { @class = "text-danger" })
+                </div>
+                <br />
+
+                <div class="form-group">
+                    @Html.LabelFor(m => m.FirstName, "First Name")
+                    @Html.EditorFor(m => m.FirstName, new { htmlAttributes = new { @class = "form-control" } })
+                    @Html.ValidationMessageFor(m => m.FirstName, null, new { @class = "text-danger" })
+                </div>
+                <br />
+
+                <div class="form-group">
+                    @Html.LabelFor(m => m.LastName, "Last Name")
+                    @Html.EditorFor(m => m.LastName, new { htmlAttributes = new { @class = "form-control" } })
+                    @Html.ValidationMessageFor(m => m.LastName, null, new { @class = "text-danger" })
+                </div>
+                <br />
+
+                <div class="form-group">
+                    @Html.LabelFor(m => m.Email, "Email")
+                    @Html.EditorFor(m => m.Email, new { htmlAttributes = new { @class = "form-control" } })
+                    @Html.ValidationMessageFor(m => m.Email, null, new { @class = "text-danger" })
+                </div>
+                <br />
+
+                <div class="form-group">
+                    @Html.LabelFor(m => m.PhoneNumber, "Phone Number")
+                    @Html.EditorFor(m => m.PhoneNumber, new { htmlAttributes = new { @class = "form-control" } })
+                    @Html.ValidationMessageFor(m => m.PhoneNumber, null, new { @class = "text-danger" })
+                </div>
+                <br />
+
+                <button class="btn btn-sm btn-success" type="submit">Save Changes</button>
+            }
+        </div>
+    </div>
+</div>

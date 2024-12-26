@@ -1,29 +1,47 @@
 ﻿@model IEnumerable<Licenta_v1.Models.ApplicationUser>
+@inject Microsoft.AspNetCore.Identity.UserManager<Licenta_v1.Models.ApplicationUser> UserManager
 @{
     ViewBag.Title = "Dispatchers";
 }
 
 <h2 class="text-center">@ViewBag.Title</h2>
+<br />
 
-<!-- Cautare si filtrare custom -->
-<form method="get" class="form-inline mb-3">
-    <div class="form-group mr-2">
-        @Html.TextBox("searchString", ViewBag.SearchString as string, new { @class = "form-control", placeholder = "Search users" })
-    </div>
-    <div class="form-group mr-2">
-        @Html.DropDownList("regionId", ViewBag.Regions as SelectList, "All Regions", new { @class = "form-control" })
-    </div>
-    <button type="submit" class="btn btn-primary">Filter</button>
-</form>
+<div class="card shadow-sm p-3 mb-4">
+    <form method="get">
+        <div class="row g-2 align-items-center">
+            <!-- Bara de cautare -->
+            <div class="col-md-4 col-sm-6">
+                <input type="text" name="searchString" class="form-control" placeholder="Search users" value="@ViewBag.SearchString" />
+            </div>
 
-<!-- Link-uri pentru sortare -->
-<div class="mb-3">
-    <p>
-        Sort:
-        @Html.ActionLink("Name", "Index", new { sortOrder = ViewBag.NameSortParam, searchString = ViewBag.SearchString, regionId = ViewBag.RegionId, pageNumber = ViewBag.PageNumber }, new { @class = "text-decoration-none" })
-        |
-        @Html.ActionLink("Date Hired", "Index", new { sortOrder = ViewBag.DateSortParam, searchString = ViewBag.SearchString, regionId = ViewBag.RegionId, pageNumber = ViewBag.PageNumber }, new { @class = "text-decoration-none" })
-    </p>
+            <!-- Filtrare dupa regiuni -->
+            <div class="col-md-3 col-sm-6">
+                @Html.DropDownList("regionId",
+                         ViewBag.Regions as SelectList,
+                         "All Regions",
+                         new { @class = "form-select" })
+            </div>
+
+            <!-- Sortare dupa nume sau vechime in firma -->
+            <div class="col-md-3 col-sm-6">
+                <form method="get">
+                    <select class="form-select" name="sortOrder">
+                        <option value="name" selected="@(ViewBag.CurrentSort == "name" ? "selected" : "")">Name (Ascending)</option>
+                        <option value="name_desc" selected="@(ViewBag.CurrentSort == "name_desc" ? "selected" : "")">Name (Descending)</option>
+                        <option value="date" selected="@(ViewBag.CurrentSort == "date" ? "selected" : "")">Date Hired (Ascending)</option>
+                        <option value="date_desc" selected="@(ViewBag.CurrentSort == "date_desc" ? "selected" : "")">Date Hired (Descending)</option>
+                        <option value="" selected="@(string.IsNullOrEmpty(ViewBag.CurrentSort) ? "selected" : "")">Sort by</option>
+                    </select>
+                </form>
+            </div>
+
+            <!-- Buton de submit pt tot -->
+            <div class="col-md-2 col-sm-6">
+                <button type="submit" class="btn btn-primary w-100">Apply</button>
+            </div>
+        </div>
+    </form>
 </div>
 
 <!-- Carduri cu useri -->
@@ -47,12 +65,17 @@
                 </div>
 
                 <div class="card-footer">
-                    <div class="d-flex justify-content-around">
-                        @Html.ActionLink("Details", "Show", new { id = user.Id }, new { @class = "btn btn-info btn-sm" })
-                        @Html.ActionLink("Edit", "Edit", new { id = user.Id }, new { @class = "btn btn-warning btn-sm" })
-                        @using (Html.BeginForm("Delete", "Users", new { id = user.Id }, FormMethod.Post, false, new { onsubmit = "return confirm('Are you sure you want to delete this user?');" }))
+                    <div class="d-flex justify-content-center align-items-center">
+                        @Html.ActionLink("Details", "Show", new { id = user.Id }, new { @class = "btn btn-info btn-sm mb-2 mx-2" })
+                        @if (User.IsInRole("Admin") || User.IsInRole("Dispecer"))
                         {
-                            <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+                            var userRoles = await UserManager.GetRolesAsync(user);
+                            if (userRoles.Contains("Dispecer"))
+                            {
+                                <a href="@Url.Action("ShowDriversOfDispatcher", "Users", new { id = user.Id })" class="btn btn-info btn-sm mb-2 mx-2">
+                                    Show Drivers
+                                </a>
+                            }
                         }
                     </div>
                 </div>

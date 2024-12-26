@@ -1,6 +1,6 @@
 ﻿@model Licenta_v1.Models.ApplicationUser
 @{
-    ViewBag.Title = "User Details";
+    ViewBag.Title = "Your Profile";
 }
 
 @if (TempData["Success"] != null)
@@ -19,11 +19,17 @@
 
     <div class="row align-items-stretch">
         <!-- Poza :) -->
-        <div class="col-lg-4 col-md-6 text-center mb-3 d-flex align-items-center">
+        <div class="col-lg-4 col-md-6 text-center mb-3 d-flex flex-column align-items-center">
             <img src="@(Url.Content("~/" + (Model.PhotoPath ?? "Images/Default.jpg")))"
-                 class="img-fluid rounded"
+                 class="img-fluid rounded mb-3"
                  alt="User Photo"
                  style="max-width: 100%; height: auto;">
+
+            <!-- Formular ca sa adaug poza daca vreau -->
+            <form asp-action="UploadProfilePicture" method="post" enctype="multipart/form-data">
+                <input type="file" name="profilePicture" class="form-control mb-2" />
+                <button type="submit" class="btn btn-primary">Upload Picture</button>
+            </form>
         </div>
 
         <!-- Tabel cu date pt userrr -->
@@ -59,10 +65,11 @@
                         <td>@(Model.DateHired.ToString("dd/MM/yyyy") ?? "N/A")</td>
                     </tr>
                     <tr>
-						<th>Role</th>
+                        <th>Role</th>
                         <td>@ViewBag.UserRole</td>
                     </tr>
-                    @if(ViewBag.UserRole == "Sofer"){
+                    @if (ViewBag.UserRole == "Sofer")
+                    {
                         <tr>
                             <th>Average Rating</th>
                             <td>
@@ -85,13 +92,13 @@
                             </td>
                         </tr>
                     }
-					@if (ViewBag.UserRole == "Dispecer" || ViewBag.UserRole == "Sofer")
-					{
+                    @if (ViewBag.UserRole == "Dispecer" || ViewBag.UserRole == "Sofer")
+                    {
                         <tr>
                             <th>Notice of Termination</th>
                             <td>@(Model.DismissalNoticeDate.HasValue ? Model.DismissalNoticeDate.Value.ToString("dd/MM/yyyy") : "N/A")</td>
                         </tr>
-					}
+                    }
                 </tbody>
             </table>
         </div>
@@ -99,54 +106,20 @@
 
     <!-- Butoanele-s aci -->
     <div class="mt-4">
-        <div class="d-flex flex-wrap justify-content-center align-items-center gap-3">
-            <!-- Pt Admin -->
-            @if (User.IsInRole("Admin") && !ViewBag.IsCurrentUserLoggedIn && ViewBag.UserRole != "Admin")
-            {
-                <div class="d-flex align-items-center gap-3">
-                    <a href="@Url.Action("Edit", "Users", new { id = Model.Id })" class="btn btn-warning">Edit</a>
-
-                    @if (ViewBag.UserRole == "Sofer" || ViewBag.UserRole == "Dispecer")
-                    {
-                        <form asp-action="IssuingNoticeTermination" asp-controller="Users" method="post" class="mb-0">
-                            <input type="hidden" name="id" value="@Model.Id" />
-                            <button type="submit" class="btn btn-outline-danger">Emit NT30</button>
-                        </form>
-                    }
-
-                    @using (Html.BeginForm("Delete", "Users", new { id = Model.Id }, FormMethod.Post, false, new { onsubmit = "return confirm('Are you sure you want to delete this user?');" }))
-                    {
-                        <button type="submit" class="btn btn-danger">Delete</button>
-                    }
-                </div>
-            }
-
-            <!-- Pt Dispecer -->
-            @if (ViewBag.UserRole == "Sofer" && User.IsInRole("Admin"))
-            {
-                <div class="d-flex align-items-center gap-3 border border-3 rounded p-2">
-                    <label for="dispatcherId" class="mb-0">Assign Dispatcher:</label>
-                    <form id="dispatcherForm" asp-action="AssignDriverToDispatcherByRegionId" asp-controller="Users" method="post" class="mb-0">
-                        <input type="hidden" name="driverId" value="@Model.Id" />
-                        <select class="form-select w-auto" name="dispatcherId" id="dispatcherId"
-                                onchange="document.getElementById('dispatcherForm').submit();">
-                            <option value="">-- Select Dispatcher --</option>
-                            @foreach (var dispatcher in ViewBag.Dispatchers)
-                            {
-                                <option value="@dispatcher.Value">@dispatcher.Text</option>
-                            }
-                        </select>
-                    </form>
-                </div>
-            }
-
-            <!-- Back -->
+        <div class="d-flex flex-wrap justify-content-center align-items-center">
+            <a href="@Url.Action("EditMyself", "Users", new { id = Model.Id })" 
+               class="btn btn-warning mx-2 mb-2"
+               style="min-width: 100px;">
+               Edit
+           </a>
             <a href="@(ViewContext.HttpContext.Request.Headers["Referer"].FirstOrDefault() ?? Url.Action("Index", "Users"))"
-               class="btn btn-secondary">
+               class="btn btn-secondary mx-2 mb-2"
+               style="min-width: 100px;">
                 Back
             </a>
         </div>
     </div>
 </div>
+
 
 

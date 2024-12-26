@@ -1,0 +1,85 @@
+﻿@model IEnumerable<Licenta_v1.Models.ApplicationUser>
+
+<h2 class="text-center">@ViewBag.Title</h2>
+<br />
+
+<div class="card shadow-sm p-3 mb-3">
+    <form method="get">
+        <div class="row g-2 align-items-center">
+            <!-- Bara de cautare -->
+            <div class="col-md-5 col-sm-12">
+                <input type="text" name="searchString" class="form-control" placeholder="Search drivers" value="@ViewBag.SearchString" />
+            </div>
+
+            <!-- Sortare dupa nume sau vechime in firma -->
+            <div class="col-md-4 col-sm-12">
+                <select class="form-select" name="sortOrder">
+                    <option value="name" selected="@(ViewBag.CurrentSort == "name" ? "selected" : "")">Name (Ascending)</option>
+                    <option value="name_desc" selected="@(ViewBag.CurrentSort == "name_desc" ? "selected" : "")">Name (Descending)</option>
+                    <option value="date" selected="@(ViewBag.CurrentSort == "date" ? "selected" : "")">Date Hired (Ascending)</option>
+                    <option value="date_desc" selected="@(ViewBag.CurrentSort == "date_desc" ? "selected" : "")">Date Hired (Descending)</option>
+                    <option value="" selected="@(string.IsNullOrEmpty(ViewBag.CurrentSort) ? "selected" : "")">Sort by</option>
+                </select>
+            </div>
+
+            <!-- Buton de submit pt tot -->
+            <div class="col-md-3 col-sm-12">
+                <button type="submit" class="btn btn-primary w-100">Apply</button>
+            </div>
+        </div>
+    </form>
+</div>
+
+
+<!-- Carduri cu soferi -->
+<div class="row row-cols-1 row-cols-md-3 g-4">
+    @foreach (var driver in Model)
+    {
+        <div class="col">
+            <div class="card h-100 text-center">
+                <img src="@(Url.Content("~/" + (driver.PhotoPath ?? "Images/Default.jpg")))"
+                     class="card-img-top img-fluid"
+                     alt="Driver Photo"
+                     style="height: auto; max-height: 300px; object-fit: cover;">
+
+                <div class="card-body">
+                    <h5 class="card-title">@driver.FirstName @driver.LastName</h5>
+                    <p class="card-text">
+                        <strong>User Name:</strong> @driver.UserName<br />
+                        <strong>Date Hired:</strong> @driver.DateHired.ToShortDateString()
+                    </p>
+                </div>
+
+                <div class="card-footer text-center">
+                    <a href="@Url.Action("Show", "Users", new { id = driver.Id })" class="btn btn-info btn-sm">Details</a>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+<!-- Paginare -->
+<nav>
+    <ul class="pagination justify-content-center">
+        @{
+            int totalPages = ViewBag.TotalPages;
+            int pageNumber = ViewBag.PageNumber;
+            string query = $"&searchString={ViewBag.SearchString}&sortOrder={ViewBag.CurrentSort}";
+        }
+
+        <li class="page-item @(pageNumber == 1 ? "disabled" : "")">
+            <a class="page-link" href="?pageNumber=@(pageNumber - 1)@query">Previous</a>
+        </li>
+
+        @for (int i = 1; i <= totalPages; i++)
+        {
+            <li class="page-item @(i == pageNumber ? "active" : "")">
+                <a class="page-link" href="?pageNumber=@i@query">@i</a>
+            </li>
+        }
+
+        <li class="page-item @(pageNumber == totalPages ? "disabled" : "")">
+            <a class="page-link" href="?pageNumber=@(pageNumber + 1)@query">Next</a>
+        </li>
+    </ul>
+</nav>

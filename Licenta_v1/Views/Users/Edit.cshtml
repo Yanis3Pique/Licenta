@@ -6,6 +6,11 @@
     ViewBag.Title = "Edit User";
 }
 
+@if (TempData["Error"] != null)
+{
+    <div class="alert alert-danger">@TempData["Error"]</div>
+}
+
 <h2 class="text-center mt-5">@ViewBag.Title</h2>
 <br />
 <div class="container mt-5">
@@ -13,38 +18,34 @@
         <div class="col-md-6 offset-3">
             @using (Html.BeginForm(actionName: "Edit", controllerName: "Users", method: FormMethod.Post, routeValues: new { id = Model.Id }))
             {
+                @Html.AntiForgeryToken()
+
                 @Html.LabelFor(model => model.UserName, "User Name")
-                <br />
                 @Html.EditorFor(model => model.UserName, new { htmlAttributes = new { @class = "form-control" } })
                 @Html.ValidationMessageFor(model => model.UserName, null, new { @class = "text-danger" })
                 <br />
 
                 @Html.LabelFor(model => model.FirstName, "First Name")
-                <br />
                 @Html.EditorFor(model => model.FirstName, new { htmlAttributes = new { @class = "form-control" } })
                 @Html.ValidationMessageFor(model => model.FirstName, null, new { @class = "text-danger" })
                 <br />
 
                 @Html.LabelFor(model => model.LastName, "Last Name")
-                <br />
                 @Html.EditorFor(model => model.LastName, new { htmlAttributes = new { @class = "form-control" } })
                 @Html.ValidationMessageFor(model => model.LastName, null, new { @class = "text-danger" })
                 <br />
 
                 @Html.LabelFor(model => model.Email, "Email")
-                <br />
                 @Html.EditorFor(model => model.Email, new { htmlAttributes = new { @class = "form-control" } })
                 @Html.ValidationMessageFor(model => model.Email, null, new { @class = "text-danger" })
                 <br />
 
                 @Html.LabelFor(model => model.PhoneNumber, "Phone Number")
-                <br />
                 @Html.EditorFor(model => model.PhoneNumber, new { htmlAttributes = new { @class = "form-control" } })
                 @Html.ValidationMessageFor(model => model.PhoneNumber, null, new { @class = "text-danger" })
                 <br />
 
                 @Html.Label("Region", "Region")
-                <br />
                 @Html.DropDownListFor(m => m.RegionId,
                          ViewBag.Regions as IEnumerable<SelectListItem> ?? Enumerable.Empty<SelectListItem>(),
                          "Select Region", 
@@ -63,15 +64,8 @@
 
 
                 @Html.LabelFor(model => model.DateHired, "Date Hired")
-                <br />
                 <input asp-for="DateHired" type="date" class="form-control" value="@Model.DateHired.ToString("yyyy-MM-dd")" />
                 @Html.ValidationMessageFor(model => model.DateHired, null, new { @class = "text-danger" })
-                <br />
-
-                @Html.Label("Photo", "Photo Path")
-                <br />
-                @Html.TextBoxFor(model => model.PhotoPath, new { @class = "form-control" })
-                @Html.ValidationMessageFor(model => model.PhotoPath, null, new { @class = "text-danger" })
                 <br />
 
                 <button class="btn btn-sm btn-success" type="submit">Save Changes</button>

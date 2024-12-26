@@ -8,7 +8,6 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Licenta_v1.Controllers
 {
-	[Authorize(Roles = "Admin")]
 	public class UsersController : Controller
 	{
 		private readonly ApplicationDbContext db;
@@ -44,6 +43,7 @@ namespace Licenta_v1.Controllers
 			return selectList;
 		}
 
+		[NonAction]
 		private async Task<(List<ApplicationUser> Users, int Count)> GetFilteredUsers(
 			string roleFilter,
 			string searchString,
@@ -79,7 +79,7 @@ namespace Licenta_v1.Controllers
 				users = users.Where(u => u.RegionId == regionId.Value);
 			}
 
-			// Sortarea propriu-zisa
+			// Sortarea propriu-zisa dupa nume sau data angajarii
 			switch (sortOrder)
 			{
 				case "name_desc":
@@ -88,11 +88,11 @@ namespace Licenta_v1.Controllers
 				case "name":
 					users = users.OrderBy(u => u.LastName).ThenBy(u => u.FirstName);
 					break;
-				case "date":
-					users = users.OrderBy(u => u.DateHired);
-					break;
 				case "date_desc":
 					users = users.OrderByDescending(u => u.DateHired);
+					break;
+				case "date":
+					users = users.OrderBy(u => u.DateHired);
 					break;
 				default:
 					users = users.OrderBy(u => u.UserName);
@@ -106,14 +106,16 @@ namespace Licenta_v1.Controllers
 		}
 
 		// Get - Users/Index
+		[Authorize(Roles = "Admin")]
 		public async Task<IActionResult> Index(string searchString, int? regionId, string sortOrder, int pageNumber = 1)
 		{
 			int pageSize = 10;
 
 			ViewBag.CurrentSort = sortOrder;
-			ViewBag.NameSortParam = string.IsNullOrEmpty(sortOrder) ? "name" : "";
-			ViewBag.NameSortParamDesc = sortOrder == "name" ? "name_desc" : "name";
-			ViewBag.DateSortParam = sortOrder == "date" ? "date_desc" : "date";
+			ViewBag.NameSortParam = "name";
+			ViewBag.NameSortParamDesc = "name_desc";
+			ViewBag.DateSortParam = "date";
+			ViewBag.DateSortParamDesc = "date_desc";
 
 			ViewBag.SearchString = searchString;
 			ViewBag.RegionId = regionId;
@@ -128,14 +130,16 @@ namespace Licenta_v1.Controllers
 		}
 
 		// Get - Users/IndexClients
+		[Authorize(Roles = "Admin")]
 		public async Task<IActionResult> IndexClients(string searchString, int? regionId, string sortOrder, int pageNumber = 1)
 		{
 			int pageSize = 10;
 
 			ViewBag.CurrentSort = sortOrder;
-			ViewBag.NameSortParam = string.IsNullOrEmpty(sortOrder) ? "name" : "";
-			ViewBag.NameSortParamDesc = sortOrder == "name" ? "name_desc" : "name";
-			ViewBag.DateSortParam = sortOrder == "date" ? "date_desc" : "date";
+			ViewBag.NameSortParam = "name";
+			ViewBag.NameSortParamDesc = "name_desc";
+			ViewBag.DateSortParam = "date";
+			ViewBag.DateSortParamDesc = "date_desc";
 
 			ViewBag.SearchString = searchString;
 			ViewBag.RegionId = regionId;
@@ -150,14 +154,16 @@ namespace Licenta_v1.Controllers
 		}
 
 		// Get - Users/IndexDrivers
+		[Authorize(Roles = "Admin")]
 		public async Task<IActionResult> IndexDrivers(string searchString, int? regionId, string sortOrder, int pageNumber = 1)
 		{
 			int pageSize = 10;
 
 			ViewBag.CurrentSort = sortOrder;
-			ViewBag.NameSortParam = string.IsNullOrEmpty(sortOrder) ? "name" : "";
-			ViewBag.NameSortParamDesc = sortOrder == "name" ? "name_desc" : "name";
-			ViewBag.DateSortParam = sortOrder == "date" ? "date_desc" : "date";
+			ViewBag.NameSortParam = "name";
+			ViewBag.NameSortParamDesc = "name_desc";
+			ViewBag.DateSortParam = "date";
+			ViewBag.DateSortParamDesc = "date_desc";
 
 			ViewBag.SearchString = searchString;
 			ViewBag.RegionId = regionId;
@@ -172,14 +178,16 @@ namespace Licenta_v1.Controllers
 		}
 
 		// Get - Users/IndexDispatchers
+		[Authorize(Roles = "Admin")]
 		public async Task<IActionResult> IndexDispatchers(string searchString, int? regionId, string sortOrder, int pageNumber = 1)
 		{
 			int pageSize = 10;
 
 			ViewBag.CurrentSort = sortOrder;
-			ViewBag.NameSortParam = string.IsNullOrEmpty(sortOrder) ? "name" : "";
-			ViewBag.NameSortParamDesc = sortOrder == "name" ? "name_desc" : "name";
-			ViewBag.DateSortParam = sortOrder == "date" ? "date_desc" : "date";
+			ViewBag.NameSortParam = "name";
+			ViewBag.NameSortParamDesc = "name_desc";
+			ViewBag.DateSortParam = "date";
+			ViewBag.DateSortParamDesc = "date_desc";
 
 			ViewBag.SearchString = searchString;
 			ViewBag.RegionId = regionId;
@@ -193,37 +201,292 @@ namespace Licenta_v1.Controllers
 			return View(users);
 		}
 
+		// Get - Users/ShowDriversOfDispatcher/id
+		[Authorize(Roles = "Admin,Dispecer")]
+		public async Task<IActionResult> ShowDriversOfDispatcher(
+			string id,
+			string searchString,
+			string sortOrder,
+			int pageNumber = 1,
+			int pageSize = 10)
+		{
+			if (id == null) return NotFound();
+
+			var dispatcher = await db.ApplicationUsers.FirstOrDefaultAsync(u => u.Id == id);
+			if (dispatcher == null) return NotFound();
+
+			ViewBag.CurrentSort = sortOrder;
+			ViewBag.NameSortParam = sortOrder == "name" ? "name_desc" : "name";
+			ViewBag.DateSortParam = sortOrder == "date" ? "date_desc" : "date";
+
+			ViewBag.SearchString = searchString;
+
+			var driversQuery = db.ApplicationUsers
+				.Include(u => u.Region)
+				.Where(u => u.RegionId == dispatcher.RegionId && u.Id != dispatcher.Id);
+
+			if (!string.IsNullOrEmpty(searchString))
+			{
+				driversQuery = driversQuery.Where(d =>
+					d.FirstName.Contains(searchString) ||
+					d.LastName.Contains(searchString) ||
+					d.UserName.Contains(searchString));
+			}
+
+			var driversList = await driversQuery.ToListAsync();
+
+			var drivers = new List<ApplicationUser>();
+			foreach (var driver in driversList)
+			{
+				var roles = await _userManager.GetRolesAsync(driver);
+				if (roles.Contains("Sofer")) // Daca-s soferi ii iau
+				{
+					drivers.Add(driver);
+				}
+			}
+
+			// Sortez
+			drivers = sortOrder switch
+			{
+				"name_desc" => drivers.OrderByDescending(u => u.LastName).ThenByDescending(u => u.FirstName).ToList(),
+				"name" => drivers.OrderBy(u => u.LastName).ThenBy(u => u.FirstName).ToList(),
+				"date_desc" => drivers.OrderByDescending(u => u.DateHired).ToList(),
+				"date" => drivers.OrderBy(u => u.DateHired).ToList(),
+				_ => drivers.OrderBy(u => u.UserName).ToList()
+			};
+
+			// Paginare
+			int totalItems = drivers.Count;
+			var paginatedDrivers = drivers.Skip((pageNumber - 1) * pageSize).Take(pageSize).ToList();
+
+			ViewBag.PageNumber = pageNumber;
+			ViewBag.TotalPages = (int)Math.Ceiling(totalItems / (double)pageSize);
+			ViewBag.Title = "Drivers for " + dispatcher.Region.County;
+
+			return View(paginatedDrivers);
+		}
+
+
+		// Post - Users/AssignDriverToDispatcher/id
+		[Authorize(Roles = "Admin")]
+		[HttpPost]
+		public async Task<IActionResult> AssignDriverToDispatcherByRegionId(string driverId, string dispatcherId)
+		{
+			if (driverId == null || dispatcherId == null) return NotFound();
+			var driver = await db.ApplicationUsers.FindAsync(driverId);
+			var dispatcher = await db.ApplicationUsers.FindAsync(dispatcherId);
+
+			if (driver == null || dispatcher == null) return NotFound();
+			if (dispatcher.RegionId == null)
+			{
+				TempData["Error"] = "The dispatcher is not assigned to a region!";
+				return RedirectToAction("Show", new { id = driverId });
+			}
+
+			driver.RegionId = dispatcher.RegionId;
+			await db.SaveChangesAsync();
+
+			if (!(await _userManager.IsInRoleAsync(driver, "Sofer")))
+			{
+				await _userManager.AddToRoleAsync(driver, "Sofer");
+			}
+
+			return RedirectToAction("Show", new { id = driverId });
+		}
+
 		// Get - Users/Show/id
+		[Authorize] // Doar pentru userii care au cont
 		public async Task<IActionResult> Show(string id)
 		{
 			if (id == null) return NotFound();
 
+			var loggedInUserId = _userManager.GetUserId(User); // Iau id-ul userului logat
+			var loggedInUserRoles = await _userManager.GetRolesAsync(await _userManager.FindByIdAsync(loggedInUserId)); // Iau rolul userului logat
+
+			var userToView = await db.ApplicationUsers
+									 .Include(u => u.Region)
+									 .Include(u => u.Orders)
+									 .Include(u => u.Deliveries)
+									 .Include(u => u.FeedbacksGiven)
+									 .Include(u => u.FeedbacksReceived)
+									 .FirstOrDefaultAsync(u => u.Id == id);
+
+			if (userToView == null) return NotFound();
+
+			var rolesOfUserToView = await _userManager.GetRolesAsync(userToView); // Iau rolul userului caruia tre sa-i afisez detaliile
+			var roleOfUserToView = rolesOfUserToView.FirstOrDefault();
+
+			ViewBag.IsCurrentUserLoggedIn = loggedInUserId == id;
+
+			if (userToView.AverageRating.HasValue)
+			{
+				double rating = userToView.AverageRating.Value;
+				int fullStars = (int)Math.Floor(rating);
+				bool halfStar = rating - fullStars >= 0.5;
+				int emptyStars = 5 - fullStars - (halfStar ? 1 : 0);
+
+				ViewBag.FullStars = fullStars;
+				ViewBag.HalfStar = halfStar;
+				ViewBag.EmptyStars = emptyStars;
+			}
+			else
+			{
+				ViewBag.FullStars = 0;
+				ViewBag.HalfStar = false;
+				ViewBag.EmptyStars = 5;
+			}
+
+			// Admin vede tot si poate asigna un dispecer unui sofer
+			if (loggedInUserRoles.Contains("Admin"))
+			{
+				ViewBag.UserRole = roleOfUserToView;
+
+				// Lista cu dispeceri daca ne uitam la profilul unui sofer
+				if (roleOfUserToView == "Sofer")
+				{
+					// Fetch all application users and filter dispatchers in memory
+					var allUsers = await db.ApplicationUsers.Include(u => u.Region).ToListAsync();
+					var dispatchers = allUsers.Where(u => _userManager.IsInRoleAsync(u, "Dispecer").Result).ToList();
+
+					ViewBag.Dispatchers = dispatchers.Select(d => new SelectListItem
+					{
+						Value = d.Id,
+						Text = $"{d.FirstName} {d.LastName} ({d.Region?.County ?? "No Region"})"
+					});
+				}
+
+				return View(userToView);
+			}
+
+			// Dispecer vede doar Sofer si Client
+			if (loggedInUserRoles.Contains("Dispecer") && (roleOfUserToView == "Sofer" || roleOfUserToView == "Client"))
+			{
+				ViewBag.UserRole = roleOfUserToView;
+				return View(userToView);
+			}
+
+			// Sofer vede doar Client
+			if (loggedInUserRoles.Contains("Sofer") && roleOfUserToView == "Client")
+			{
+				ViewBag.UserRole = roleOfUserToView;
+				return View(userToView);
+			}
+
+			// Client nu vede nimic
+			if (loggedInUserRoles.Contains("Client"))
+			{
+				return Forbid();
+			}
+
+			// Daca nu e nimic, nu avem voie(desi putin probabil sa ajungem aici)
+			return Forbid();
+		}
+
+		// Get - Users/Profile
+		[Authorize]
+		public async Task<IActionResult> Profile()
+		{
+			var userId = _userManager.GetUserId(User);
 			var user = await db.ApplicationUsers
 							   .Include(u => u.Region)
 							   .Include(u => u.Orders)
 							   .Include(u => u.Deliveries)
 							   .Include(u => u.FeedbacksGiven)
 							   .Include(u => u.FeedbacksReceived)
-							   .FirstOrDefaultAsync(u => u.Id == id);
-
+							   .FirstOrDefaultAsync(u => u.Id == userId);
 			if (user == null) return NotFound();
 
 			var roles = await _userManager.GetRolesAsync(user);
 			ViewBag.UserRole = roles.FirstOrDefault();
-
+			
 			return View(user);
 		}
 
+		// Post - Users/UploadProfilePicture
+		[HttpPost]
+		[Authorize]
+		public async Task<IActionResult> UploadProfilePicture(IFormFile profilePicture)
+		{
+			if (profilePicture == null || profilePicture.Length == 0)
+			{
+				TempData["Error"] = "Please select a valid image!";
+				return RedirectToAction("Profile");
+			}
+
+			var userId = _userManager.GetUserId(User);
+			var user = await _userManager.FindByIdAsync(userId);
+
+			if (user == null)
+			{
+				TempData["Error"] = "User not found!";
+				return RedirectToAction("Profile");
+			}
+
+			var allowedExtensions = new[] { ".jpg", ".jpeg", ".png", ".gif" };
+			var extension = Path.GetExtension(profilePicture.FileName).ToLowerInvariant();
+
+			if (!allowedExtensions.Contains(extension))
+			{
+				TempData["Error"] = "Invalid file type. Only JPG, JPEG, PNG, and GIF are allowed!";
+				return RedirectToAction("Profile");
+			}
+
+			// Sterg poza veche din wwwroot/Images
+			if (!string.IsNullOrEmpty(user.PhotoPath))
+			{
+				var oldFilePath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", user.PhotoPath);
+				if (System.IO.File.Exists(oldFilePath))
+				{
+					System.IO.File.Delete(oldFilePath);
+				}
+			}
+
+			// Salvez poza noua in wwwroot/Images
+			var fileName = $"{Guid.NewGuid()}{Path.GetExtension(profilePicture.FileName)}";
+			var filePath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "Images", fileName);
+
+			using (var stream = new FileStream(filePath, FileMode.Create))
+			{
+				await profilePicture.CopyToAsync(stream);
+			}
+
+			// Updatez poza(adica path-ul ei) in BD
+			user.PhotoPath = $"Images/{fileName}";
+			await _userManager.UpdateAsync(user);
+
+			TempData["Success"] = "Profile picture updated successfully.";
+			return RedirectToAction("Profile");
+		}
+
 		// Get - Users/Edit/id
+		[Authorize(Roles = "Admin")]
 		public async Task<IActionResult> Edit(string id)
 		{
 			if (string.IsNullOrEmpty(id))
 				return NotFound();
 
+			// Nu am voie sa ma editez pe mine
+			if (id == _userManager.GetUserId(User))
+			{
+				TempData["Error"] = "You cannot edit your own account!";
+				return RedirectToAction("Index");
+			}
+
+			// Nu am voie sa editez alt admin
+			var loggedInUserRoles = await _userManager.GetRolesAsync(await _userManager.FindByIdAsync(_userManager.GetUserId(User)));
+			if (loggedInUserRoles.Contains("Admin"))
+			{
+				var userRoles = await _userManager.GetRolesAsync(await _userManager.FindByIdAsync(id));
+				if (userRoles.Contains("Admin"))
+				{
+					TempData["Error"] = "You cannot edit another admin!";
+					return RedirectToAction("Index");
+				}
+			}
+
 			// Gasesc userul dupa id
 			var user = await db.ApplicationUsers.FindAsync(id);
-			if (user == null)
-				return NotFound();
+			if (user == null) return NotFound();
 
 			// Iau toate rolurile
 			user.AllRoles = GetAllRoles();
@@ -243,20 +506,24 @@ namespace Licenta_v1.Controllers
 			return View(user);
 		}
 
-
 		// Post - Users/Edit/id
+		[Authorize(Roles = "Admin")]
 		[HttpPost]
 		public async Task<IActionResult> Edit(string id, ApplicationUser newData, [FromForm] string newRole, [FromForm] int? newRegionId)
 		{
 			if (id == null) return NotFound();
 
 			var user = await db.ApplicationUsers.FindAsync(id);
-			if (user == null) return NotFound();
+			if (user == null)
+			{
+				TempData["Error"] = "User not found!";
+				return NotFound();
+			}
 
 			// Mesaj custom de validare pentru rol
 			if (string.IsNullOrEmpty(newRole) || newRole == "Select role")
 			{
-				ModelState.AddModelError("newRole", "Please select a valid role for the user.");
+				ModelState.AddModelError("newRole", "Please select a valid role for the user!");
 			}
 
 			user.AllRoles = GetAllRoles();
@@ -284,7 +551,7 @@ namespace Licenta_v1.Controllers
 				await _userManager.AddToRoleAsync(user, roleName.Name);
 
 				await db.SaveChangesAsync();
-				return RedirectToAction("Index");
+				return RedirectToAction("Index", TempData["Success"] = "User edited successfully!");
 			}
 
 			// Dar daca ModelState nu e valid, returnez userul cu datele vechi
@@ -297,44 +564,121 @@ namespace Licenta_v1.Controllers
 			return View(user);
 		}
 
-		// Get - Users/EmitDismissalProposal/id
+		// Get - Users/EditMyself
+		[Authorize]
+		public async Task<IActionResult> EditMyself()
+		{
+			// Iau id-ul userului logat
+			var userId = _userManager.GetUserId(User);
+
+			var user = await db.ApplicationUsers.FindAsync(userId);
+			if (user == null)
+			{
+				TempData["Error"] = "User not found!";
+				return RedirectToAction("Profile");
+			}
+
+			return View(user);
+		}
+
+
+		// Post - Users/EditMyself
+		[Authorize]
 		[HttpPost]
-		public async Task<IActionResult> EmitDismissalProposal(string id)
+		public async Task<IActionResult> EditMyself(ApplicationUser newData)
+		{
+			var userId = _userManager.GetUserId(User);
+
+			var user = await db.ApplicationUsers.FindAsync(userId);
+			if (user == null)
+			{
+				TempData["Error"] = "User not found!";
+				return RedirectToAction("Profile");
+			}
+
+			ModelState.Remove(nameof(ApplicationUser.DateHired));
+			ModelState.Remove(nameof(ApplicationUser.RegionId));
+			ModelState.Remove(nameof(ApplicationUser.AverageRating));
+			ModelState.Remove(nameof(ApplicationUser.DismissalNoticeDate));
+			ModelState.Remove(nameof(ApplicationUser.PhotoPath));
+
+			if (!ModelState.IsValid)
+			{
+				TempData["Error"] = "Validation error. Please check the form.";
+				return View(newData);
+			}
+
+			// Updatez doar campurile care sunt editabile
+			user.FirstName = newData.FirstName;
+			user.LastName = newData.LastName;
+			user.Email = newData.Email;
+			user.UserName = newData.UserName;
+			user.PhoneNumber = newData.PhoneNumber;
+
+			db.ApplicationUsers.Update(user);
+
+			await db.SaveChangesAsync();
+
+			TempData["Success"] = "Profile updated successfully!";
+			return RedirectToAction("Profile"); // Or another appropriate action/view
+		}
+
+		// Get - Users/IssuingNoticeTermination/id
+		[Authorize(Roles = "Admin")]
+		[HttpPost]
+		public async Task<IActionResult> IssuingNoticeTermination(string id)
 		{
 			if (id == null) return NotFound();
 
 			var user = await db.ApplicationUsers.FindAsync(id);
 			if (user == null) return NotFound();
+			var userRole = await _userManager.GetRolesAsync(user);
 
-			// Daca nu e sofer sau dispecer nu am voie
-			var roles = await _userManager.GetRolesAsync(user);
-			if (!roles.Contains("Sofer") && !roles.Contains("Dispecer"))
+			// Daca nu e sofer / nu e dispecer nu am voie
+			if (userRole.Contains("Sofer") == false && userRole.Contains("Dispecer") == false)
 			{
-				ModelState.AddModelError("", "Poti emite cereri de concediere doar pentru soferi sau dispeceri!");
+				TempData["Error"] = "Only drivers and dispatchers can be issued a termination notice!";
 				return RedirectToAction("Index");
 			}
 
-			if (roles.Contains("Sofer") || roles.Contains("Dispecer"))
+			else if(userRole.Contains("Sofer") == true || userRole.Contains("Dispecer") == true)
 			{
 				// Daca deja am o data de concediere nu mai dam inca o data
 				if (user.DismissalNoticeDate != null)
 				{
-					ModelState.AddModelError("", "This driver already has a dismissal notice date.");
+					TempData["Error"] = "This driver already has a dismissal notice date.";
 					return RedirectToAction("Index");
 				}
 
-				if (roles.Contains("Sofer"))
+				// Daca userul e dispecer sau sofer si are mai putin de 90 de zile in firma, nu poate fi concediat
+				var daysSinceHired = (DateTime.Now - user.DateHired).Days;
+				if (daysSinceHired < 90)
 				{
-					// Daca soferul are livrari in curs, nu poate fi concediat
-					if (user.Deliveries?.Count > 0)
+					TempData["Error"] = "This user is on probation and cannot be fired!";
+					return RedirectToAction("Index");
+				}
+
+				if (user.DismissalNoticeDate == null)
+				{
+					user.DismissalNoticeDate = DateTime.Now;
+				}
+
+				// Daca este sofer si are rating >3 nu poate fi concediat
+				if (userRole.Contains("Sofer") && user.AverageRating > 3)
+				{
+					TempData["Error"] = "The driver cannot be fired because he has an average rating bigger than 3/5!";
+					return RedirectToAction("Index");
+				}
+
+				// Daca soferul are livrari in curs, nu poate fi concediat
+				if (userRole.Contains("Sofer") && user.Deliveries?.Count > 0)
+				{
+					foreach (var delivery in user.Deliveries)
 					{
-						foreach (var delivery in user.Deliveries)
+						if (delivery.Status.Contains("InProgress"))
 						{
-							if (delivery.Status.Contains("InProgress"))
-							{
-								ModelState.AddModelError("", "Soferul nu poate fi concediat deoarece are livrari in curs!");
-								return RedirectToAction("Index");
-							}
+							TempData["Error"] = "The driver cannot be fired because he has deliveries in progress!";
+							return RedirectToAction("Index");
 						}
 					}
 				}
@@ -343,31 +687,15 @@ namespace Licenta_v1.Controllers
 				user.DismissalNoticeDate = DateTime.Now;
 			}
 
-			// Daca userul e dispecer sau sofer si are mai putin de 90 de zile in firma, nu poate fi concediat
-			if (roles.Contains("Dispecer") || roles.Contains("Sofer"))
-			{
-				var daysSinceHired = (DateTime.Now - user.DateHired).Days;
-				if (daysSinceHired < 90)
-				{
-					ModelState.AddModelError("", "Acest utilizator se afla in perioada de proba si nu poate fi concediat!");
-					return RedirectToAction("Index");
-				}
-
-				if (user.DismissalNoticeDate == null)
-				{
-					user.DismissalNoticeDate = DateTime.Now;
-				}
-			}
-
 			db.Update(user);
 			await db.SaveChangesAsync();
 
-			TempData["Message"] = "Cerere de concediere emisa cu succes!";
+			TempData["Success"] = "Termination notice successfully issued!";
 			return RedirectToAction("Index");
 		}
 
-
 		// Get - Users/Delete/id
+		[Authorize(Roles = "Admin")]
 		[HttpPost]
 		public async Task<IActionResult> Delete(string id)
 		{
@@ -384,51 +712,33 @@ namespace Licenta_v1.Controllers
 
 			// Luam rolul userului separat ca sa ne fie usor la scris
 			var role = await _userManager.GetRolesAsync(user);
+			if (role == null) return NotFound();
 
-			// Daca un dispecer sau sofer au o vechime de < 90 de zile in firma nu pot fi stersi
-			if (role.Contains("Dispecer") || role.Contains("Sofer"))
+			// Daca e sofer sau dispecer, pot fi stersi doar daca DismissalNoticeDate != NULL si e mai vechi de 30 de zile
+			if (role.Contains("Sofer") || role.Contains("Dispecer"))
 			{
-				var daysSinceHired = (DateTime.Now - user.DateHired).TotalDays;
-				if (daysSinceHired < 90)
+				if (user.DismissalNoticeDate == null)
 				{
-					ModelState.AddModelError("", "Nu poti sterge dispecerul sau soferul deoarece nu au trecut inca 90 de zile de la angajare!");
+					TempData["Error"] = "This user cannot be deleted because he doesn't have a dismissal notice date!";
+					return RedirectToAction("Index");
+				}
+				var daysSinceDismissalNotice = (DateTime.Now - user.DismissalNoticeDate.Value).Days;
+				if (daysSinceDismissalNotice < 30)
+				{
+					TempData["Error"] = "This user cannot be deleted because the dismissal notice date is less than 30 days old!";
 					return RedirectToAction("Index");
 				}
 			}
-
-			// Daca userul e sofer nu poate fi sters decat dupa 30 de zile de la notificarea de concediere
-			if (role.Contains("Sofer"))
+			// Nu pot sterge un admin sau un client
+			else if(role.Contains("Admin"))
 			{
-				if (user.DismissalNoticeDate.HasValue)
-				{
-					var daysSinceNotice = (DateTime.Now - user.DismissalNoticeDate.Value).TotalDays;
-					if (daysSinceNotice < 30)
-					{
-						ModelState.AddModelError("", "Nu poti sterge soferul deoarece nu au trecut inca 30 de zile de la notificarea de concediere!");
-						return RedirectToAction("Index");
-					}
-				}
-				else
-				{
-					ModelState.AddModelError("", "Nu poti sterge soferul fara sa-l avertizezi ca va fi concediat cu 30 de zile inainte!");
-					return RedirectToAction("Index");
-				}
+				TempData["Error"] = "You cannot delete an admin!";
+				return RedirectToAction("Index");
 			}
-
-			// Daca soferul este in mijlocul unei livrari, nu poate fi sters
-			if (role.Contains("Sofer"))
+			else if(role.Contains("Client"))
 			{
-				if (user.Deliveries?.Count > 0)
-				{
-					foreach (var delivery in user.Deliveries)
-					{
-						if (delivery.Status.Contains("InProgress"))
-						{
-							ModelState.AddModelError("", "Nu poti sterge soferul fiindca e in mijlocul unei livrari!");
-							return RedirectToAction("Index");
-						}
-					}
-				}
+				TempData["Error"] = "You cannot delete a client!";
+				return RedirectToAction("Index");
 			}
 
 			// Handle-uiesc feeback-urile pe care le-a dat userul

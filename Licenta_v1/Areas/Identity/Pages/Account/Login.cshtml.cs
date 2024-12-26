@@ -63,20 +63,20 @@ namespace Licenta_v1.Areas.Identity.Pages.Account
         /// </summary>
         public class InputModel
         {
-            /// <summary>
-            ///     This API supports the ASP.NET Core Identity default UI infrastructure and is not intended to be used
-            ///     directly from your code. This API may change or be removed in future releases.
-            /// </summary>
-            [Required]
-            [EmailAddress]
-            public string Email { get; set; }
+			/// <summary>
+			///     This API supports the ASP.NET Core Identity default UI infrastructure and is not intended to be used
+			///     directly from your code. This API may change or be removed in future releases.
+			/// </summary>
+			[Display(Name = "Email or Username")]
+			[Required(ErrorMessage = "The email/username is mandatory!")]
+            public string Login { get; set; }
 
-            /// <summary>
-            ///     This API supports the ASP.NET Core Identity default UI infrastructure and is not intended to be used
-            ///     directly from your code. This API may change or be removed in future releases.
-            /// </summary>
-            [Required]
-            [DataType(DataType.Password)]
+			/// <summary>
+			///     This API supports the ASP.NET Core Identity default UI infrastructure and is not intended to be used
+			///     directly from your code. This API may change or be removed in future releases.
+			/// </summary>
+			[Required(ErrorMessage = "The passwod is mandatory!")]
+			[DataType(DataType.Password)]
             public string Password { get; set; }
 
             /// <summary>
@@ -106,15 +106,18 @@ namespace Licenta_v1.Areas.Identity.Pages.Account
 
 		public async Task<IActionResult> OnPostAsync(string returnUrl = null)
 		{
-			returnUrl ??= Url.Content("~/");
-
 			if (!ModelState.IsValid)
 			{
 				return Page();
 			}
 
-            // Se incearca cautarea userului dupa mail
-            var user = await _userManager.FindByEmailAsync(Input.Email);
+			var user = await _userManager.FindByEmailAsync(Input.Login);
+
+			if (user == null)
+			{
+				// Daca nu gasesc userul dupa email, incerc sa-l gasesc dupa username
+				user = await _userManager.FindByNameAsync(Input.Login);
+			}
 
 			if (user == null)
 			{
@@ -122,28 +125,22 @@ namespace Licenta_v1.Areas.Identity.Pages.Account
 				return Page();
 			}
 
-			// Folosesc userName-ul pentru login, asa cum cere PasswordSignInAsync
-			var result = await _signInManager.PasswordSignInAsync(user.UserName, Input.Password, Input.RememberMe, lockoutOnFailure: false);
+			var result = await _signInManager.PasswordSignInAsync(user, Input.Password, Input.RememberMe, lockoutOnFailure: false);
 
 			if (result.Succeeded)
 			{
 				_logger.LogInformation("User logged in.");
-				return LocalRedirect(returnUrl);
+				return LocalRedirect(returnUrl ?? Url.Content("~/"));
 			}
-			if (result.RequiresTwoFactor)
-			{
-				return RedirectToPage("./LoginWith2fa", new { ReturnUrl = returnUrl, RememberMe = Input.RememberMe });
-			}
+
 			if (result.IsLockedOut)
 			{
 				_logger.LogWarning("User account locked out.");
 				return RedirectToPage("./Lockout");
 			}
-			else
-			{
-				ModelState.AddModelError(string.Empty, "Invalid login attempt.");
-				return Page();
-			}
+
+			ModelState.AddModelError(string.Empty, "Invalid login attempt.");
+			return Page();
 		}
 	}
 }

@@ -20,9 +20,7 @@ public class TaskuriAutomate : BackgroundService
 	{
 		while (!stoppingToken.IsCancellationRequested)
 		{
-			// Ruleaza in fiecare zi la 12 noaptea
-			await Task.Delay(TimeSpan.FromDays(1), stoppingToken);
-
+			// Execut metoda
 			using (var scope = _serviceProvider.CreateScope())
 			{
 				var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
@@ -30,6 +28,9 @@ public class TaskuriAutomate : BackgroundService
 				// Verific conditiile de stergere a userilor din baza de date
 				await CheckAndDeleteUsers(dbContext);
 			}
+
+			// Stau 10 minute si execut din nou metoda
+			await Task.Delay(TimeSpan.FromMinutes(10), stoppingToken);
 		}
 	}
 
@@ -37,17 +38,21 @@ public class TaskuriAutomate : BackgroundService
 	{
 		var today = DateTime.Now.Date;
 
-		// Selectez utilizatorii care au DismissalNoticeDate si este la mai mult de 30 zile distanta fata de data de azi
-		var usersToDelete = dbContext.ApplicationUsers.Where(u => u.DismissalNoticeDate.HasValue &&
-						(today - u.DismissalNoticeDate.Value.Date).TotalDays > 30).ToList();
+		// Selectez utilizatorii care au DismissalNoticeDate si este la mai mult sau chiar de 30 zile distanta fata de data de azi
+		var thresholdDate = DateTime.Today.AddDays(-30);
+
+		var usersToDelete = dbContext.ApplicationUsers
+			.Where(u => u.DismissalNoticeDate.HasValue &&
+						u.DismissalNoticeDate.Value.Date <= thresholdDate)
+			.ToList();
 
 		foreach (var user in usersToDelete)
 		{
-			// Apelează metoda Delete existentă
+			// Sterg userii
 			dbContext.ApplicationUsers.Remove(user);
 		}
 
-		// Salvează modificările
+		// Salvez modificarile
 		await dbContext.SaveChangesAsync();
 	}
 }

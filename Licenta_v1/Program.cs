@@ -7,6 +7,8 @@ using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
+builder.Services.AddHostedService<TaskuriAutomate>();
+
 Env.Load();
 var cheie_API_confirmare_email_Sendgrid = Env.GetString("Cheie_API_confirmare_email_SendGrid");
 var email_personal = Env.GetString("Email_personal");

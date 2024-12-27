@@ -81,7 +81,6 @@ namespace Licenta_v1.Areas.Identity.Pages.Account
 			[Required(ErrorMessage = "The home address is mandatory.")]
 			[MaxLength(100, ErrorMessage = "The home address must be maximum 100 characters in length.")]
 			[MinLength(5, ErrorMessage = "The home address must be minimum 5 characters in length.")]
-			[RegularExpression(@"^[a-zA-Z0-9\s\.\,\/\-\#]*$", ErrorMessage = "Invalid address.")]
 			public string HomeAddress { get; set; }
 
 			[Required(ErrorMessage = "The latitude is mandatory.")]
@@ -204,11 +203,11 @@ namespace Licenta_v1.Areas.Identity.Pages.Account
 										Confirm Your Email
 									</a>
 								</div>
-								<p style='color: #666;'>If you did not sign up for EcoDelivery, please ignore this email or contact us at support@ecodelivery.com.</p>
+								<p style='color: #666;'>If you did not sign up for EcoDelivery, please ignore this email or contact us at yanispavel.popescu@gmail.com.</p>
 							</div>
 							<div style='text-align: center; padding: 10px; background-color: #f4f4f4; border-top: 1px solid #ddd;'>
 								<p style='color: #888; font-size: 12px;'>EcoDelivery, Inc. | Delivering Sustainably | All Rights Reserved</p>
-								<p style='color: #888; font-size: 12px;'>123 Green Road, Clean City, Earth</p>
+								<p style='color: #888; font-size: 12px;'>Str. G-ral Eremia Grigorescu, Pitești, Argeș, nr. 23</p>
 							</div>
 						</div>
 					");

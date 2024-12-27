@@ -27,7 +27,6 @@ namespace Licenta_v1.Models
 		[Required(ErrorMessage = "The home address is mandatory.")]
 		[MaxLength(100, ErrorMessage = "The home address must be maximum 100 characters in length.")]
 		[MinLength(5, ErrorMessage = "The home address must be minimum 5 characters in length.")]
-		[RegularExpression(@"^[a-zA-Z0-9\s\.\,\/\-\#]*$", ErrorMessage = "Invalid address.")]
 		public string HomeAddress { get; set; }
 		[Required(ErrorMessage = "The latitude is mandatory.")]
 		[Range(-90, 90, ErrorMessage = "Invalid latitude.")]

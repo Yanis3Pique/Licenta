@@ -464,7 +464,28 @@ namespace Licenta_v1.Controllers
 
 			var roles = await _userManager.GetRolesAsync(user);
 			ViewBag.UserRole = roles.FirstOrDefault();
-			
+
+			if (ViewBag.UserRole == "Sofer")
+			{
+				// Calculez rating-ul mediu ca sa-l afisez cu stelute in View
+				var feedbacks = user.FeedbacksReceived;
+				if (feedbacks != null && feedbacks.Any())
+				{
+					var averageRating = feedbacks.Average(f => f.Rating);
+
+					ViewBag.FullStars = (int)Math.Floor(averageRating);
+					ViewBag.HalfStar = (averageRating - ViewBag.FullStars >= 0.5);
+					ViewBag.EmptyStars = 5 - (ViewBag.FullStars + (ViewBag.HalfStar ? 1 : 0));
+				}
+				else
+				{
+					// Valori default pentru rating
+					ViewBag.FullStars = 0;
+					ViewBag.HalfStar = false;
+					ViewBag.EmptyStars = 5;
+				}
+			}
+
 			return View(user);
 		}
 

@@ -3,8 +3,6 @@
     var latitude = parseFloat(document.getElementById('latitude').value) || 46.0;
     var longitude = parseFloat(document.getElementById('longitude').value) || 25.0;
 
-    console.log(latitude, longitude);
-
     // Initializez harta cu un pointer default in Romania
     var map = L.map('map').setView([latitude, longitude], 13);
 

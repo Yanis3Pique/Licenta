@@ -79,7 +79,7 @@ namespace Licenta_v1.Areas.Identity.Pages.Account
 			public string LastName { get; set; }
 
 			[Required(ErrorMessage = "The home address is mandatory.")]
-			[MaxLength(100, ErrorMessage = "The home address must be maximum 100 characters in length.")]
+			[MaxLength(200, ErrorMessage = "The home address must be maximum 200 characters in length.")]
 			[MinLength(5, ErrorMessage = "The home address must be minimum 5 characters in length.")]
 			public string HomeAddress { get; set; }
 
@@ -150,11 +150,18 @@ namespace Licenta_v1.Areas.Identity.Pages.Account
 				user.Latitude = Input.Latitude;
 				user.Longitude = Input.Longitude;
 
+				// Verific cu functia IsValidAddressInRomania daca adresa e valida
+				if (!IsValidAddressInRomania(user.HomeAddress))
+				{
+					ModelState.AddModelError(nameof(Input.HomeAddress), "The address is not valid. Please enter a valid address in Romania.");
+					return Page();
+				}
+
 				await _userStore.SetUserNameAsync(user, Input.UserName, CancellationToken.None);
 				await _emailStore.SetEmailAsync(user, Input.Email, CancellationToken.None);
 
 				// Verific daca avem email duplicat in BD
-				if (await _userManager.FindByEmailAsync(Input.Email) != null)
+				if (_userManager.Users.Any(u => u.Email == Input.Email))
 				{
 					ModelState.AddModelError(nameof(Input.Email), "This email is already registered. Please use a different email.");
 					return Page();
@@ -267,6 +274,30 @@ namespace Licenta_v1.Areas.Identity.Pages.Account
 				.ToList();
 		}
 
+		[NonAction]
+		public bool IsValidAddressInRomania(string address)
+		{
+			if (string.IsNullOrWhiteSpace(address))
+				return false;
+
+			// Fac split dupa virgule
+			var parts = address.Split(',', StringSplitOptions.RemoveEmptyEntries);
+
+			// Daca avem cel putin 3 virgule(4 parti) e ok, daca nu, adresa e invalida
+			if (parts.Length < 4)
+			{
+				return false;
+			}
+
+			// Ultima parte tre sa contina "Romania"
+			var lastPart = parts[^1].Trim();
+			if (!lastPart.Contains("Romania", StringComparison.OrdinalIgnoreCase))
+			{
+				return false;
+			}
+
+			return true;
+		}
 
 		private ApplicationUser CreateUser()
 		{

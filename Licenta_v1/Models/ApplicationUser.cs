@@ -25,7 +25,7 @@ namespace Licenta_v1.Models
 		[MinLength(2, ErrorMessage = "The last name must be minimum 2 characters in length.")]
 		public string LastName { get; set; }
 		[Required(ErrorMessage = "The home address is mandatory.")]
-		[MaxLength(100, ErrorMessage = "The home address must be maximum 100 characters in length.")]
+		[MaxLength(200, ErrorMessage = "The home address must be maximum 200 characters in length.")]
 		[MinLength(5, ErrorMessage = "The home address must be minimum 5 characters in length.")]
 		public string HomeAddress { get; set; }
 		[Required(ErrorMessage = "The latitude is mandatory.")]

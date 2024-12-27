@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Rendering;
 using Microsoft.EntityFrameworkCore;
+using static Microsoft.EntityFrameworkCore.DbLoggerCategory;
 
 namespace Licenta_v1.Controllers
 {
@@ -554,11 +555,19 @@ namespace Licenta_v1.Controllers
 			var user = await db.ApplicationUsers.FindAsync(id);
 			if (user == null) return NotFound();
 
-			// Iau toate rolurile
-			user.AllRoles = GetAllRoles();
 			// Iau rolul userului curent
-			var currentRole = await _userManager.GetRolesAsync(user);
-			ViewBag.CurrentRole = currentRole.FirstOrDefault();
+			var currentRoleId = db.UserRoles
+				.Where(ur => ur.UserId == user.Id)
+				.Select(ur => ur.RoleId)
+				.FirstOrDefault();
+
+			// Iau toate rolurile si il marchez ca selectat pe cel pe care userul il are deja
+			ViewBag.AllRoles = db.Roles.Select(r => new SelectListItem
+			{
+				Value = r.Id,
+				Text = r.Name,
+				Selected = r.Id == currentRoleId // Preselect the current role
+			}).ToList();
 
 			// Iau toate judetele pentru dropdown
 			ViewBag.Regions = db.Regions
@@ -568,6 +577,9 @@ namespace Licenta_v1.Controllers
 					Text = r.County
 				})
 				.ToList();
+
+			ViewBag.Latitude = user.Latitude;
+			ViewBag.Longitude = user.Longitude;
 
 			return View(user);
 		}
@@ -606,6 +618,8 @@ namespace Licenta_v1.Controllers
 				user.DateHired = newData.DateHired;
 				user.RegionId = newData.RegionId;
 				user.PhotoPath = user.PhotoPath;
+				user.Latitude = newData.Latitude;
+				user.Longitude = newData.Longitude;
 
 				var roles = db.Roles.ToList();
 
@@ -628,6 +642,7 @@ namespace Licenta_v1.Controllers
 				Value = r.Id.ToString(),
 				Text = r.County
 			});
+			TempData["Error"] = "Validation error. Please check the form.";
 			return View(user);
 		}
 
@@ -645,9 +660,11 @@ namespace Licenta_v1.Controllers
 				return RedirectToAction("Profile");
 			}
 
+			ViewBag.Latitude = user.Latitude;
+			ViewBag.Longitude = user.Longitude;
+
 			return View(user);
 		}
-
 
 		// Post - Users/EditMyself
 		[Authorize]
@@ -682,6 +699,8 @@ namespace Licenta_v1.Controllers
 			user.Email = newData.Email;
 			user.UserName = newData.UserName;
 			user.PhoneNumber = newData.PhoneNumber;
+			user.Latitude = newData.Latitude;
+			user.Longitude = newData.Longitude;
 
 			db.ApplicationUsers.Update(user);
 
@@ -847,6 +866,31 @@ namespace Licenta_v1.Controllers
 			await db.SaveChangesAsync();
 
 			return RedirectToAction("Index");
+		}
+
+		[NonAction]
+		public bool IsValidAddressInRomania(string address)
+		{
+			if (string.IsNullOrWhiteSpace(address))
+				return false;
+
+			// Fac split dupa virgule
+			var parts = address.Split(',', StringSplitOptions.RemoveEmptyEntries);
+
+			// Daca avem cel putin 3 virgule(4 parti) e ok, daca nu, adresa e invalida
+			if (parts.Length < 4)
+			{
+				return false;
+			}
+
+			// Ultima parte tre sa contina "Romania"
+			var lastPart = parts[^1].Trim();
+			if (!lastPart.Contains("Romania", StringComparison.OrdinalIgnoreCase))
+			{
+				return false;
+			}
+
+			return true;
 		}
 	}
 }

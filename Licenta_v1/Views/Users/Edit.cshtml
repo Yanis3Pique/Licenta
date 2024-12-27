@@ -11,8 +11,13 @@
     <div class="alert alert-danger">@TempData["Error"]</div>
 }
 
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+<script src="~/js/map.js"></script>
+
 <h2 class="text-center mt-5">@ViewBag.Title</h2>
 <br />
+
 <div class="container mt-5">
     <div class="row">
         <div class="col-md-6 offset-3">
@@ -35,9 +40,17 @@
                 @Html.ValidationMessageFor(model => model.LastName, null, new { @class = "text-danger" })
                 <br />
 
-				@Html.LabelFor(model => model.HomeAddress, "Home Address")
-				@Html.EditorFor(model => model.HomeAddress, new { htmlAttributes = new { @class = "form-control" } })
-                @Html.ValidationMessageFor(model => model.HomeAddress, null, new { @class = "text-danger" })
+                <div class="form-group">
+                    @Html.LabelFor(m => m.HomeAddress)
+                    @Html.EditorFor(m => m.HomeAddress, new { htmlAttributes = new { @class = "form-control", id = "homeAddress" } })
+                    @Html.ValidationMessageFor(m => m.HomeAddress, null, new { @class = "text-danger" })
+                </div>
+
+                <div id="map" style="height: 400px; margin-bottom: 20px;"></div>
+                <br />
+
+                <input type="hidden" id="latitude" asp-for="Latitude" value="@ViewBag.Latitude" />
+                <input type="hidden" id="longitude" asp-for="Longitude" value="@ViewBag.Longitude" />
 				<br />
 
                 @Html.LabelFor(model => model.Email, "Email")
@@ -61,13 +74,12 @@
                 <div class="form-group">
                     @Html.Label("Role", "Role")
                     @Html.DropDownList("newRole",
-                             new SelectList(Model.AllRoles, "Value", "Text", ViewBag.CurrentRole),
-                             "Select role",
-                             new { @class = "form-control", @required = "false" })
+                            ViewBag.AllRoles as IEnumerable<SelectListItem> ?? Enumerable.Empty<SelectListItem>(),
+                            "Select Role",
+                            new { @class = "form-control" })
                     @Html.ValidationMessage("newRole", null, new { @class = "text-danger" })
                 </div>
                 <br />
-
 
                 @Html.LabelFor(model => model.DateHired, "Date Hired")
                 <input asp-for="DateHired" type="date" class="form-control" value="@Model.DateHired.ToString("yyyy-MM-dd")" />

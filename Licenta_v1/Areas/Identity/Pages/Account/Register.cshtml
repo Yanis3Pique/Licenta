@@ -4,42 +4,24 @@
     ViewData["Title"] = "Register";
 }
 
-<h2>@ViewData["Title"]</h2>
+<h2 class="text-center mt-5">@ViewData["Title"]</h2>
+<br />
+
+@if (TempData["Success"] != null)
+{
+	<div class="alert alert-success">@TempData["Success"]</div>
+}
+
+@if (TempData["Error"] != null)
+{
+	<div class="alert alert-danger">@TempData["Error"]</div>
+}
+
+<div asp-validation-summary="All" class="text-danger"></div>
 
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
 <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
-
-<script>
-    document.addEventListener("DOMContentLoaded", function () {
-        // Initialize the map
-        var map = L.map('map').setView([46.0, 25.0], 6); // Default view over Romania
-
-        // Add OpenStreetMap tile layer
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            maxZoom: 19,
-            attribution: '© OpenStreetMap contributors'
-        }).addTo(map);
-
-        // Marker for pinpointing the address
-        var marker = L.marker([46.0, 25.0], { draggable: true }).addTo(map);
-
-        // Update hidden fields when marker is dragged
-        marker.on('dragend', function (e) {
-            var latLng = marker.getLatLng();
-            document.getElementById('latitude').value = latLng.lat;
-            document.getElementById('longitude').value = latLng.lng;
-
-            // Optionally, reverse geocode the address using a geocoding API
-            fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${latLng.lat}&lon=${latLng.lng}`)
-                .then(response => response.json())
-                .then(data => {
-                    if (data.display_name) {
-                        document.getElementById('homeAddress').value = data.display_name;
-                    }
-                });
-        });
-    });
-</script>
+<script src="~/js/map.js"></script>
 
 <form method="post">
     <div class="form-group">
@@ -47,18 +29,21 @@
         @Html.EditorFor(m => m.Input.UserName, new { htmlAttributes = new { @class = "form-control" } })
         @Html.ValidationMessageFor(m => m.Input.UserName, null, new { @class = "text-danger" })
     </div>
+    <br />
 
     <div class="form-group">
         @Html.LabelFor(m => m.Input.FirstName)
         @Html.EditorFor(m => m.Input.FirstName, new { htmlAttributes = new { @class = "form-control" } })
         @Html.ValidationMessageFor(m => m.Input.FirstName, null, new { @class = "text-danger" })
     </div>
+    <br />
 
     <div class="form-group">
         @Html.LabelFor(m => m.Input.LastName)
         @Html.EditorFor(m => m.Input.LastName, new { htmlAttributes = new { @class = "form-control" } })
         @Html.ValidationMessageFor(m => m.Input.LastName, null, new { @class = "text-danger" })
     </div>
+    <br />
 
     <div class="form-group">
         @Html.LabelFor(m => m.Input.HomeAddress)
@@ -67,6 +52,7 @@
     </div>
 
     <div id="map" style="height: 400px; margin-bottom: 20px;"></div>
+    <br />
 
     <input type="hidden" id="latitude" asp-for="Input.Latitude" />
     <input type="hidden" id="longitude" asp-for="Input.Longitude" />
@@ -76,30 +62,35 @@
         @Html.EditorFor(m => m.Input.Email, new { htmlAttributes = new { @class = "form-control" } })
         @Html.ValidationMessageFor(m => m.Input.Email, null, new { @class = "text-danger" })
     </div>
+    <br />
 
     <div class="form-group">
         @Html.LabelFor(m => m.Input.PhoneNumber)
         @Html.EditorFor(m => m.Input.PhoneNumber, new { htmlAttributes = new { @class = "form-control" } })
         @Html.ValidationMessageFor(m => m.Input.PhoneNumber, null, new { @class = "text-danger" })
     </div>
+    <br />
 
     <div class="form-group">
         @Html.LabelFor(m => m.Input.RegionId)
         @Html.DropDownListFor(m => m.Input.RegionId, new SelectList(Model.Regions, "Value", "Text"), "Select Region", new { @class = "form-control" })
         @Html.ValidationMessageFor(m => m.Input.RegionId, null, new { @class = "text-danger" })
     </div>
+    <br />
 
     <div class="form-group">
         @Html.LabelFor(m => m.Input.Password)
         @Html.PasswordFor(m => m.Input.Password, new { htmlAttributes = new { @class = "form-control" } })
         @Html.ValidationMessageFor(m => m.Input.Password, null, new { @class = "text-danger" })
     </div>
+    <br />
 
     <div class="form-group">
         @Html.LabelFor(m => m.Input.ConfirmPassword)
         @Html.PasswordFor(m => m.Input.ConfirmPassword, new { htmlAttributes = new { @class = "form-control" } })
         @Html.ValidationMessageFor(m => m.Input.ConfirmPassword, null, new { @class = "text-danger" })
     </div>
+    <br />
 
     <button type="submit" class="btn btn-primary">Register</button>
 </form>

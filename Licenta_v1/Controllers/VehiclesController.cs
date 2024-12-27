@@ -362,7 +362,7 @@ namespace Licenta_v1.Controllers
 				vehicle.MaxWeightCapacity = updatedVehicle.MaxWeightCapacity;
 				vehicle.TotalDistanceTraveledKM = updatedVehicle.TotalDistanceTraveledKM;
 				vehicle.ImagePath = vehicle.ImagePath;
-				vehicle.RegionId = newRegionId ?? vehicle.RegionId;
+				vehicle.RegionId = updatedVehicle.RegionId;
 
 				try
 				{

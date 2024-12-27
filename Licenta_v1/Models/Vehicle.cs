@@ -38,7 +38,7 @@ namespace Licenta_v1.Models
 		[Required(ErrorMessage = "The total distance traveled is mandatory.")]
 		[Range(0, double.MaxValue, ErrorMessage = "The total distance traveled must be a positive number.")]
 		public double? TotalDistanceTraveledKM { get; set; }
-		public string? ImagePath { get; set; } = string.Empty;
+		public string? ImagePath { get; set; }
 
 		public virtual Region? Region { get; set; }
 		public virtual ICollection<Delivery>? Deliveries { get; set; }

@@ -6,6 +6,16 @@
     ViewBag.Title = "Vehicles";
 }
 
+@if (TempData["Success"] != null)
+{
+    <div class="alert alert-success">@TempData["Success"]</div>
+}
+
+@if (TempData["Error"] != null)
+{
+    <div class="alert alert-danger">@TempData["Error"]</div>
+}
+
 <h2 class="text-center">Vehicles</h2>
 
 <div class="card shadow-sm p-3 mb-4">
@@ -22,6 +32,19 @@
                    placeholder="Search by Registration, Brand or Model" />
         </div>
 
+        <!-- Sortare dupa model, brand sau nr inmatriculare -->
+		<div class="col-md-3 col-sm-6">
+			<select class="form-select" name="sortOrder">
+				<option value="brand" selected="@(ViewBag.CurrentSort == "brand" ? "selected" : "")">Brand (Ascending)</option>
+				<option value="brand_desc" selected="@(ViewBag.CurrentSort == "brand_desc" ? "selected" : "")">Brand (Descending)</option>
+				<option value="model" selected="@(ViewBag.CurrentSort == "model" ? "selected" : "")">Model (Ascending)</option>
+				<option value="model_desc" selected="@(ViewBag.CurrentSort == "model_desc" ? "selected" : "")">Model (Descending)</option>
+				<option value="registration" selected="@(ViewBag.CurrentSort == "registration" ? "selected" : "")">Registration (Ascending)</option>
+				<option value="registration_desc" selected="@(ViewBag.CurrentSort == "registration_desc" ? "selected" : "")">Registration (Descending)</option>
+				<option value="" selected="@(string.IsNullOrEmpty(ViewBag.CurrentSort) ? "selected" : "")">Sort by</option>
+			</select>
+		</div>
+
         <!-- Dropdown cu regiuni -->
         <div class="col-md-3 col-sm-6">
             @Html.DropDownList("regionId",
@@ -37,51 +60,41 @@
     </form>
 </div>
 
+<!-- Carduri pt masini -->
+<div class="row row-cols-1 row-cols-md-3 g-4">
+    @foreach (var vehicle in Model)
+    {
+        <div class="col">
+            <div class="card h-100 text-center" style="min-height: 450px;">
+                <div style="height: 300px; overflow: hidden;">
+                    <img src="@(Url.Content("~/" + (vehicle.ImagePath ?? "Images/VehicleDefault.jpg")))"
+                         class="card-img-top img-fluid"
+                         alt="Vehicle Photo"
+                         style="height: 100%; width: 100%; object-fit: cover;">
+                </div>
 
-<table class="table table-bordered table-striped">
-    <thead>
-        <tr>
-            <th><a asp-action="Index" asp-route-sortOrder="@ViewBag.RegistrationSortParam">Registration</a></th>
-            <th><a asp-action="Index" asp-route-sortOrder="@ViewBag.NameSortParam">Brand</a></th>
-			<th><a asp-action="Index" asp-route-sortOrder="@ViewBag.ModelSortParam">Model</a></th>
-            <th>Region</th>
-			<th>Actions</th>
-			<th>Year</th>
-			<th>Status</th>
-            <th>Fuel Type</th>
-			<th>Consumption Rate</th>
-			<th>Max Volume Capacity</th>
-			<th>Max Weight Capacity</th>
-			<th>Total Distance Traveled</th>
-        </tr>
-    </thead>
-    <tbody>
-        @foreach (var vehicle in Model)
-        {
-            <tr>
-                <td>@vehicle.RegistrationNumber</td>
-                <td>@vehicle.Brand</td>
-                <td>@vehicle.Model</td>
-                <td>@(vehicle.Region?.County ?? "N/A")</td>
-                <td>
-                    <a asp-action="Show" asp-route-id="@vehicle.Id" class="btn btn-sm btn-info">View</a>
-                    <a asp-action="Edit" asp-route-id="@vehicle.Id" class="btn btn-sm btn-warning">Edit</a>
-                    <form asp-action="Delete" asp-route-id="@vehicle.Id" method="post" class="d-inline" onsubmit="return confirm('Are you sure you want to delete this vehicle?');">
-                        <button type="submit" class="btn btn-sm btn-danger">Delete</button>
-                    </form>
-                </td>
-				<td>@vehicle.YearOfManufacture</td>
-                <td>@vehicle.Status.ToString()</td>
-                <td>@vehicle.FuelType.ToString()</td>
-                <td>@vehicle.ConsumptionRate</td>
-				<td>@vehicle.MaxVolumeCapacity</td>
-				<td>@vehicle.MaxWeightCapacity</td>
-                <td>@vehicle.TotalDistanceTraveledKM KM</td>
-            </tr>
-        }
-    </tbody>
-</table>
+                <div class="card-body">
+                    <h4 class="card-title">@vehicle.Brand @vehicle.Model</h4>
+                    <p class="card-text">
+                        <strong>Registration:</strong> @vehicle.RegistrationNumber<br />
+                        <strong>Region:</strong> @(vehicle.Region?.County ?? "N/A")<br />
+                        <strong>Year:</strong> @vehicle.YearOfManufacture<br />
+                        <strong>Status:</strong> @vehicle.Status.ToString()<br />
+                    </p>
+                </div>
 
+                <div class="card-footer">
+                    <div class="d-flex justify-content-center">
+                        <a asp-action="Show" asp-route-id="@vehicle.Id" class="btn btn-info btn-sm mb-2 mx-2">View</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+<br />
+
+<!-- Paginare -->
 <nav>
     <ul class="pagination justify-content-center">
         @{

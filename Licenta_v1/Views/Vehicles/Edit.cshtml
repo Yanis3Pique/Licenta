@@ -1,5 +1,96 @@
 ﻿@*
     For more information on enabling MVC for empty projects, visit https://go.microsoft.com/fwlink/?LinkID=397860
 *@
+@model Licenta_v1.Models.Vehicle
 @{
+    ViewBag.Title = "Edit Vehicle";
 }
+
+@if (TempData["Success"] != null)
+{
+    <div class="alert alert-success">@TempData["Success"]</div>
+}
+
+@if (TempData["Error"] != null)
+{
+    <div class="alert alert-danger">@TempData["Error"]</div>
+}
+
+<h2 class="text-center mt-5">@ViewBag.Title</h2>
+<br />
+<div class="container mt-5">
+    <div class="row">
+        <div class="col-md-6 offset-3">
+            @using (Html.BeginForm(actionName: "Edit", controllerName: "Vehicles", method: FormMethod.Post, routeValues: new { id = Model.Id }))
+            {
+                @Html.AntiForgeryToken()
+
+				@Html.Label("Registration Number", "Registration Number")
+				@Html.EditorFor(model => model.RegistrationNumber, new { htmlAttributes = new { @class = "form-control" } })
+                @Html.ValidationMessageFor(model => model.RegistrationNumber, null, new { @class = "text-danger" })
+				<br />
+
+				@Html.Label("Brand", "Brand")
+                @Html.EditorFor(model => model.Brand, new { htmlAttributes = new { @class = "form-control" } })
+                @Html.ValidationMessageFor(model => model.Brand, null, new { @class = "text-danger" })
+                <br />
+
+                @Html.Label("Model", "Model")
+                @Html.EditorFor(model => model.Model, new { htmlAttributes = new { @class = "form-control" } })
+                @Html.ValidationMessageFor(model => model.Model, null, new { @class = "text-danger" })
+                <br />
+
+                @Html.Label("Year of Manufacture", "Year of Manufacture")
+                @Html.EditorFor(model => model.YearOfManufacture, new { htmlAttributes = new { @class = "form-control" } })
+                @Html.ValidationMessageFor(model => model.YearOfManufacture, null, new { @class = "text-danger" })
+				<br />
+
+                @Html.Label("Fuel Type", "Fuel Type")
+                @Html.DropDownListFor(m => m.FuelType,
+                         ViewBag.FuelTypes as IEnumerable<SelectListItem> ?? Enumerable.Empty<SelectListItem>(),
+                         "Select Fuel Type",
+                         new { @class = "form-control" })
+                @Html.ValidationMessageFor(model => model.FuelType, null, new { @class = "text-danger" })
+				<br />
+
+				@Html.Label("Status", "Status")
+                @Html.DropDownListFor(m => m.Status,
+                         ViewBag.Statuses as IEnumerable<SelectListItem> ?? Enumerable.Empty<SelectListItem>(),
+                         "Select Status",
+                         new { @class = "form-control" })
+				@Html.ValidationMessageFor(model => model.Status, null, new { @class = "text-danger" })
+                <br />
+
+				@Html.Label("Consumption Rate", "Consumption Rate")
+				@Html.EditorFor(model => model.ConsumptionRate, new { htmlAttributes = new { @class = "form-control" } })
+                @Html.ValidationMessageFor(model => model.ConsumptionRate, null, new { @class = "text-danger" })
+                <br />
+
+				@Html.Label("Maximum Weight Capacity", "Maximum Weight Capacity")
+                @Html.EditorFor(model => model.MaxWeightCapacity, new { htmlAttributes = new { @class = "form-control" } })
+                @Html.ValidationMessageFor(model => model.MaxWeightCapacity, null, new { @class = "text-danger" })
+                <br />
+
+				@Html.Label("Maximum Volume Capacity", "Maximum Volume Capacity")
+                @Html.EditorFor(model => model.MaxVolumeCapacity, new { htmlAttributes = new { @class = "form-control" } })
+                @Html.ValidationMessageFor(model => model.MaxVolumeCapacity, null, new { @class = "text-danger" })
+				<br />
+
+                @Html.Label("Total Distance Traveled", "Total Distance Traveled")
+                @Html.EditorFor(model => model.TotalDistanceTraveledKM, new { htmlAttributes = new { @class = "form-control" } })
+                @Html.ValidationMessageFor(model => model.TotalDistanceTraveledKM, null, new { @class = "text-danger" })
+				<br />
+
+                @Html.Label("Region", "Region")
+                @Html.DropDownListFor(m => m.RegionId,
+                         ViewBag.Regions as IEnumerable<SelectListItem> ?? Enumerable.Empty<SelectListItem>(),
+                         "Select Region",
+                         new { @class = "form-control" })
+                @Html.ValidationMessageFor(model => model.RegionId, null, new { @class = "text-danger" })
+                <br />
+
+                <button class="btn btn-sm btn-success" type="submit">Save Changes</button>
+            }
+        </div>
+    </div>
+</div>

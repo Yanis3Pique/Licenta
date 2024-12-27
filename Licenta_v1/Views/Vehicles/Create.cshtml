@@ -12,8 +12,10 @@
     <div class="row">
         <div class="col-6 offset-3">
 
-            @using (Html.BeginForm(actionName: "Create", controllerName: "Vehicles", method: FormMethod.Post))
+            @using (Html.BeginForm(actionName: "Create", controllerName: "Vehicles", method: FormMethod.Post, htmlAttributes: new { enctype = "multipart/form-data" }))
             {
+                @Html.AntiForgeryToken()
+
                 <div class="form-group">
                     @Html.LabelFor(m => m.Brand, "Brand")
                     @Html.TextBoxFor(m => m.Brand, new { @class = "form-control" })
@@ -97,10 +99,10 @@
                 </div>
                 <br />
 
-                <form asp-action="UploadProfilePicture" method="post" enctype="multipart/form-data">
-                    <input type="file" name="profilePicture" class="form-control mb-2" />
-                    <button type="submit" class="btn btn-primary">Upload Picture</button>
-                </form>
+                <div class="form-group">
+                    @Html.LabelFor(m => m.ImagePath, "Upload Vehicle Picture")
+                    <input type="file" name="carPicture" class="form-control mb-2" />
+                </div>
                 <br />
 
                 <button class="btn btn-success" type="submit">Add Vehicle</button>

@@ -54,12 +54,15 @@
                         }
                         @if (User.IsInRole("Dispecer"))
                         {
+                            var dispatcherId = UserManager.GetUserId(User);
                             <li class="nav-item">
-                                @{
-                                    var dispatcherId = UserManager.GetUserId(User);
-                                }
                                 <a class="nav-link text-dark" asp-area="" asp-controller="Users" asp-action="ShowDriversOfDispatcher" asp-route-id="@dispatcherId">
                                     My Drivers
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link text-dark" asp-area="" asp-controller="Users" asp-action="ShowVehiclesOfDispatcher" asp-route-id="@dispatcherId">
+                                    My Vehicles
                                 </a>
                             </li>
                         }
@@ -101,6 +104,20 @@
                     </li>
                     <li class="nav-item">
                         <a class="nav-link text-dark" asp-area="" asp-controller="Vehicles" asp-action="Index">Vehicles</a>
+                    </li>
+                }
+                @if (User.IsInRole("Dispecer"))
+                {
+                    var dispatcherId = UserManager.GetUserId(User);
+                    <li class="nav-item">
+                        <a class="nav-link text-dark" asp-area="" asp-controller="Users" asp-action="ShowDriversOfDispatcher" asp-route-id="@dispatcherId">
+                            My Drivers
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link text-dark" asp-area="" asp-controller="Users" asp-action="ShowVehiclesOfDispatcher" asp-route-id="@dispatcherId">
+                            My Vehicles
+                        </a>
                     </li>
                 }
             </ul>

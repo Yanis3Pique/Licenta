@@ -1,4 +1,5 @@
 ﻿@model IEnumerable<Licenta_v1.Models.ApplicationUser>
+@inject Microsoft.AspNetCore.Identity.UserManager<Licenta_v1.Models.ApplicationUser> UserManager
 @{
     ViewBag.Title = "Users";
 }
@@ -53,8 +54,7 @@
     </form>
 </div>
 
-
-<!-- Carduri cu useri -->
+<!-- Carduri pt useri -->
 <div class="row row-cols-1 row-cols-md-3 g-4">
     @foreach (var user in Model)
     {
@@ -77,14 +77,28 @@
                 </div>
 
                 <div class="card-footer">
-                    <div class="d-flex justify-content-center">
+                    <div class="d-flex justify-content-center align-items-center">
                         @Html.ActionLink("Details", "Show", new { id = user.Id }, new { @class = "btn btn-info btn-sm mb-2 mx-2" })
+                        @if (User.IsInRole("Admin") || User.IsInRole("Dispecer"))
+                        {
+                            var userRoles = await UserManager.GetRolesAsync(user);
+                            if (userRoles.Contains("Dispecer"))
+                            {
+                                <a href="@Url.Action("ShowDriversOfDispatcher", "Users", new { id = user.Id })" class="btn btn-info btn-sm mb-2 mx-2">
+                                    Show Drivers
+                                </a>
+                                <a href="@Url.Action("ShowVehiclesOfDispatcher", "Users", new { id = user.Id })" class="btn btn-info btn-sm mb-2 mx-2">
+                                    Show Vehicles
+                                </a>
+                            }
+                        }
                     </div>
                 </div>
             </div>
         </div>
     }
 </div>
+<br />
 
 <!-- Paginarea userilor -->
 <nav>

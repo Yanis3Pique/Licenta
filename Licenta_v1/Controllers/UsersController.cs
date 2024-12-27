@@ -109,7 +109,7 @@ namespace Licenta_v1.Controllers
 		[Authorize(Roles = "Admin")]
 		public async Task<IActionResult> Index(string searchString, int? regionId, string sortOrder, int pageNumber = 1)
 		{
-			int pageSize = 10;
+			int pageSize = 6;
 
 			ViewBag.CurrentSort = sortOrder;
 			ViewBag.NameSortParam = "name";
@@ -133,7 +133,7 @@ namespace Licenta_v1.Controllers
 		[Authorize(Roles = "Admin")]
 		public async Task<IActionResult> IndexClients(string searchString, int? regionId, string sortOrder, int pageNumber = 1)
 		{
-			int pageSize = 10;
+			int pageSize = 6;
 
 			ViewBag.CurrentSort = sortOrder;
 			ViewBag.NameSortParam = "name";
@@ -157,7 +157,7 @@ namespace Licenta_v1.Controllers
 		[Authorize(Roles = "Admin")]
 		public async Task<IActionResult> IndexDrivers(string searchString, int? regionId, string sortOrder, int pageNumber = 1)
 		{
-			int pageSize = 10;
+			int pageSize = 6;
 
 			ViewBag.CurrentSort = sortOrder;
 			ViewBag.NameSortParam = "name";
@@ -181,7 +181,7 @@ namespace Licenta_v1.Controllers
 		[Authorize(Roles = "Admin")]
 		public async Task<IActionResult> IndexDispatchers(string searchString, int? regionId, string sortOrder, int pageNumber = 1)
 		{
-			int pageSize = 10;
+			int pageSize = 6;
 
 			ViewBag.CurrentSort = sortOrder;
 			ViewBag.NameSortParam = "name";
@@ -208,12 +208,16 @@ namespace Licenta_v1.Controllers
 			string searchString,
 			string sortOrder,
 			int pageNumber = 1,
-			int pageSize = 10)
+			int pageSize = 6)
 		{
 			if (id == null) return NotFound();
 
-			var dispatcher = await db.ApplicationUsers.FirstOrDefaultAsync(u => u.Id == id);
+			var dispatcher = await db.ApplicationUsers
+									 .Include(u => u.Region)
+									 .FirstOrDefaultAsync(u => u.Id == id);
 			if (dispatcher == null) return NotFound();
+
+			string regionName = dispatcher.Region?.County ?? "Unknown Region";
 
 			ViewBag.CurrentSort = sortOrder;
 			ViewBag.NameSortParam = sortOrder == "name" ? "name_desc" : "name";
@@ -261,11 +265,72 @@ namespace Licenta_v1.Controllers
 
 			ViewBag.PageNumber = pageNumber;
 			ViewBag.TotalPages = (int)Math.Ceiling(totalItems / (double)pageSize);
-			ViewBag.Title = "Drivers for " + dispatcher.Region.County;
+			ViewBag.Title = "Drivers for " + regionName;
 
 			return View(paginatedDrivers);
 		}
 
+		// Get - Vehicles/ShowVehiclesOfDispatcher/id
+		[Authorize(Roles = "Admin,Dispecer")]
+		public async Task<IActionResult> ShowVehiclesOfDispatcher(
+			string id,
+			string searchString,
+			string sortOrder,
+			int pageNumber = 1,
+			int pageSize = 6)
+		{
+			if (id == null) return NotFound();
+
+			var dispatcher = await db.ApplicationUsers
+									 .Include(u => u.Region)
+									 .FirstOrDefaultAsync(u => u.Id == id);
+			if (dispatcher == null) return NotFound();
+
+			string regionName = dispatcher.Region?.County ?? "Unknown Region";
+
+			ViewBag.CurrentSort = sortOrder;
+			ViewBag.RegistrationSortParam = sortOrder == "registration" ? "registration_desc" : "registration";
+			ViewBag.BrandSortParam = sortOrder == "brand" ? "brand_desc" : "brand";
+			ViewBag.ModelSortParam = sortOrder == "model" ? "model_desc" : "model";
+
+			ViewBag.SearchString = searchString;
+
+			var vehiclesQuery = db.Vehicles.Include(v => v.Region)
+										   .Where(v => v.RegionId == dispatcher.RegionId);
+
+			// Filtre de cautare
+			if (!string.IsNullOrEmpty(searchString))
+			{
+				vehiclesQuery = vehiclesQuery.Where(v =>
+					v.RegistrationNumber.Contains(searchString) ||
+					v.Brand.Contains(searchString) ||
+					v.Model.Contains(searchString));
+			}
+
+			var vehiclesList = await vehiclesQuery.ToListAsync();
+
+			// Sortez
+			var vehicles = sortOrder switch
+			{
+				"registration_desc" => vehiclesList.OrderByDescending(v => v.RegistrationNumber).ToList(),
+				"registration" => vehiclesList.OrderBy(v => v.RegistrationNumber).ToList(),
+				"brand_desc" => vehiclesList.OrderByDescending(v => v.Brand).ToList(),
+				"brand" => vehiclesList.OrderBy(v => v.Brand).ToList(),
+				"model_desc" => vehiclesList.OrderByDescending(v => v.Model).ToList(),
+				"model" => vehiclesList.OrderBy(v => v.Model).ToList(),
+				_ => vehiclesList.OrderBy(v => v.RegistrationNumber).ToList()
+			};
+
+			// Paginare
+			int totalItems = vehicles.Count;
+			var paginatedVehicles = vehicles.Skip((pageNumber - 1) * pageSize).Take(pageSize).ToList();
+
+			ViewBag.PageNumber = pageNumber;
+			ViewBag.TotalPages = (int)Math.Ceiling(totalItems / (double)pageSize);
+			ViewBag.Title = "Vehicles for " + regionName;
+
+			return View(paginatedVehicles);
+		}
 
 		// Post - Users/AssignDriverToDispatcher/id
 		[Authorize(Roles = "Admin")]
@@ -422,6 +487,7 @@ namespace Licenta_v1.Controllers
 				return RedirectToAction("Profile");
 			}
 
+			// Verific daca poza are extensie valida
 			var allowedExtensions = new[] { ".jpg", ".jpeg", ".png", ".gif" };
 			var extension = Path.GetExtension(profilePicture.FileName).ToLowerInvariant();
 
@@ -442,7 +508,7 @@ namespace Licenta_v1.Controllers
 			}
 
 			// Salvez poza noua in wwwroot/Images
-			var fileName = $"{Guid.NewGuid()}{Path.GetExtension(profilePicture.FileName)}";
+			var fileName = user.FirstName + user.LastName + extension;
 			var filePath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "Images", fileName);
 
 			using (var stream = new FileStream(filePath, FileMode.Create))
@@ -494,7 +560,7 @@ namespace Licenta_v1.Controllers
 			var currentRole = await _userManager.GetRolesAsync(user);
 			ViewBag.CurrentRole = currentRole.FirstOrDefault();
 
-			// Iau toate judetele
+			// Iau toate judetele pentru dropdown
 			ViewBag.Regions = db.Regions
 				.Select(r => new SelectListItem
 				{
@@ -533,12 +599,13 @@ namespace Licenta_v1.Controllers
 				// Updatez datele userului
 				user.FirstName = newData.FirstName;
 				user.LastName = newData.LastName;
+				user.HomeAddress = newData.HomeAddress;
 				user.Email = newData.Email;
 				user.UserName = newData.UserName;
 				user.PhoneNumber = newData.PhoneNumber;
 				user.DateHired = newData.DateHired;
 				user.RegionId = newData.RegionId;
-				user.PhotoPath = newData.PhotoPath;
+				user.PhotoPath = user.PhotoPath;
 
 				var roles = db.Roles.ToList();
 
@@ -611,6 +678,7 @@ namespace Licenta_v1.Controllers
 			// Updatez doar campurile care sunt editabile
 			user.FirstName = newData.FirstName;
 			user.LastName = newData.LastName;
+			user.HomeAddress = newData.HomeAddress;
 			user.Email = newData.Email;
 			user.UserName = newData.UserName;
 			user.PhoneNumber = newData.PhoneNumber;
@@ -739,6 +807,16 @@ namespace Licenta_v1.Controllers
 			{
 				TempData["Error"] = "You cannot delete a client!";
 				return RedirectToAction("Index");
+			}
+
+			// Sterg poza userului
+			if (!string.IsNullOrEmpty(user.PhotoPath))
+			{
+				var oldFilePath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", user.PhotoPath);
+				if (System.IO.File.Exists(oldFilePath))
+				{
+					System.IO.File.Delete(oldFilePath);
+				}
 			}
 
 			// Handle-uiesc feeback-urile pe care le-a dat userul

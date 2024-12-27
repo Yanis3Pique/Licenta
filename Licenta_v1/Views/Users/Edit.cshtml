@@ -35,6 +35,11 @@
                 @Html.ValidationMessageFor(model => model.LastName, null, new { @class = "text-danger" })
                 <br />
 
+				@Html.LabelFor(model => model.HomeAddress, "Home Address")
+				@Html.EditorFor(model => model.HomeAddress, new { htmlAttributes = new { @class = "form-control" } })
+                @Html.ValidationMessageFor(model => model.HomeAddress, null, new { @class = "text-danger" })
+				<br />
+
                 @Html.LabelFor(model => model.Email, "Email")
                 @Html.EditorFor(model => model.Email, new { htmlAttributes = new { @class = "form-control" } })
                 @Html.ValidationMessageFor(model => model.Email, null, new { @class = "text-danger" })
@@ -61,6 +66,7 @@
                              new { @class = "form-control", @required = "false" })
                     @Html.ValidationMessage("newRole", null, new { @class = "text-danger" })
                 </div>
+                <br />
 
 
                 @Html.LabelFor(model => model.DateHired, "Date Hired")

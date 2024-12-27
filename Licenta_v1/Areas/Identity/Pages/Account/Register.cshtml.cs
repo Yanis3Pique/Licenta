@@ -78,6 +78,20 @@ namespace Licenta_v1.Areas.Identity.Pages.Account
 			[Display(Name = "Last Name")]
 			public string LastName { get; set; }
 
+			[Required(ErrorMessage = "The home address is mandatory.")]
+			[MaxLength(100, ErrorMessage = "The home address must be maximum 100 characters in length.")]
+			[MinLength(5, ErrorMessage = "The home address must be minimum 5 characters in length.")]
+			[RegularExpression(@"^[a-zA-Z0-9\s\.\,\/\-\#]*$", ErrorMessage = "Invalid address.")]
+			public string HomeAddress { get; set; }
+
+			[Required(ErrorMessage = "The latitude is mandatory.")]
+			[Range(-90, 90, ErrorMessage = "Invalid latitude.")]
+			public double? Latitude { get; set; }
+
+			[Required(ErrorMessage = "The longitude is mandatory.")]
+			[Range(-180, 180, ErrorMessage = "Invalid longitude.")]
+			public double? Longitude { get; set; }
+
 			[Required(ErrorMessage = "The email is mandatory!")]
 			[EmailAddress(ErrorMessage = "Invalid email address.")]
 			[Display(Name = "Email")]
@@ -133,6 +147,9 @@ namespace Licenta_v1.Areas.Identity.Pages.Account
 				user.PhoneNumber = Input.PhoneNumber;
 				user.RegionId = Input.RegionId;
 				user.DateHired = DateTime.Now;
+				user.HomeAddress = Input.HomeAddress;
+				user.Latitude = Input.Latitude;
+				user.Longitude = Input.Longitude;
 
 				await _userStore.SetUserNameAsync(user, Input.UserName, CancellationToken.None);
 				await _emailStore.SetEmailAsync(user, Input.Email, CancellationToken.None);

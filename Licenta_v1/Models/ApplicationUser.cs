@@ -24,6 +24,17 @@ namespace Licenta_v1.Models
 		[StringLength(50, ErrorMessage = "The last name must be maximum 50 characters in length.")]
 		[MinLength(2, ErrorMessage = "The last name must be minimum 2 characters in length.")]
 		public string LastName { get; set; }
+		[Required(ErrorMessage = "The home address is mandatory.")]
+		[MaxLength(100, ErrorMessage = "The home address must be maximum 100 characters in length.")]
+		[MinLength(5, ErrorMessage = "The home address must be minimum 5 characters in length.")]
+		[RegularExpression(@"^[a-zA-Z0-9\s\.\,\/\-\#]*$", ErrorMessage = "Invalid address.")]
+		public string HomeAddress { get; set; }
+		[Required(ErrorMessage = "The latitude is mandatory.")]
+		[Range(-90, 90, ErrorMessage = "Invalid latitude.")]
+		public double? Latitude { get; set; }
+		[Required(ErrorMessage = "The longitude is mandatory.")]
+		[Range(-180, 180, ErrorMessage = "Invalid longitude.")]
+		public double? Longitude { get; set; }
 		[Required(ErrorMessage = "The hire date is mandatory.")]
 		public DateTime DateHired { get; set; }
 		public double? AverageRating { get; set; } // 1-5

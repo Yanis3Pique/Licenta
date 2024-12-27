@@ -6,29 +6,123 @@
     ViewBag.Title = "Vehicle Details";
 }
 
-<h2 class="text-center">Vehicle Details</h2>
+@if (TempData["Success"] != null)
+{
+    <div class="alert alert-success">@TempData["Success"]</div>
+}
 
-<table class="table">
-    <tr>
-        <th>Registration Number</th>
-        <td>@Model.RegistrationNumber</td>
-    </tr>
-    <tr>
-        <th>Brand</th>
-        <td>@Model.Brand</td>
-    </tr>
-    <tr>
-        <th>Model</th>
-        <td>@Model.Model</td>
-    </tr>
-    <tr>
-        <th>Region</th>
-        <td>@(Model.Region?.County ?? "N/A")</td>
-    </tr>
-</table>
+@if (TempData["Error"] != null)
+{
+    <div class="alert alert-danger">@TempData["Error"]</div>
+}
 
-<a asp-action="Edit" asp-route-id="@Model.Id" class="btn btn-warning">Edit</a>
-<form asp-action="Delete" asp-route-id="@Model.Id" method="post" class="d-inline" onsubmit="return confirm('Are you sure you want to delete this vehicle?');">
-    <button type="submit" class="btn btn-danger">Delete</button>
-</form>
-<a asp-action="Index" class="btn btn-secondary">Back to List</a>
+<div class="container mt-5">
+    <h2 class="text-center">@ViewBag.Title</h2>
+    <br />
+
+    <div class="row align-items-stretch">
+        <!-- Poza :) -->
+        <div class="col-lg-4 col-md-6 text-center mb-3 d-flex flex-column align-items-center">
+            <img src="@(Url.Content("~/" + (Model.ImagePath ?? "Images/VehicleDefault.jpg")))"
+                 class="img-fluid rounded mb-3"
+                 alt="Vehicle Photo"
+                 style="max-width: 100%; height: auto;">
+
+            <!-- Formular ca sa adaug poza daca vreau -->
+            @if (User.IsInRole("Admin")) {
+                <form asp-action="UploadCarPicture" method="post" enctype="multipart/form-data">
+                    <input type="hidden" name="id" value="@Model.Id" />
+                    <input type="file" name="carPicture" class="form-control mb-2" />
+                    <button type="submit" class="btn btn-primary">Upload Car Picture</button>
+                </form>
+            }
+        </div>
+
+        <!-- Tabel cu date pt userrr -->
+        <div class="col-lg-8 col-md-6 d-flex">
+            <table class="table table-bordered table-striped align-self-stretch w-100">
+                <tbody>
+                    <tr>
+                        <th>Registration Number</th>
+                        <td>@Html.DisplayFor(model => model.RegistrationNumber)</td>
+                    </tr>
+                    <tr>
+                        <th>Brand</th>
+                        <td>@Html.DisplayFor(model => model.Brand)</td>
+                    </tr>
+                    <tr>
+                        <th>Model</th>
+                        <td>@Html.DisplayFor(model => model.Model)</td>
+                    </tr>
+                    <tr>
+                        <th>Region</th>
+                        <td>@(Model.Region?.County ?? "N/A")</td>
+                    </tr>
+                    <tr>
+                        <th>Year of manufacture</th>
+                        <td>@Html.DisplayFor(model => model.YearOfManufacture)</td>
+                    </tr>
+                    <tr>
+                        <th>Status</th>
+                        <td>@Html.DisplayFor(model => model.Status)</td>
+                    </tr>
+                    <tr>
+                        <th>Fuel type</th>
+                        <td>@Html.DisplayFor(model => model.FuelType)</td>
+                    </tr>
+                    <tr>
+                        <th>Maximum weight capacity</th>
+                        <td>@Html.DisplayFor(model => model.MaxWeightCapacity)</td>
+                    </tr>
+                    <tr>
+                        <th>Maximum volume capacity</th>
+                        <td>@Html.DisplayFor(model => model.MaxVolumeCapacity)</td>
+                    </tr>
+                    <tr>
+                        <th>Consumption rate</th>
+						@if (Model.FuelType == FuelType.Electric)
+						{
+							<td>@Html.DisplayFor(model => model.ConsumptionRate) kWh/100km</td>
+						}
+						else
+						{
+							<td>@Html.DisplayFor(model => model.ConsumptionRate) l/100km</td>
+						}
+                    </tr>
+                    <tr>
+                        <th>Total distance traveled</th>
+                        <td>@Html.DisplayFor(model => model.TotalDistanceTraveledKM) km</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Butoanele-s aci -->
+    <div class="mt-4">
+        <div class="d-flex flex-wrap justify-content-center align-items-center">
+			@if (User.IsInRole("Admin"))
+			{
+                <a href="@Url.Action("Edit", "Vehicles", new { id = Model.Id })"
+                   class="btn btn-warning mx-2 mb-2"
+                   style="min-width: 100px;">
+                    Edit
+                </a>
+				@using (Html.BeginForm("Delete", "Vehicles", new { id = Model.Id }, FormMethod.Post))
+				{
+			        <button type="submit"
+					        class="btn btn-danger mx-2 mb-2"
+					        style="min-width: 100px;"
+					        onclick="return confirm('Are you sure you want to delete this vehicle?');">
+				        Delete
+			        </button>
+                }
+			}
+            <a href="@(ViewContext.HttpContext.Request.Headers["Referer"].FirstOrDefault() ?? Url.Action("Index", "Vehicles"))"
+               class="btn btn-secondary mx-2 mb-2"
+               style="min-width: 100px;">
+                Back
+            </a>
+        </div>
+    </div>
+</div>

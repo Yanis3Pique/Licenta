@@ -17,7 +17,6 @@
 <div class="container mt-5">
     <div class="row">
         <div class="col-md-6 offset-3">
-            <!-- Use POST to submit changes -->
             @using (Html.BeginForm("EditMyself", "Users", FormMethod.Post))
             {
                 @Html.AntiForgeryToken()
@@ -41,6 +40,13 @@
                     @Html.EditorFor(m => m.LastName, new { htmlAttributes = new { @class = "form-control" } })
                     @Html.ValidationMessageFor(m => m.LastName, null, new { @class = "text-danger" })
                 </div>
+                <br />
+
+				<div class="form-group">
+					@Html.LabelFor(m => m.HomeAddress, "Home Address")
+					@Html.EditorFor(m => m.HomeAddress, new { htmlAttributes = new { @class = "form-control" } })
+					@Html.ValidationMessageFor(m => m.HomeAddress, null, new { @class = "text-danger" })
+				</div>
                 <br />
 
                 <div class="form-group">

@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Rendering;
 using Microsoft.EntityFrameworkCore;
+using System.Linq;
 
 namespace Licenta_v1.Controllers
 {
@@ -86,7 +87,7 @@ namespace Licenta_v1.Controllers
 		[Authorize(Roles = "Admin")]
 		public async Task<IActionResult> Index(string searchString, int? regionId, string sortOrder, int pageNumber = 1)
 		{
-			int pageSize = 10;
+			int pageSize = 6;
 
 			ViewBag.CurrentSort = sortOrder;
 			ViewBag.NameSortParam = sortOrder == "brand" ? "brand_desc" : "brand";
@@ -133,40 +134,79 @@ namespace Licenta_v1.Controllers
 		// Post - Vehicles/Create
 		[HttpPost]
 		[Authorize(Roles = "Admin")]
-		public async Task<IActionResult> Create(Vehicle vehicle)
+		public async Task<IActionResult> Create(Vehicle vehicle, IFormFile carPicture)
 		{
-			if (ModelState.IsValid)
+			// Varific daca nu cumva am deja in BD o masina cu acelasi nr de inmatriculare
+			if (await db.Vehicles.AnyAsync(v => v.RegistrationNumber == vehicle.RegistrationNumber))
 			{
-				db.Vehicles.Add(vehicle);
-				await db.SaveChangesAsync();
-				TempData["Success"] = "Vehicle added successfully!";
-				return RedirectToAction(nameof(Index));
+				ModelState.AddModelError("RegistrationNumber", "The Registration Number already exists in the database.");
 			}
 
-			// Repopulez dropdown-urile daca-s erori
-			ViewBag.Statuses = Enum.GetValues(typeof(VehicleStatus))
-								   .Cast<VehicleStatus>()
-								   .Select(s => new SelectListItem
-								   {
-									   Text = s.ToString(),
-									   Value = ((int)s).ToString()
-								   });
+			if (!ModelState.IsValid)
+			{
+				ViewBag.Regions = db.Regions
+					.Select(r => new SelectListItem
+					{
+						Value = r.Id.ToString(),
+						Text = r.County
+					}).ToList();
 
-			ViewBag.FuelTypes = Enum.GetValues(typeof(FuelType))
-									.Cast<FuelType>()
-									.Select(f => new SelectListItem
-									{
-										Text = f.ToString(),
-										Value = ((int)f).ToString()
-									});
+				ViewBag.Statuses = Enum.GetValues(typeof(VehicleStatus))
+									   .Cast<VehicleStatus>()
+									   .Select(s => new SelectListItem
+									   {
+										   Text = s.ToString(),
+										   Value = ((int)s).ToString()
+									   });
 
-			ViewBag.Regions = new SelectList(db.Regions, "Id", "County");
+				ViewBag.FuelTypes = Enum.GetValues(typeof(FuelType))
+										.Cast<FuelType>()
+										.Select(f => new SelectListItem
+										{
+											Text = f.ToString(),
+											Value = ((int)f).ToString()
+										});
 
-			return View(vehicle);
+				return View(vehicle);
+			}
+
+			if (carPicture != null && carPicture.Length > 0)
+			{
+				var allowedExtensions = new[] { ".jpg", ".jpeg", ".png", ".gif" };
+				var extension = Path.GetExtension(carPicture.FileName).ToLowerInvariant();
+
+				if (!allowedExtensions.Contains(extension))
+				{
+					ModelState.AddModelError("carPicture", "Invalid file type. Only JPG, JPEG, PNG, and GIF are allowed!");
+					ViewBag.Regions = db.Regions
+						.Select(r => new SelectListItem
+						{
+							Value = r.Id.ToString(),
+							Text = r.County
+						}).ToList();
+
+					return View(vehicle);
+				}
+
+				var fileName = vehicle.Brand + vehicle.Model + vehicle.RegistrationNumber + extension;
+				var filePath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "Images", fileName);
+
+				using (var stream = new FileStream(filePath, FileMode.Create))
+				{
+					await carPicture.CopyToAsync(stream);
+				}
+
+				vehicle.ImagePath = $"Images/{fileName}";
+			}
+
+			db.Vehicles.Add(vehicle);
+			await db.SaveChangesAsync();
+
+			return RedirectToAction("Index");
 		}
 
 		// Get - Vehicles/Show/id
-		[Authorize(Roles = "Admin")]
+		[Authorize(Roles = "Admin,Dispecer")]
 		public async Task<IActionResult> Show(int id)
 		{
 			var vehicle = await db.Vehicles.Include(v => v.Region).FirstOrDefaultAsync(v => v.Id == id);
@@ -180,10 +220,81 @@ namespace Licenta_v1.Controllers
 			return View(vehicle);
 		}
 
+		// Post - Vehicles/UploadCarPicture
+		[Authorize(Roles = "Admin")]
+		[HttpPost]
+		public async Task<IActionResult> UploadCarPicture(int id, IFormFile carPicture)
+		{
+			if (carPicture == null || carPicture.Length == 0)
+			{
+				TempData["Error"] = "Please select a valid image!";
+				return RedirectToAction("Show", new { id });
+			}
+
+			var vehicle = await db.Vehicles.FindAsync(id);
+			if (vehicle == null)
+			{
+				TempData["Error"] = "Vehicle not found!";
+				return RedirectToAction("Index");
+			}
+
+			// Verific daca poza are extensie valida
+			var allowedExtensions = new[] { ".jpg", ".jpeg", ".png", ".gif" };
+			var extension = Path.GetExtension(carPicture.FileName)?.ToLowerInvariant();
+
+			if (string.IsNullOrEmpty(extension) || !allowedExtensions.Contains(extension))
+			{
+				TempData["Error"] = "Invalid file type. Only JPG, JPEG, PNG, and GIF are allowed!";
+				return RedirectToAction("Show", new { id });
+			}
+
+			try
+			{
+				// Sterg poza veche din wwwroot/Images
+				if (!string.IsNullOrEmpty(vehicle.ImagePath))
+				{
+					var oldFilePath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", vehicle.ImagePath);
+					if (System.IO.File.Exists(oldFilePath))
+					{
+						System.IO.File.Delete(oldFilePath);
+					}
+				}
+
+				// Salvez poza noua in wwwroot/Images
+				var fileName = vehicle.Model + vehicle.Brand + vehicle.RegistrationNumber + extension;
+				var filePath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "Images", fileName);
+
+				using (var stream = new FileStream(filePath, FileMode.Create))
+				{
+					await carPicture.CopyToAsync(stream);
+				}
+
+				// Updatez poza(adica path-ul ei) in BD
+				vehicle.ImagePath = $"Images/{fileName}";
+				db.Vehicles.Update(vehicle);
+				await db.SaveChangesAsync();
+
+				TempData["Success"] = "Vehicle picture updated successfully!";
+			}
+			catch (Exception ex)
+			{
+				TempData["Error"] = $"An error occurred while uploading the picture: {ex.Message}";
+				return RedirectToAction("Show", new { id });
+			}
+
+			return RedirectToAction("Show", new { id });
+		}
+
 		// Get - Vehicles/Edit/id
 		[Authorize(Roles = "Admin")]
 		public async Task<IActionResult> Edit(int id)
 		{
+			if (id <= 0)
+			{
+				TempData["Error"] = "Invalid vehicle ID!";
+				return RedirectToAction("Index");
+			}
+
 			var vehicle = await db.Vehicles.FindAsync(id);
 
 			if (vehicle == null)
@@ -192,30 +303,88 @@ namespace Licenta_v1.Controllers
 				return RedirectToAction("Index");
 			}
 
-			ViewBag.Regions = new SelectList(db.Regions, "Id", "County", vehicle.RegionId);
+			// Iau toate judetele pentru dropdown
+			ViewBag.Regions = db.Regions.Select(r => new SelectListItem
+			{
+				Value = r.Id.ToString(),
+				Text = r.County
+			}).ToList();
+
+			// Iau toate statusurile pentru dropdown
+			ViewBag.Statuses = Enum.GetValues(typeof(VehicleStatus))
+								   .Cast<VehicleStatus>()
+								   .Select(s => new SelectListItem
+								   {
+									   Text = s.ToString(),
+									   Value = ((int)s).ToString()
+								   });
+
+			// Iau toate tipurile de combustibil pentru dropdown
+			ViewBag.FuelTypes = Enum.GetValues(typeof(FuelType))
+									.Cast<FuelType>()
+									.Select(f => new SelectListItem
+									{
+										Text = f.ToString(),
+										Value = ((int)f).ToString()
+									});
+
 			return View(vehicle);
 		}
 
 		// Post - Vehicles/Edit/id
 		[Authorize(Roles = "Admin")]
 		[HttpPost]
-		public async Task<IActionResult> Edit(int id, Vehicle updatedVehicle)
+		public async Task<IActionResult> Edit(int id, Vehicle updatedVehicle, [FromForm] int? newRegionId)
 		{
-			if (id != updatedVehicle.Id)
+			if (id <= 0 || id != updatedVehicle.Id)
 			{
+				TempData["Error"] = "Invalid vehicle ID!";
 				return NotFound();
+			}
+
+			var vehicle = await db.Vehicles.FindAsync(id);
+			if (vehicle == null)
+			{
+				TempData["Error"] = "Vehicle not found!";
+				return RedirectToAction("Index");
 			}
 
 			if (ModelState.IsValid)
 			{
-				db.Vehicles.Update(updatedVehicle);
-				await db.SaveChangesAsync();
-				TempData["Success"] = "Vehicle updated successfully!";
-				return RedirectToAction("Index");
+				vehicle.Brand = updatedVehicle.Brand;
+				vehicle.Model = updatedVehicle.Model;
+				vehicle.RegistrationNumber = updatedVehicle.RegistrationNumber;
+				vehicle.YearOfManufacture = updatedVehicle.YearOfManufacture;
+				vehicle.Status = updatedVehicle.Status;
+				vehicle.FuelType = updatedVehicle.FuelType;
+				vehicle.ConsumptionRate = updatedVehicle.ConsumptionRate;
+				vehicle.MaxVolumeCapacity = updatedVehicle.MaxVolumeCapacity;
+				vehicle.MaxWeightCapacity = updatedVehicle.MaxWeightCapacity;
+				vehicle.TotalDistanceTraveledKM = updatedVehicle.TotalDistanceTraveledKM;
+				vehicle.ImagePath = vehicle.ImagePath;
+				vehicle.RegionId = newRegionId ?? vehicle.RegionId;
+
+				try
+				{
+					db.Vehicles.Update(vehicle);
+					await db.SaveChangesAsync();
+					TempData["Success"] = "Vehicle updated successfully!";
+					return RedirectToAction("Index");
+				}
+				catch (Exception ex)
+				{
+					TempData["Error"] = $"Error updating vehicle: {ex.Message}";
+				}
 			}
 
-			ViewBag.Regions = new SelectList(db.Regions, "Id", "County", updatedVehicle.RegionId);
-			TempData["Error"] = "There was an error updating the vehicle.";
+			// Dar daca ModelState nu e valid, returnez userul cu datele vechi
+			ViewBag.Regions = db.Regions.Select(r => new SelectListItem
+			{
+				Value = r.Id.ToString(),
+				Text = r.County
+			}).ToList();
+
+			TempData["Error"] = "There was an error updating the vehicle. Please check the input.";
 			return View(updatedVehicle);
 		}
 
@@ -230,6 +399,23 @@ namespace Licenta_v1.Controllers
 			{
 				TempData["Error"] = "Vehicle not found!";
 				return RedirectToAction("Index");
+			}
+
+			// Daca masina nu are status-ul "Retired", nu o pot sterge
+			if (vehicle.Status != VehicleStatus.Retired)
+			{
+				TempData["Error"] = "Only retired vehicles can be deleted!";
+				return RedirectToAction("Index");
+			}
+
+			// Sterg poza din wwwroot/Images
+			if (!string.IsNullOrEmpty(vehicle.ImagePath))
+			{
+				var filePath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", vehicle.ImagePath);
+				if (System.IO.File.Exists(filePath))
+				{
+					System.IO.File.Delete(filePath);
+				}
 			}
 
 			db.Vehicles.Remove(vehicle);

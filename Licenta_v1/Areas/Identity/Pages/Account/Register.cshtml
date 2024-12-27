@@ -6,6 +6,41 @@
 
 <h2>@ViewData["Title"]</h2>
 
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+
+<script>
+    document.addEventListener("DOMContentLoaded", function () {
+        // Initialize the map
+        var map = L.map('map').setView([46.0, 25.0], 6); // Default view over Romania
+
+        // Add OpenStreetMap tile layer
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+            attribution: '© OpenStreetMap contributors'
+        }).addTo(map);
+
+        // Marker for pinpointing the address
+        var marker = L.marker([46.0, 25.0], { draggable: true }).addTo(map);
+
+        // Update hidden fields when marker is dragged
+        marker.on('dragend', function (e) {
+            var latLng = marker.getLatLng();
+            document.getElementById('latitude').value = latLng.lat;
+            document.getElementById('longitude').value = latLng.lng;
+
+            // Optionally, reverse geocode the address using a geocoding API
+            fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${latLng.lat}&lon=${latLng.lng}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.display_name) {
+                        document.getElementById('homeAddress').value = data.display_name;
+                    }
+                });
+        });
+    });
+</script>
+
 <form method="post">
     <div class="form-group">
         @Html.LabelFor(m => m.Input.UserName)
@@ -24,6 +59,17 @@
         @Html.EditorFor(m => m.Input.LastName, new { htmlAttributes = new { @class = "form-control" } })
         @Html.ValidationMessageFor(m => m.Input.LastName, null, new { @class = "text-danger" })
     </div>
+
+    <div class="form-group">
+        @Html.LabelFor(m => m.Input.HomeAddress)
+        @Html.EditorFor(m => m.Input.HomeAddress, new { htmlAttributes = new { @class = "form-control", id = "homeAddress" } })
+        @Html.ValidationMessageFor(m => m.Input.HomeAddress, null, new { @class = "text-danger" })
+    </div>
+
+    <div id="map" style="height: 400px; margin-bottom: 20px;"></div>
+
+    <input type="hidden" id="latitude" asp-for="Input.Latitude" />
+    <input type="hidden" id="longitude" asp-for="Input.Longitude" />
 
     <div class="form-group">
         @Html.LabelFor(m => m.Input.Email)

@@ -1,0 +1,95 @@
+﻿@model IEnumerable<Licenta_v1.Models.Vehicle>
+
+<h2 class="text-center">@ViewBag.Title</h2>
+<br />
+
+<div class="card shadow-sm p-3 mb-3">
+    <form method="get">
+        <div class="row g-2 align-items-center">
+            <!-- Bara de cautare -->
+            <div class="col-12 col-md">
+                <input type="text" name="searchString" value="@ViewBag.SearchString"
+                       class="form-control"
+                       placeholder="Search by Registration, Brand or Model" />
+            </div>
+
+            <!-- Sortare dupa model, brand sau nr inmatriculare -->
+            <div class="col-md-3 col-sm-6">
+                <select class="form-select" name="sortOrder">
+                    <option value="brand" selected="@(ViewBag.CurrentSort == "brand" ? "selected" : "")">Brand (Ascending)</option>
+                    <option value="brand_desc" selected="@(ViewBag.CurrentSort == "brand_desc" ? "selected" : "")">Brand (Descending)</option>
+                    <option value="model" selected="@(ViewBag.CurrentSort == "model" ? "selected" : "")">Model (Ascending)</option>
+                    <option value="model_desc" selected="@(ViewBag.CurrentSort == "model_desc" ? "selected" : "")">Model (Descending)</option>
+                    <option value="registration" selected="@(ViewBag.CurrentSort == "registration" ? "selected" : "")">Registration (Ascending)</option>
+                    <option value="registration_desc" selected="@(ViewBag.CurrentSort == "registration_desc" ? "selected" : "")">Registration (Descending)</option>
+                    <option value="" selected="@(string.IsNullOrEmpty(ViewBag.CurrentSort) ? "selected" : "")">Sort by</option>
+                </select>
+            </div>
+
+            <!-- Buton de submit pt tot -->
+            <div class="col-md-3 col-sm-12">
+                <button type="submit" class="btn btn-primary w-100">Apply</button>
+            </div>
+        </div>
+    </form>
+</div>
+
+<!-- Carduri pt masini -->
+<div class="row row-cols-1 row-cols-md-3 g-4">
+    @foreach (var vehicle in Model)
+    {
+        <div class="col">
+            <div class="card h-100 text-center" style="min-height: 450px;">
+                <div style="height: 300px; overflow: hidden;">
+                    <img src="@(Url.Content("~/" + (vehicle.ImagePath ?? "Images/VehicleDefault.jpg")))"
+                         class="card-img-top img-fluid"
+                         alt="Vehicle Photo"
+                         style="height: 100%; width: 100%; object-fit: cover;">
+                </div>
+
+                <div class="card-body">
+                    <h4 class="card-title">@vehicle.Brand @vehicle.Model</h4>
+                    <p class="card-text">
+                        <strong>Registration:</strong> @vehicle.RegistrationNumber<br />
+                        <strong>Region:</strong> @(vehicle.Region?.County ?? "N/A")<br />
+                        <strong>Year:</strong> @vehicle.YearOfManufacture<br />
+                        <strong>Status:</strong> @vehicle.Status.ToString()<br />
+                    </p>
+                </div>
+
+                <div class="card-footer">
+                    <div class="d-flex justify-content-center">
+                        <a asp-controller="Vehicles" asp-action="Show" asp-route-id="@vehicle.Id" class="btn btn-info btn-sm mb-2 mx-2">View</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+<br />
+
+<!-- Paginare -->
+<nav>
+    <ul class="pagination justify-content-center">
+        @{
+            int totalPages = ViewBag.TotalPages;
+            int pageNumber = ViewBag.PageNumber;
+            string query = $"&searchString={ViewBag.SearchString}&regionId={ViewBag.RegionId}&sortOrder={ViewBag.CurrentSort}";
+        }
+
+        <li class="page-item @(pageNumber == 1 ? "disabled" : "")">
+            <a class="page-link" href="?pageNumber=@(pageNumber - 1)@query" tabindex="-1">Previous</a>
+        </li>
+
+        @for (int i = 1; i <= totalPages; i++)
+        {
+            <li class="page-item @(i == pageNumber ? "active" : "")">
+                <a class="page-link" href="?pageNumber=@i@query">@i</a>
+            </li>
+        }
+
+        <li class="page-item @(pageNumber == totalPages ? "disabled" : "")">
+            <a class="page-link" href="?pageNumber=@(pageNumber + 1)@query">Next</a>
+        </li>
+    </ul>
+</nav>

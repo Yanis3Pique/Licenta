@@ -44,3 +44,87 @@ body {
 .custom-close:hover {
     filter: brightness(0.5);
 }
+
+#light-blue-elements-background-id {
+    background-color:#f1f9ff;
+}
+
+/* Wrapper pt meniu */
+.dropdown-wrapper {
+    position: relative;
+    display: inline-block;
+}
+
+/* Buton de toggle meniu */
+.dropdown-toggle-btn {
+    background-color: #0d6efd;
+    color: white;
+    font-size: 16px;
+    padding: 10px 15px;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+}
+
+.dropdown-toggle-btn:hover {
+    background-color: #0056b3;
+}
+
+/* Meniul dropdown */
+.dropdown-menu {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    background-color: #f1f9ff;
+    box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.1);
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    border-radius: 5px;
+    z-index: 1000;
+    min-width: 150px;
+    overflow: hidden;
+}
+
+/* Butoanele din dropdown */
+.dropdown-menu li {
+    border-bottom: 1px solid #ddd;
+}
+
+.dropdown-menu li:last-child {
+    border-bottom: none;
+}
+
+.dropdown-menu a {
+    display: block;
+    padding: 10px;
+    text-decoration: none;
+    color: #333;
+    transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+.dropdown-menu a:hover {
+    background-color: #0d6efd;
+    color: white;
+}
+
+/* Arata dropdown la hover */
+.dropdown-wrapper:hover .dropdown-menu {
+    display: block;
+    animation: dropdown-fade 0.3s ease;
+}
+
+/* Animatia pt dropdown */
+@keyframes dropdown-fade {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}

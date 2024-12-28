@@ -7,7 +7,7 @@
 <h2 class="text-center">@ViewBag.Title</h2>
 <br />
 
-<div class="card shadow-sm p-3 mb-4">
+<div class="card shadow-sm p-3 mb-4" id="light-blue-elements-background-id">
     <form method="get">
         <div class="row g-2 align-items-center">
             <!-- Bara de cautare -->
@@ -49,11 +49,13 @@
     @foreach (var user in Model)
     {
         <div class="col">
-            <div class="card h-100 text-center">
-                <img src="@(Url.Content("~/" + (user.PhotoPath ?? "Images/Default.jpg")))"
-                     class="card-img-top img-fluid"
-                     alt="User Photo"
-                     style="height: auto; max-height: 300px; object-fit: cover;">
+            <div class="card h-100 text-center" style="min-height: 450px;" id="light-blue-elements-background-id">
+                <div style="height: 300px; overflow: hidden;">
+                    <img src="@(Url.Content("~/" + (user.PhotoPath ?? "Images/Default.jpg")))"
+                         class="card-img-top img-fluid"
+                         alt="User Photo"
+                         style="height: 300px; width: 100%; object-fit: cover;">
+                </div>
 
                 <div class="card-body">
                     <h4 class="card-title">@Html.DisplayFor(modelItem => user.FirstName) @Html.DisplayFor(modelItem => user.LastName)</h4>
@@ -65,7 +67,7 @@
                 </div>
 
                 <div class="card-footer">
-                    <div class="d-flex justify-content-center align-items-center">
+                    <div class="d-flex flex-wrap justify-content-center align-items-center">
                         @Html.ActionLink("Details", "Show", new { id = user.Id }, new { @class = "btn btn-primary btn-sm mb-2 mx-2" })
                         @if (User.IsInRole("Admin") || User.IsInRole("Dispecer"))
                         {

@@ -17,8 +17,9 @@
 }
 
 <h2 class="text-center">Vehicles</h2>
+<br />
 
-<div class="card shadow-sm p-3 mb-4">
+<div class="card shadow-sm p-3 mb-4" id="light-blue-elements-background-id">
     <form method="get" class="row g-3 align-items-center">
         <!-- Filtrare dupa regiuni -->
         <div class="col-12 col-md-auto">
@@ -65,12 +66,12 @@
     @foreach (var vehicle in Model)
     {
         <div class="col">
-            <div class="card h-100 text-center" style="min-height: 450px;">
+            <div class="card h-100 text-center" style="min-height: 450px;" id="light-blue-elements-background-id">
                 <div style="height: 300px; overflow: hidden;">
                     <img src="@(Url.Content("~/" + (vehicle.ImagePath ?? "Images/VehicleDefault.jpg")))"
                          class="card-img-top img-fluid"
                          alt="Vehicle Photo"
-                         style="height: 100%; width: 100%; object-fit: cover;">
+                         style="height: 300px; width: 100%; object-fit: cover;">
                 </div>
 
                 <div class="card-body">

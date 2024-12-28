@@ -14,10 +14,11 @@
 	<div class="alert alert-danger">@TempData["Error"]</div>
 }
 
-<h2 class="text-center mt-5">@ViewBag.Title</h2>
+<h2 class="text-center">@ViewBag.Title</h2>
+<br />
 
 <!-- Bara de search -->
-<div class="card shadow-sm p-3 mb-4">
+<div class="card shadow-sm p-3 mb-4" id="light-blue-elements-background-id">
     <form asp-action="Index" method="get">
         <div class="row g-2">
             <div class="col-12 col-md-10">
@@ -41,7 +42,7 @@
 <table class="table table-bordered table-striped">
     <thead>
         <tr>
-            <th>
+            <th id="light-blue-elements-background-id">
                 <a asp-action="Index" asp-route-sortOrder="@ViewBag.NameSortParam" asp-route-searchString="@ViewBag.SearchString">
                     Name
                     @if (ViewBag.CurrentSort == "name")
@@ -54,7 +55,7 @@
                     }
                 </a>
             </th>
-            <th>
+            <th id="light-blue-elements-background-id">
                 <a asp-action="Index" asp-route-sortOrder="@ViewBag.AddressSortParam" asp-route-searchString="@ViewBag.SearchString">
                     Address
                     @if (ViewBag.CurrentSort == "address")
@@ -67,10 +68,8 @@
                     }
                 </a>
             </th>
-            <th>Region</th>
-            <th>
-                Actions
-            </th>
+            <th id="light-blue-elements-background-id">Region</th>
+            <th id="light-blue-elements-background-id">Actions</th>
         </tr>
     </thead>
     <tbody>
@@ -85,10 +84,10 @@
             @foreach (var hq in Model)
             {
                 <tr>
-                    <td>@hq.Name</td>
-                    <td>@hq.Address</td>
-                    <td>@hq.Region?.County</td>
-                    <td>
+                    <td id="light-blue-elements-background-id">@hq.Name</td>
+                    <td id="light-blue-elements-background-id">@hq.Address</td>
+                    <td id="light-blue-elements-background-id">@hq.Region?.County</td>
+                    <td id="light-blue-elements-background-id">
                         <a asp-action="Show" asp-route-id="@hq.Id" class="btn btn-primary btn-sm mb-2 mx-2">View</a>
                     </td>
                 </tr>

@@ -153,7 +153,7 @@ namespace Licenta_v1.Areas.Identity.Pages.Account
 				// Verific cu functia IsValidAddressInRomania daca adresa e valida
 				if (!IsValidAddressInRomania(user.HomeAddress))
 				{
-					ModelState.AddModelError(nameof(Input.HomeAddress), "The address is not valid. Please enter a valid address in Romania.");
+					TempData["Error"] = "The address is not valid. Please enter a valid address in Romania.";
 					return Page();
 				}
 
@@ -163,14 +163,14 @@ namespace Licenta_v1.Areas.Identity.Pages.Account
 				// Verific daca avem email duplicat in BD
 				if (_userManager.Users.Any(u => u.Email == Input.Email))
 				{
-					ModelState.AddModelError(nameof(Input.Email), "This email is already registered. Please use a different email.");
+					TempData["Error"] = "This email is already registered. Please use a different email.";
 					return Page();
 				}
 
 				// Verific daca avem username duplicat in BD
 				if (await _userManager.FindByNameAsync(Input.UserName) != null)
 				{
-					ModelState.AddModelError(nameof(Input.UserName), "This username is already taken. Please choose another username.");
+					TempData["Error"] = "This username is already taken. Please choose another username.";
 					return Page();
 				}
 

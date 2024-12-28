@@ -15,10 +15,10 @@
 <body>
     <header>
         <!-- Meniu pt PC -->
-        <nav class="navbar navbar-expand-sm navbar-light bg-white border-bottom box-shadow mb-3">
+        <nav class="navbar navbar-expand-sm navbar-light bg-primary mb-3" style="border-bottom: 2px solid black; box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.1);">
             <div class="container-fluid">
                 <!-- Toggler pt meniu mic -->
-                <button class="navbar-toggler" type="button" data-bs-toggle="offcanvas" data-bs-target="#offcanvasMenu" aria-controls="offcanvasMenu" aria-expanded="false" aria-label="Toggle navigation">
+                <button class="navbar-toggler custom-toggler" type="button" data-bs-toggle="offcanvas" data-bs-target="#offcanvasMenu" aria-controls="offcanvasMenu" aria-expanded="false" aria-label="Toggle navigation">
                     <span class="navbar-toggler-icon"></span>
                 </button>
 
@@ -30,43 +30,45 @@
                 <div class="d-none d-sm-flex justify-content-between align-items-center w-100">
                     <ul class="navbar-nav flex-grow-1">
                         <li class="nav-item">
-                            <a class="nav-link text-dark d-flex align-items-center" asp-area="" asp-controller="Home" asp-action="Index">
-                                <i class="bi bi-house-fill"></i>
+                            <a class="nav-link text-light d-flex align-items-center" asp-area="" asp-controller="Home" asp-action="Index">
+                                <i class="bi bi-house-fill fs-6"></i>
                             </a>
                         </li>
                         @if (User.IsInRole("Admin"))
                         { 
                             <li class="nav-item">
-                                <a class="nav-link text-dark" asp-area="" asp-controller="Users" asp-action="Index">Users</a>
+                                <a class="nav-link text-light" asp-area="" asp-controller="Users" asp-action="Index">Users</a>
                             </li>
                             <li class="nav-item">
-                                <a class="nav-link text-dark" asp-area="" asp-controller="Users" asp-action="IndexDispatchers">Dispatchers</a>
+                                <a class="nav-link text-light" asp-area="" asp-controller="Users" asp-action="IndexDispatchers">Dispatchers</a>
                             </li>
                             <li class="nav-item">
-                                <a class="nav-link text-dark" asp-area="" asp-controller="Users" asp-action="IndexDrivers">Drivers</a>
+                                <a class="nav-link text-light" asp-area="" asp-controller="Users" asp-action="IndexDrivers">Drivers</a>
                             </li>
                             <li class="nav-item">
-                                <a class="nav-link text-dark" asp-area="" asp-controller="Users" asp-action="IndexClients">Clients</a>
+                                <a class="nav-link text-light" asp-area="" asp-controller="Users" asp-action="IndexClients">Clients</a>
                             </li>
                             <li class="nav-item">
-                                <a class="nav-link text-dark" asp-area="" asp-controller="Vehicles" asp-action="Index">Vehicles</a>
+                                <a class="nav-link text-light" asp-area="" asp-controller="Vehicles" asp-action="Index">Vehicles</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link text-light" asp-area="" asp-controller="Headquarters" asp-action="Index">Headquarters</a>
                             </li>
                         }
                         @if (User.IsInRole("Dispecer"))
                         {
                             var dispatcherId = UserManager.GetUserId(User);
                             <li class="nav-item">
-                                <a class="nav-link text-dark" asp-area="" asp-controller="Users" asp-action="ShowDriversOfDispatcher" asp-route-id="@dispatcherId">
+                                <a class="nav-link text-light" asp-area="" asp-controller="Users" asp-action="ShowDriversOfDispatcher" asp-route-id="@dispatcherId">
                                     My Drivers
                                 </a>
                             </li>
                             <li class="nav-item">
-                                <a class="nav-link text-dark" asp-area="" asp-controller="Users" asp-action="ShowVehiclesOfDispatcher" asp-route-id="@dispatcherId">
+                                <a class="nav-link text-light" asp-area="" asp-controller="Users" asp-action="ShowVehiclesOfDispatcher" asp-route-id="@dispatcherId">
                                     My Vehicles
                                 </a>
                             </li>
                         }
-
                     </ul>
                     <div class="ms-auto">
                         <partial name="_LoginPartial" />
@@ -78,32 +80,34 @@
 
     <!-- Meniu pt ecrane mici -->
     <div class="offcanvas offcanvas-start" tabindex="-1" id="offcanvasMenu" aria-labelledby="offcanvasMenuLabel">
-        <div class="offcanvas-header">
-            <h5 class="offcanvas-title" id="offcanvasMenuLabel">Menu</h5>
-            <button type="button" class="btn-close text-reset" data-bs-dismiss="offcanvas" aria-label="Close"></button>
+        <div class="offcanvas-header bg-primary" style="border-bottom: 2px solid black;">
+            <h5 class="offcanvas-title text-light fw-bold" id="offcanvasMenuLabel">Menu</h5>
+            <button type="button" class="btn-close text-reset custom-close" data-bs-dismiss="offcanvas" aria-label="Close"></button>
         </div>
-        <hr />
-        <div class="offcanvas-body">
+        <div class="offcanvas-body p-0" style="background-color: #c9e3ff">
             <ul class="navbar-nav">
-                <li class="nav-item">
+                <li class="nav-item" style="border-bottom: 1px solid black;">
                     <a class="nav-link text-dark" asp-area="" asp-controller="Home" asp-action="Index">EcoDelivery</a>
                 </li>
                 @if (User.IsInRole("Admin"))
                 {
-                    <li class="nav-item">
+                    <li class="nav-item" style="border-bottom: 1px solid black;">
                         <a class="nav-link text-dark" asp-area="" asp-controller="Users" asp-action="Index">Users</a>
                     </li>
-                    <li class="nav-item">
+                    <li class="nav-item" style="border-bottom: 1px solid black;">
                         <a class="nav-link text-dark" asp-area="" asp-controller="Users" asp-action="IndexDispatchers">Dispatchers</a>
                     </li>
-                    <li class="nav-item">
+                    <li class="nav-item" style="border-bottom: 1px solid black;">
                         <a class="nav-link text-dark" asp-area="" asp-controller="Users" asp-action="IndexDrivers">Drivers</a>
                     </li>
-                    <li class="nav-item">
+                    <li class="nav-item" style="border-bottom: 1px solid black;">
                         <a class="nav-link text-dark" asp-area="" asp-controller="Users" asp-action="IndexClients">Clients</a>
                     </li>
-                    <li class="nav-item">
+                    <li class="nav-item" style="border-bottom: 1px solid black;">
                         <a class="nav-link text-dark" asp-area="" asp-controller="Vehicles" asp-action="Index">Vehicles</a>
+                    </li>
+                    <li class="nav-item" style="border-bottom: 1px solid black;">
+                        <a class="nav-link text-dark" asp-area="" asp-controller="Headquarters" asp-action="Index">Headquarters</a>
                     </li>
                 }
                 @if (User.IsInRole("Dispecer"))
@@ -130,8 +134,8 @@
         </main>
     </div>
 
-    <footer class="border-top footer text-muted">
-        <div class="container-fluid text-start">
+    <footer class="border-top footer text-muted bg-primary">
+        <div class="container-fluid text-start text-light" style="border-top: 2px solid black;">
             &copy; 2024 - EcoDelivery
         </div>
     </footer>

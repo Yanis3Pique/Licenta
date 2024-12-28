@@ -66,16 +66,16 @@
 
                 <div class="card-footer">
                     <div class="d-flex justify-content-center align-items-center">
-                        @Html.ActionLink("Details", "Show", new { id = user.Id }, new { @class = "btn btn-info btn-sm mb-2 mx-2" })
+                        @Html.ActionLink("Details", "Show", new { id = user.Id }, new { @class = "btn btn-primary btn-sm mb-2 mx-2" })
                         @if (User.IsInRole("Admin") || User.IsInRole("Dispecer"))
                         {
                             var userRoles = await UserManager.GetRolesAsync(user);
                             if (userRoles.Contains("Dispecer"))
                             {
-                                <a href="@Url.Action("ShowDriversOfDispatcher", "Users", new { id = user.Id })" class="btn btn-info btn-sm mb-2 mx-2">
+                                <a href="@Url.Action("ShowDriversOfDispatcher", "Users", new { id = user.Id })" class="btn btn-primary btn-sm mb-2 mx-2">
                                     Show Drivers
                                 </a>
-                                <a href="@Url.Action("ShowVehiclesOfDispatcher", "Users", new { id = user.Id })" class="btn btn-info btn-sm mb-2 mx-2">
+                                <a href="@Url.Action("ShowVehiclesOfDispatcher", "Users", new { id = user.Id })" class="btn btn-primary btn-sm mb-2 mx-2">
                                     Show Vehicles
                                 </a>
                             }

@@ -26,7 +26,7 @@ namespace Licenta_v1.Controllers
 			_roleManager = roleManager;
 		}
 
-		[Authorize(Roles = "Admin")]
+		[NonAction]
 		private async Task<(List<Vehicle> Vehicles, int Count)> GetFilteredVehicles(
 			string searchString,
 			int? regionId,
@@ -52,31 +52,16 @@ namespace Licenta_v1.Controllers
 			}
 
 			// Sortarea propriu-zisa dupa brand sau implicit dupa numarul de inmatriculare
-			switch (sortOrder)
+			vehicles = sortOrder switch
 			{
-				case "brand":
-					vehicles = vehicles.OrderBy(v => v.Brand);
-					break;
-				case "brand_desc":
-					vehicles = vehicles.OrderByDescending(v => v.Brand);
-					break;
-				case "registration":
-					vehicles = vehicles.OrderBy(v => v.RegistrationNumber);
-					break;
-				case "registration_desc":
-					vehicles = vehicles.OrderByDescending(v => v.RegistrationNumber);
-					break;
-				case "model":
-					vehicles = vehicles.OrderBy(v => v.Model);
-					break;
-				case "model_desc":
-					vehicles = vehicles.OrderByDescending(v => v.Model);
-					break;
-				default:
-					vehicles = vehicles.OrderBy(v => v.RegistrationNumber);
-					break;
-			}
-
+				"brand" => vehicles.OrderBy(v => v.Brand),
+				"brand_desc" => vehicles.OrderByDescending(v => v.Brand),
+				"registration" => vehicles.OrderBy(v => v.RegistrationNumber),
+				"registration_desc" => vehicles.OrderByDescending(v => v.RegistrationNumber),
+				"model" => vehicles.OrderBy(v => v.Model),
+				"model_desc" => vehicles.OrderByDescending(v => v.Model),
+				_ => vehicles.OrderBy(v => v.RegistrationNumber),
+			};
 			var count = await vehicles.CountAsync();
 			var pagedVehicles = await vehicles.Skip((pageNumber - 1) * pageSize).Take(pageSize).ToListAsync();
 

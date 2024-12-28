@@ -81,25 +81,14 @@ namespace Licenta_v1.Controllers
 			}
 
 			// Sortarea propriu-zisa dupa nume sau data angajarii
-			switch (sortOrder)
+			users = sortOrder switch
 			{
-				case "name_desc":
-					users = users.OrderByDescending(u => u.LastName).ThenByDescending(u => u.FirstName);
-					break;
-				case "name":
-					users = users.OrderBy(u => u.LastName).ThenBy(u => u.FirstName);
-					break;
-				case "date_desc":
-					users = users.OrderByDescending(u => u.DateHired);
-					break;
-				case "date":
-					users = users.OrderBy(u => u.DateHired);
-					break;
-				default:
-					users = users.OrderBy(u => u.UserName);
-					break;
-			}
-
+				"name_desc" => users.OrderByDescending(u => u.LastName).ThenByDescending(u => u.FirstName),
+				"name" => users.OrderBy(u => u.LastName).ThenBy(u => u.FirstName),
+				"date_desc" => users.OrderByDescending(u => u.DateHired),
+				"date" => users.OrderBy(u => u.DateHired),
+				_ => users.OrderBy(u => u.UserName),
+			};
 			var count = await users.CountAsync();
 			var pagedUsers = await users.Skip((pageNumber - 1) * pageSize).Take(pageSize).ToListAsync();
 
@@ -587,7 +576,7 @@ namespace Licenta_v1.Controllers
 			{
 				Value = r.Id,
 				Text = r.Name,
-				Selected = r.Id == currentRoleId // Preselect the current role
+				Selected = r.Id == currentRoleId // Preselectez rolul curent
 			}).ToList();
 
 			// Iau toate judetele pentru dropdown
@@ -626,6 +615,14 @@ namespace Licenta_v1.Controllers
 			}
 
 			user.AllRoles = GetAllRoles();
+
+			// Verific cu functia IsValidAddressInRomania daca adresa e valida
+			if (!IsValidAddressInRomania(newData.HomeAddress))
+			{
+				TempData["Error"] = "Invalid address. Please select an address from Romania.";
+				PopulateEditViewData(user, newRole, newRegionId);
+				return View(user);
+			}
 
 			if (ModelState.IsValid)
 			{
@@ -711,6 +708,15 @@ namespace Licenta_v1.Controllers
 			{
 				TempData["Error"] = "Validation error. Please check the form.";
 				return View(newData);
+			}
+
+			// Verific cu functia IsValidAddressInRomania daca adresa e valida
+			if (!IsValidAddressInRomania(newData.HomeAddress))
+			{
+				TempData["Error"] = "Invalid address. Please select an address from Romania.";
+				ViewBag.Latitude = user.Latitude;
+				ViewBag.Longitude = user.Longitude;
+				return View(user);
 			}
 
 			// Updatez doar campurile care sunt editabile
@@ -912,6 +918,41 @@ namespace Licenta_v1.Controllers
 			}
 
 			return true;
+		}
+
+		[NonAction]
+		private void PopulateRegions(int? selectedRegionId = null)
+		{
+			ViewBag.Regions = db.Regions.Select(r => new SelectListItem
+			{
+				Value = r.Id.ToString(),
+				Text = r.County,
+				Selected = r.Id == selectedRegionId
+			}).ToList();
+		}
+
+		[NonAction]
+		private void PopulateEditViewData(ApplicationUser user, string selectedRole, int? selectedRegionId)
+		{
+			// Repopulate roles
+			ViewBag.AllRoles = db.Roles.Select(r => new SelectListItem
+			{
+				Value = r.Id,
+				Text = r.Name,
+				Selected = r.Id == selectedRole
+			}).ToList();
+
+			// Repopulate regions
+			ViewBag.Regions = db.Regions.Select(r => new SelectListItem
+			{
+				Value = r.Id.ToString(),
+				Text = r.County,
+				Selected = r.Id == selectedRegionId
+			}).ToList();
+
+			// Repopulate coordinates
+			ViewBag.Latitude = user.Latitude;
+			ViewBag.Longitude = user.Longitude;
 		}
 	}
 }

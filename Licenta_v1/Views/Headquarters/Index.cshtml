@@ -1,0 +1,98 @@
+﻿@*
+    For more information on enabling MVC for empty projects, visit https://go.microsoft.com/fwlink/?LinkID=397860
+*@
+@{
+	ViewBag.Title = "Headquarters";
+}
+
+@if (TempData["Success"] != null)
+{
+    <div class="alert alert-success">@TempData["Success"]</div>
+}
+@if (TempData["Error"] != null)
+{
+	<div class="alert alert-danger">@TempData["Error"]</div>
+}
+
+<h2 class="text-center mt-5">@ViewBag.Title</h2>
+
+<!-- Bara de search -->
+<div class="card shadow-sm p-3 mb-4">
+    <form asp-action="Index" method="get">
+        <div class="row g-2">
+            <div class="col-12 col-md-10">
+                <div class="input-group">
+                    <input type="text" name="searchString" class="form-control" placeholder="Search Headquarters"
+                           value="@ViewBag.SearchString" />
+                    <button type="submit" class="btn btn-primary">Search</button>
+                </div>
+            </div>
+
+            <div class="col-12 col-md-2">
+                <a class="btn btn-primary w-100" asp-area="" asp-controller="Headquarters" asp-action="Create">
+                    Add Headquarter
+                </a>
+            </div>
+        </div>
+    </form>
+</div>
+
+<!-- Tabel plus optiune de a-l sorta -->
+<table class="table table-bordered table-striped">
+    <thead>
+        <tr>
+            <th>
+                <a asp-action="Index" asp-route-sortOrder="@ViewBag.NameSortParam" asp-route-searchString="@ViewBag.SearchString">
+                    Name
+                    @if (ViewBag.CurrentSort == "name")
+                    {
+                        <i class="bi bi-sort-alpha-down"></i>
+                    }
+                    else if (ViewBag.CurrentSort == "name_desc")
+                    {
+                        <i class="bi bi-sort-alpha-up"></i>
+                    }
+                </a>
+            </th>
+            <th>
+                <a asp-action="Index" asp-route-sortOrder="@ViewBag.AddressSortParam" asp-route-searchString="@ViewBag.SearchString">
+                    Address
+                    @if (ViewBag.CurrentSort == "address")
+                    {
+                        <i class="bi bi-sort-alpha-down"></i>
+                    }
+                    else if (ViewBag.CurrentSort == "address_desc")
+                    {
+                        <i class="bi bi-sort-alpha-up"></i>
+                    }
+                </a>
+            </th>
+            <th>Region</th>
+            <th>
+                Actions
+            </th>
+        </tr>
+    </thead>
+    <tbody>
+        @if (Model.Count == 0)
+        {
+            <tr>
+                <td colspan="3" class="text-center">No headquarters found.</td>
+            </tr>
+        }
+        else
+        {
+            @foreach (var hq in Model)
+            {
+                <tr>
+                    <td>@hq.Name</td>
+                    <td>@hq.Address</td>
+                    <td>@hq.Region?.County</td>
+                    <td>
+                        <a asp-action="Show" asp-route-id="@hq.Id" class="btn btn-primary btn-sm mb-2 mx-2">View</a>
+                    </td>
+                </tr>
+            }
+        }
+    </tbody>
+</table>

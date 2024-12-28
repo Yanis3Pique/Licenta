@@ -9,13 +9,17 @@ namespace Licenta_v1.Models
 		[Required(ErrorMessage = "The headquarter name is mandatory.")]
 		public string Name { get; set; }
 		[Required(ErrorMessage = "The headquarter address is mandatory.")]
+		[MaxLength(200, ErrorMessage = "The headquarter address must be maximum 200 characters in length.")]
+		[MinLength(5, ErrorMessage = "The headquarter address must be minimum 5 characters in length.")]
 		public string Address { get; set; }
 		[Required(ErrorMessage = "The headquarter latitude is mandatory.")]
-		public double Latitude { get; set; }
+		[Range(-90, 90, ErrorMessage = "Invalid latitude.")]
+		public double? Latitude { get; set; }
 		[Required(ErrorMessage = "The headquarter longitude is mandatory.")]
-		public double Longitude { get; set; }
+		[Range(-180, 180, ErrorMessage = "Invalid longitude.")]
+		public double? Longitude { get; set; }
 		[Required(ErrorMessage = "The headquarter region is mandatory.")]
-		public int RegionId { get; set; }
+		public int? RegionId { get; set; }
 
 		public virtual Region? Region { get; set; }
 	}

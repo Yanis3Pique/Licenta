@@ -173,6 +173,8 @@ namespace Licenta_v1.Controllers
 				return NotFound();
 			}
 			PopulateRegions(headquarter.RegionId);
+			ViewBag.Latitude = headquarter.Latitude;
+			ViewBag.Longitude = headquarter.Longitude;
 			return View(headquarter);
 		}
 

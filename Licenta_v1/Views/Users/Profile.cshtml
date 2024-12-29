@@ -13,7 +13,7 @@
     <div class="alert alert-danger">@TempData["Error"]</div>
 }
 
-<div class="container mt-5">
+<div class="container">
     <h2 class="text-center">@ViewBag.Title</h2>
     <br />
 
@@ -37,46 +37,46 @@
             <table class="table table-bordered table-striped align-self-stretch w-100">
                 <tbody>
                     <tr>
-                        <th>User Name</th>
-                        <td>@Html.DisplayFor(model => model.UserName)</td>
+                        <th id="light-blue-elements-background-id">User Name</th>
+                        <td id="light-blue-elements-background-id">@Html.DisplayFor(model => model.UserName)</td>
                     </tr>
                     <tr>
-                        <th>First Name</th>
-                        <td>@Html.DisplayFor(model => model.FirstName)</td>
+                        <th id="light-blue-elements-background-id">First Name</th>
+                        <td id="light-blue-elements-background-id">@Html.DisplayFor(model => model.FirstName)</td>
                     </tr>
                     <tr>
-                        <th>Last Name</th>
-                        <td>@Html.DisplayFor(model => model.LastName)</td>
+                        <th id="light-blue-elements-background-id">Last Name</th>
+                        <td id="light-blue-elements-background-id">@Html.DisplayFor(model => model.LastName)</td>
                     </tr>
                     <tr>
-                        <th>Home Address</th>
-                        <td>@Html.DisplayFor(model => model.HomeAddress)</td>
+                        <th id="light-blue-elements-background-id">Home Address</th>
+                        <td id="light-blue-elements-background-id">@Html.DisplayFor(model => model.HomeAddress)</td>
                     </tr>
                     <tr>
-                        <th>Email</th>
-                        <td>@Html.DisplayFor(model => model.Email)</td>
+                        <th id="light-blue-elements-background-id">Email</th>
+                        <td id="light-blue-elements-background-id">@Html.DisplayFor(model => model.Email)</td>
                     </tr>
                     <tr>
-                        <th>Phone Number</th>
-                        <td>@Html.DisplayFor(model => model.PhoneNumber)</td>
+                        <th id="light-blue-elements-background-id">Phone Number</th>
+                        <td id="light-blue-elements-background-id">@Html.DisplayFor(model => model.PhoneNumber)</td>
                     </tr>
                     <tr>
-                        <th>Region</th>
-                        <td>@(Model.Region?.County ?? "N/A")</td>
+                        <th id="light-blue-elements-background-id">Region</th>
+                        <td id="light-blue-elements-background-id">@(Model.Region?.County ?? "N/A")</td>
                     </tr>
                     <tr>
-                        <th>Date Hired</th>
-                        <td>@(Model.DateHired.ToString("dd/MM/yyyy") ?? "N/A")</td>
+                        <th id="light-blue-elements-background-id">Date Hired</th>
+                        <td id="light-blue-elements-background-id">@(Model.DateHired.ToString("dd/MM/yyyy") ?? "N/A")</td>
                     </tr>
                     <tr>
-                        <th>Role</th>
-                        <td>@ViewBag.UserRole</td>
+                        <th id="light-blue-elements-background-id">Role</th>
+                        <td id="light-blue-elements-background-id">@ViewBag.UserRole</td>
                     </tr>
                     @if (ViewBag.UserRole == "Sofer")
                     {
                         <tr>
-                            <th>Average Rating</th>
-                            <td>
+                            <th id="light-blue-elements-background-id">Average Rating</th>
+                            <td id="light-blue-elements-background-id">
                                 <div class="rating">
                                     @for (int i = 0; i < (int)ViewBag.FullStars; i++)
                                     {
@@ -99,8 +99,8 @@
                     @if (ViewBag.UserRole == "Dispecer" || ViewBag.UserRole == "Sofer")
                     {
                         <tr>
-                            <th>Notice of Termination</th>
-                            <td>@(Model.DismissalNoticeDate.HasValue ? Model.DismissalNoticeDate.Value.ToString("dd/MM/yyyy") : "N/A")</td>
+                            <th id="light-blue-elements-background-id">Notice of Termination</th>
+                            <td id="light-blue-elements-background-id">@(Model.DismissalNoticeDate.HasValue ? Model.DismissalNoticeDate.Value.ToString("dd/MM/yyyy") : "N/A")</td>
                         </tr>
                     }
                 </tbody>

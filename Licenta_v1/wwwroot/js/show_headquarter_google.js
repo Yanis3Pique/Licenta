@@ -1,34 +1,29 @@
 ﻿document.addEventListener("DOMContentLoaded", function () {
-    const latitude = parseFloat("@Model.Latitude");
-    const longitude = parseFloat("@Model.Longitude");
+    // Iau harta si coordonatele din View-ul Show
+    const mapElement = document.getElementById("map");
+    const latitude = parseFloat(mapElement.getAttribute("data-lat"));
+    const longitude = parseFloat(mapElement.getAttribute("data-lng"));
+
+    // Verific daca-s nr coordonatele
+    if (isNaN(latitude) || isNaN(longitude)) {
+        console.error("Invalid coordinates.");
+        alert("Failed to load the map: Invalid coordinates.");
+        return;
+    }
+
     const location = { lat: latitude, lng: longitude };
 
-    // Creez harta la locatia specificata
-    const map = new google.maps.Map(document.getElementById("map"), {
+    // Initalizez harta cu maps
+    const map = new google.maps.Map(mapElement, {
         center: location,
         zoom: 16,
+        mapTypeId: "roadmap", // Joaca-te cu roadmap, satellite, hybrid, terrain
     });
 
-    // Pun un marker pe locatie
+    // Punem si pointer-ul pe harta
     new google.maps.Marker({
         position: location,
         map: map,
-        title: "@Model.Name",
+        title: "Location",
     });
-
-    // Creez un panorama la locatie specificata
-    const streetViewPanorama = new google.maps.StreetViewPanorama(
-        document.getElementById("map"),
-        {
-            position: location,
-            pov: {
-                heading: 34,
-                pitch: 10,
-            },
-            zoom: 1,
-        }
-    );
-
-    // Pun panorama pe harta
-    map.setStreetView(streetViewPanorama);
 });

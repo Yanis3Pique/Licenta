@@ -13,7 +13,7 @@
 <h2 class="text-center mt-5">@Model.Name</h2>
 <br />
 
-<div class="card">
+<div class="card" id="light-blue-elements-background-id">
     <div class="card-body">
         <p class="card-text"><strong>Address:</strong> @Model.Address</p>
         <p class="card-text"><strong>Region:</strong> @Model.Region?.County</p>
@@ -22,7 +22,11 @@
     </div>
 </div>
 
-<div id="map" style="height: 500px; width: 100%; margin-top: 20px;"></div>
+<div id="map"
+     style="height: 650px; width: 100%; margin-top: 20px;"
+     data-lat=@Model.Latitude
+     data-lng=@Model.Longitude>
+</div>
 <br />
 
 <div>

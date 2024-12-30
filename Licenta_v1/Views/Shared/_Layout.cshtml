@@ -66,6 +66,29 @@
                                 </a>
                             </li>
                         }
+						@if (User.IsInRole("Sofer"))
+						{
+							var driverId = UserManager.GetUserId(User);
+							<li class="nav-item">
+								<a class="nav-link text-light" asp-area="" asp-controller="Deliveries" asp-action="ShowDeliveriesOfDriver" asp-route-id="@driverId">
+									My Deliveries
+								</a>
+							</li>
+						}
+                        @if (User.IsInRole("Client"))
+                        {
+							var clientId = UserManager.GetUserId(User);
+                            <li class="nav-item">
+								<a class="nav-link text-light" asp-area="" asp-controller="Orders" asp-action="Create" asp-route-id="@clientId">
+									Place Order
+								</a>
+                            </li>
+							<li class="nav-item">
+								<a class="nav-link text-light" asp-area="" asp-controller="Orders" asp-action="ShowOrdersOfClient" asp-route-id="@clientId">
+									My Orders
+								</a>
+							</li>
+                        }
                     </ul>
                     <div class="ms-auto">
                         <partial name="_LoginPartial" />
@@ -118,6 +141,29 @@
                     <li class="nav-item">
                         <a class="nav-link text-dark" asp-area="" asp-controller="Users" asp-action="ShowVehiclesOfDispatcher" asp-route-id="@dispatcherId">
                             My Vehicles
+                        </a>
+                    </li>
+                }
+                @if (User.IsInRole("Sofer"))
+                {
+                    var driverId = UserManager.GetUserId(User);
+                    <li class="nav-item">
+                        <a class="nav-link text-light" asp-area="" asp-controller="Deliveries" asp-action="ShowDeliveriesOfDriver" asp-route-id="@driverId">
+                            My Deliveries
+                        </a>
+                    </li>
+                }
+                @if (User.IsInRole("Client"))
+                {
+                    var clientId = UserManager.GetUserId(User);
+                    <li class="nav-item">
+                        <a class="nav-link text-light" asp-area="" asp-controller="Orders" asp-action="Create" asp-route-id="@clientId">
+                            Place Order
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link text-light" asp-area="" asp-controller="Orders" asp-action="ShowOrdersOfClient" asp-route-id="@clientId">
+                            My Orders
                         </a>
                     </li>
                 }

@@ -15,4 +15,17 @@
 		Electric,
 		Hybrid
 	}
+
+	public enum OrderPriority
+	{
+		Normal,
+		High
+	}
+
+	public enum OrderStatus
+	{
+		Placed,
+		InDelivery,
+		Delivered
+	}
 }

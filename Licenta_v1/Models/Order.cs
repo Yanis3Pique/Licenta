@@ -7,7 +7,7 @@ namespace Licenta_v1.Models
 		[Key]
 		public int Id { get; set; }
 		[Required(ErrorMessage = "The client id is mandatory.")]
-		public string ClientId { get; set; }
+		public string? ClientId { get; set; }
 		public int? DeliveryId { get; set; }
 		[Required(ErrorMessage = "The priority is mandatory.")]
 		public OrderPriority? Priority { get; set; } // (Normal, High)
@@ -35,5 +35,4 @@ namespace Licenta_v1.Models
 		public virtual Delivery? Delivery { get; set; }
 		public virtual Feedback? Feedback { get; set; }
 	}
-
 }

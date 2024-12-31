@@ -72,7 +72,7 @@
                 <br />
 
 				<div class="form-group">
-					@Html.LabelFor(m => m.MaxVolumeCapacity, "Max Volume Capacity (m^3)")
+                    @Html.LabelFor(m => m.MaxVolumeCapacity, "Max Volume Capacity (m³)")
 					@Html.TextBoxFor(m => m.MaxVolumeCapacity, new { @class = "form-control", type = "number", step = "0.01" })
 					@Html.ValidationMessageFor(m => m.MaxVolumeCapacity, "", new { @class = "text-danger" })
 				</div>

@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Rendering;
 using Microsoft.EntityFrameworkCore;
+using SendGrid.Helpers.Mail;
 using System.Security.Claims;
 
 namespace Licenta_v1.Controllers
@@ -122,80 +123,60 @@ namespace Licenta_v1.Controllers
 			return View(pagedOrders);
 		}
 
-		// Get - Orders/Create
-		[Authorize(Roles = "Admin,Client")]
+		// Get - Order/Create
 		public IActionResult Create()
 		{
-			ViewBag.Regions = new SelectList(db.Regions, "Id", "County");
+			var regions = db.Regions.ToList();
 
-			ViewBag.Priorities = Enum.GetValues(typeof(OrderPriority))
-								   .Cast<OrderPriority>()
-								   .Select(s => new SelectListItem
-								   {
-									   Text = s.ToString(),
-									   Value = ((int)s).ToString()
-								   });
+			ViewBag.RegionId = new SelectList(regions, "Id", "County");
 
 			return View();
 		}
 
-		// Post - Orders/Create
+		// Post - Order/Create
 		[HttpPost]
 		[ValidateAntiForgeryToken]
-		[Authorize(Roles = "Admin,Client")]
 		public async Task<IActionResult> Create(Order order)
 		{
-			// Iau id-ul utilizatorului curent si il setez ca ClientId al comenzii
-			order.ClientId = _userManager.GetUserId(User);
+			// Validez clientul care plaseaza comanda
+			var client = db.ApplicationUsers.Find(_userManager.GetUserId(User));
+			if (client == null) return NotFound();
 
-			if (ModelState.IsValid)
+			// Asignez comenzii clientul care a plasat-o si data plasarii
+			order.ClientId = client.Id;
+			order.PlacedDate = DateTime.Now;
+
+			// Ma aiugur ca Modelul e valid(! AICI ZICE MEREU CA MODELSTATE.ISVALIS = FALSE pe debugger !)
+			if (!ModelState.IsValid)
 			{
-				// Verific daca adresa este valida si din Romania
-				if (!IsValidAddressInRomania(order.Address))
+				var errors = ModelState.Values.SelectMany(v => v.Errors).Select(e => e.ErrorMessage).ToList();
+				foreach (var error in errors)
 				{
-					TempData["Error"] = "Invalid address. Please select an address from Romania.";
-					ViewBag.Regions = new SelectList(db.Regions, "Id", "County");
-					ViewBag.Priorities = Enum.GetValues(typeof(OrderPriority))
-											 .Cast<OrderPriority>()
-											 .Select(s => new SelectListItem
-											 {
-												 Text = s.ToString(),
-												 Value = ((int)s).ToString()
-											 });
-					return View(order);
+					ModelState.AddModelError("", error);
 				}
 
-				// Iau regiunea din baza de date care se potriveste cu judetul comenzii
-				var region = await db.Regions.FirstOrDefaultAsync(r => r.County == order.Region.County);
-				if (region == null)
-				{
-					TempData["Error"] = "The specified region does not exist.";
-					ViewBag.Regions = new SelectList(db.Regions, "Id", "County");
-					ViewBag.Priorities = Enum.GetValues(typeof(OrderPriority))
-											 .Cast<OrderPriority>()
-											 .Select(s => new SelectListItem { Text = s.ToString(), Value = ((int)s).ToString() }); return View(order);
-				}
-				// Setez regiunea comenzii
-				order.RegionId = region.Id;
+				// Repoopulez ViewBag-urile
+				ViewBag.RegionId = new SelectList(db.Regions.ToList(), "Id", "County", order.RegionId);
+				ViewBag.ClientId = client.Id;
+				return View(order);
+			}
 
+			try
+			{
 				db.Orders.Add(order);
 				await db.SaveChangesAsync();
 
-				TempData["Success"] = "Order created successfully.";
 				return RedirectToAction("Index");
 			}
+			catch (Exception ex)
+			{
+				ModelState.AddModelError("", "An error occurred while saving the order. Please try again.");
 
-			// Daca modelul nu e valid, afisez din nou formularul cu erorile
-			ViewBag.Regions = new SelectList(db.Regions, "Id", "County");
-			ViewBag.Priorities = Enum.GetValues(typeof(OrderPriority))
-									 .Cast<OrderPriority>()
-									 .Select(s => new SelectListItem
-									 {
-										 Text = s.ToString(),
-										 Value = ((int)s).ToString()
-									 });
-			TempData["Error"] = "Failed to create the order. Please correct the errors and try again.";
-			return View(order);
+				// Repopulez ViewBag-urile
+				ViewBag.RegionId = new SelectList(db.Regions.ToList(), "Id", "County", order.RegionId);
+				ViewBag.ClientId = client.Id;
+				return View(order);
+			}
 		}
 
 		// Get - Orders/Show/id
@@ -229,14 +210,16 @@ namespace Licenta_v1.Controllers
 		[Authorize(Roles = "Admin,Client")]
 		public async Task<IActionResult> ShowOrdersOfClient(string id)
 		{
-			if (string.IsNullOrEmpty(id))
-			{
-				return NotFound();
-			}
+			if (id == null) return NotFound();
 
 			// Ma asigur ca doar clientul care a plasat comanda poate sa vada comanda lui
-			var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
-			if (id != userId)
+			var user = await db.ApplicationUsers
+							   .Include(u => u.Region)
+							   .FirstOrDefaultAsync(u => u.Id == id);
+
+			if (user == null) return NotFound();
+
+			if (id != user.Id)
 			{
 				return Unauthorized();
 			}

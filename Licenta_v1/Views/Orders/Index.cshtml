@@ -72,7 +72,7 @@
                 <div class="card-body">
                     <h5 class="card-title">Order ID: @order.Id</h5>
                     <p class="card-text">
-                        <strong>Client:</strong> @order.Client?.UserName ?? "N/A"<br />
+                        <strong>Client:</strong> @order.Client?.UserName<br />
                         <strong>Address:</strong> @order.Address<br />
                         <strong>Priority:</strong> @order.Priority.ToString()<br />
                         <strong>Weight:</strong> @order.Weight kg<br />
@@ -85,11 +85,6 @@
                 <div class="card-footer">
                     <div class="d-flex justify-content-center">
                         <a asp-action="Show" asp-route-id="@order.Id" class="btn btn-primary btn-sm mb-2 mx-2">View</a>
-                        @if (User.IsInRole("Admin"))
-                        {
-                            <a asp-action="Edit" asp-route-id="@order.Id" class="btn btn-secondary btn-sm mb-2 mx-2">Edit</a>
-                            <a asp-action="Delete" asp-route-id="@order.Id" class="btn btn-danger btn-sm mb-2 mx-2">Delete</a>
-                        }
                     </div>
                 </div>
             </div>

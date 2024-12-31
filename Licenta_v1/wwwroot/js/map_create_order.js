@@ -1,86 +1,81 @@
 ﻿document.addEventListener("DOMContentLoaded", function () {
-    const defaultLat = 46.0;
-    const defaultLng = 25.0;
-
-    // Iau coordonatele si regiunea in variabile
+    // Iau elementele HTML necesare dupa id
     var latitudeInput = document.getElementById('latitude');
     var longitudeInput = document.getElementById('longitude');
+    var addressInput = document.getElementById('address');
     var regionSelect = document.getElementById('region');
-    var hiddenRegionInput = document.getElementById('hiddenRegion'); // Input hidden pentru regiune
 
-    var latitude = parseFloat(latitudeInput.value) || defaultLat;
-    var longitude = parseFloat(longitudeInput.value) || defaultLng;
+    // Daca nu am latitudine si longitudine, setez niste valori default cam prin mijlocul Romaniei
+    var latitude = parseFloat(latitudeInput.value) || 46.0;
+    var longitude = parseFloat(longitudeInput.value) || 25.0;
 
-    // Initializez harta cu un pointer default in Romania
+    // Initializez harta
     var map = L.map('map').setView([latitude, longitude], 13);
 
-    // Adaug un layer OpenStreetMap
+    // Adaug un layer de OpenStreetMap
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         maxZoom: 19,
         attribution: '© OpenStreetMap contributors'
     }).addTo(map);
 
-    // Pointer pt o adresa default
+    // Adaug un pointer pe harta ca sa vad locatia
     var marker = L.marker([latitude, longitude], { draggable: true }).addTo(map);
 
-    // Actualizez regiunea in input-ul ascuns
-    function updateHiddenRegion() {
-        hiddenRegionInput.value = regionSelect.value;
-    }
-
-    // Setez initial regiunea ascunsa
-    updateHiddenRegion();
-
-    // Updatez coordonatele in input-uri și regiunea
+    // Updatez inputurile cu latitudinea si longitudinea
     marker.on('dragend', function (e) {
-        const latLng = marker.getLatLng();
+        var latLng = marker.getLatLng();
         latitudeInput.value = latLng.lat;
         longitudeInput.value = latLng.lng;
 
-        // Fac reverse geocoding pentru a obtine adresa in text
+        // Foloesc API-ul de la OpenStreetMap pentru a gasi adresa
         fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${latLng.lat}&lon=${latLng.lng}`)
             .then(response => response.json())
             .then(data => {
                 if (data.address) {
-                    document.getElementById('address').value = data.display_name || '';
+                    // Updatez si adresa in input
+                    addressInput.value = data.display_name || '';
 
+                    // Incerc sa iau judetul din adresa
                     let county = data.address.county || '';
                     let city = data.address.city || data.address.town || data.address.municipality || '';
                     let sector = '';
+                    let addressParts = data.display_name.split(',');
 
-                    if (city.toLowerCase() === "bucharest") {
-                        let parts = data.display_name.split(',');
-                        for (let i = 0; i < parts.length; i++) {
-                            if (parts[i].toLowerCase().includes("sector")) {
-                                sector = parts[i].trim();
-                                county = `București ${sector}`;
-                                break;
-                            }
-                        }
-                    }
-
-                    console.log("Regiune valida:", county);
-
-                    // Setez judetul in functie de adresa
-                    let found = false;
-                    for (let i = 0; i < regionSelect.options.length; i++) {
-                        console.log(regionSelect.options[i].text.trim(), county.trim());
-                        if (regionSelect.options[i].text.trim() === county.trim()) {
-                            regionSelect.value = regionSelect.options[i].value;
-                            found = true;
-                            updateHiddenRegion(); // Actualizez regiunea ascunsa
+                    // Daca orașul este 'București', iau sectorul
+                    for (let i = 0; i < addressParts.length; i++) {
+                        if (addressParts[i].toLowerCase() === ' bucharest' && i > 0) {
+                            sector = addressParts[i - 1].trim();
                             break;
                         }
                     }
 
-                    if (!found) {
-                        console.log("Could not match the address with a known region.");
-                        alert("Could not match the address with a known region.");
+                    // Daca nu am judet, dar am oras 'Bucuresti' si sector, setez judetul ca 'Bucuresti' + sector
+                    if (!county && city.toLowerCase() === "bucharest" && sector.toLowerCase().startsWith("sector")) {
+                        county = `București ${sector}`;
                     }
+
+                    // Daca nu am nici acum judet, EROARE
+                    if (!county) {
+                        alert("Could not find a recognized region for this location.");
+                        return;
+                    }
+
+                    // Setez judetul in dropdown
+                    for (let i = 0; i < regionSelect.options.length; i++) {
+                        if (regionSelect.options[i].text.trim() === county.trim()) {
+                            regionSelect.value = regionSelect.options[i].value;
+                            break;
+                        }
+                    }
+
+                    console.log(`County: ${county}`);
+                    console.log(`Address: ${addressInput.value}`);
+                    console.log(`Latitude: ${latitudeInput.value}`);
+                    console.log(`Longitude: ${longitudeInput.value}`);
                 }
             })
             .catch(error => {
-                console.error("Error fetching address details:", error);
+                console.error("Error:", error);
                 alert("Could not fetch address details. Please try again.");
             });
     });

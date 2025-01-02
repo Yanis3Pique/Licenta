@@ -27,8 +27,6 @@
 <h2 class="text-center">@ViewBag.Title</h2>
 <br />
 
-@Html.ValidationSummary(true, "", new { @class = "text-danger" })
-
 <form asp-action="Create" method="post">
     @Html.AntiForgeryToken()
 
@@ -41,46 +39,54 @@
         </select>
         <span asp-validation-for="Priority" class="text-danger"></span>
     </div>
+    <br />
 
     <div class="form-group">
         <label asp-for="Weight"></label>
         <input asp-for="Weight" class="form-control" />
         <span asp-validation-for="Weight" class="text-danger"></span>
     </div>
+    <br />
 
     <div class="form-group">
         <label asp-for="Volume"></label>
         <input asp-for="Volume" class="form-control" />
         <span asp-validation-for="Volume" class="text-danger"></span>
     </div>
+    <br />
 
     <div class="form-group">
         <label asp-for="Address"></label>
         <input asp-for="Address" class="form-control" id="address" />
         <span asp-validation-for="Address" class="text-danger"></span>
     </div>
+    <br />
 
     <div class="form-group">
         <label asp-for="Latitude"></label>
         <input asp-for="Latitude" class="form-control" id="latitude" />
         <span asp-validation-for="Latitude" class="text-danger"></span>
     </div>
+    <br />
 
     <div class="form-group">
         <label asp-for="Longitude"></label>
         <input asp-for="Longitude" class="form-control" id="longitude" />
         <span asp-validation-for="Longitude" class="text-danger"></span>
     </div>
+    <br />
 
     <div class="form-group">
         <label asp-for="Region"></label>
-        <select asp-for="RegionId" class="form-control" id="region" asp-items="ViewBag.RegionId">
+        <select asp-for="RegionId" class="form-control" id="region" asp-items="ViewBag.RegionId" disabled>
             <option value="">Select Region</option>
         </select>
         <span asp-validation-for="RegionId" class="text-danger"></span>
     </div>
+    <input type="hidden" id="region-hidden" name="RegionId" value="" />
 
     <div id="map" style="height: 400px; margin-bottom: 20px;"></div>
+    <br />
 
     <button type="submit" class="btn btn-primary">Create</button>
 </form>

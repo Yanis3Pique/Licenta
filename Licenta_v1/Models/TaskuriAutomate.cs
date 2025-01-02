@@ -29,8 +29,8 @@ public class TaskuriAutomate : BackgroundService
 				await CheckAndDeleteUsers(dbContext);
 			}
 
-			// Stau 10 minute si execut din nou metoda
-			await Task.Delay(TimeSpan.FromMinutes(10), stoppingToken);
+			// Stau 60 de minute si execut din nou metoda
+			await Task.Delay(TimeSpan.FromMinutes(60), stoppingToken);
 		}
 	}
 

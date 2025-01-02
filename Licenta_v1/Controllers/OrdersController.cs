@@ -4,8 +4,10 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Rendering;
+using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using SendGrid.Helpers.Mail;
+using System.Drawing;
 using System.Security.Claims;
 
 namespace Licenta_v1.Controllers
@@ -143,10 +145,10 @@ namespace Licenta_v1.Controllers
 			if (client == null) return NotFound();
 
 			// Asignez comenzii clientul care a plasat-o si data plasarii
+			ModelState.Remove("ClientId");
 			order.ClientId = client.Id;
-			order.PlacedDate = DateTime.Now;
 
-			// Ma aiugur ca Modelul e valid(! AICI ZICE MEREU CA MODELSTATE.ISVALIS = FALSE pe debugger !)
+			// Ma asigur ca Modelul e valid(!AICI ZICE MEREU CA MODELSTATE.ISVALIS = FALSE pe debugger!) --> Am rezolvat?, scotand din ModelState Id si ClientId, pentru ca nu le primeste la POST
 			if (!ModelState.IsValid)
 			{
 				var errors = ModelState.Values.SelectMany(v => v.Errors).Select(e => e.ErrorMessage).ToList();
@@ -208,14 +210,17 @@ namespace Licenta_v1.Controllers
 
 		// Get - Orders/ShowOrdersOfClient/id
 		[Authorize(Roles = "Admin,Client")]
-		public async Task<IActionResult> ShowOrdersOfClient(string id)
+		public async Task<IActionResult> ShowOrdersOfClient(
+			string id, 
+			string searchString, 
+			int? regionId, 
+			string sortOrder, 
+			int pageNumber = 1)
 		{
 			if (id == null) return NotFound();
 
 			// Ma asigur ca doar clientul care a plasat comanda poate sa vada comanda lui
-			var user = await db.ApplicationUsers
-							   .Include(u => u.Region)
-							   .FirstOrDefaultAsync(u => u.Id == id);
+			var user = await db.ApplicationUsers.FirstOrDefaultAsync(u => u.Id == id);
 
 			if (user == null) return NotFound();
 
@@ -225,7 +230,33 @@ namespace Licenta_v1.Controllers
 			}
 			var orders = await db.Orders.Include(o => o.Client).Where(o => o.ClientId == id).ToListAsync();
 
-			return View(orders);
+			int pageSize = 6;
+
+			ViewBag.CurrentSort = sortOrder;
+			ViewBag.ClientSortParam = sortOrder == "client" ? "client_desc" : "client";
+			ViewBag.PrioritySortParam = sortOrder == "priority" ? "priority_desc" : "priority";
+			ViewBag.WeightSortParam = sortOrder == "weight" ? "weight_desc" : "weight";
+			ViewBag.VolumeSortParam = sortOrder == "volume" ? "volume_desc" : "volume";
+			ViewBag.AddressSortParam = sortOrder == "address" ? "address_desc" : "address";
+			ViewBag.StatusSortParam = sortOrder == "status" ? "status_desc" : "status";
+			ViewBag.PlacedDateSortParam = sortOrder == "placedDate" ? "placedDate_desc" : "placedDate";
+
+			ViewBag.SearchString = searchString;
+			ViewBag.RegionId = regionId;
+			ViewBag.Regions = new SelectList(db.Regions, "Id", "County");
+
+			// Iau id-ul utilizatorului curent si rolul acestuia
+			var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+			var userRoles = await _userManager.GetRolesAsync(await _userManager.FindByIdAsync(userId));
+			var userRole = userRoles.Contains("Admin") ? "Admin" : "Client";
+
+			// Iau comenzile filtrate si numarul total de comenzi pt paginare
+			var (pagedOrders, count) = await GetFilteredOrders(searchString, regionId, sortOrder, pageNumber, pageSize, userRole, userId);
+
+			ViewBag.PageNumber = pageNumber;
+			ViewBag.TotalPages = (int)Math.Ceiling(count / (double)pageSize);
+
+			return View(pagedOrders);
 		}
 
 		[NonAction]

@@ -64,6 +64,7 @@
                     for (let i = 0; i < regionSelect.options.length; i++) {
                         if (regionSelect.options[i].text.trim() === county.trim()) {
                             regionSelect.value = regionSelect.options[i].value;
+                            document.getElementById('region-hidden').value = regionSelect.value;
                             break;
                         }
                     }
@@ -72,6 +73,7 @@
                     console.log(`Address: ${addressInput.value}`);
                     console.log(`Latitude: ${latitudeInput.value}`);
                     console.log(`Longitude: ${longitudeInput.value}`);
+                    console.log(`Region: ${document.getElementById('region-hidden').value}`)
                 }
             })
             .catch(error => {

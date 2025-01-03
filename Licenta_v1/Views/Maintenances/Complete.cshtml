@@ -1,0 +1,28 @@
+﻿@*
+    For more information on enabling MVC for empty projects, visit https://go.microsoft.com/fwlink/?LinkID=397860
+*@
+@model Maintenance
+
+<h2>Finalize Maintenance</h2>
+
+<p>Vehicle: @($"{Model.Vehicle?.Brand} {Model.Vehicle?.Model} [{Model.Vehicle?.RegistrationNumber}]")</p>
+<p>Maintenance Type: @Model.MaintenanceType</p>
+<p>Scheduled Date: @Model.ScheduledDate.ToShortDateString()</p>
+
+<form asp-action="CompleteConfirmed" asp-route-id="@Model.Id" method="post">
+    @Html.AntiForgeryToken()
+
+    @if (Model.ScheduledDate.Date > DateTime.Now.Date)
+    {
+        <div class="alert alert-warning">
+            Maintenance can only be completed on or after the scheduled date (@Model.ScheduledDate.ToShortDateString()).
+        </div>
+        <button type="submit" class="btn btn-success" disabled>Confirm Completion</button>
+    }
+    else
+    {
+        <button type="submit" class="btn btn-success">Confirm Completion</button>
+    }
+
+    <a asp-action="Index" class="btn btn-secondary">Cancel</a>
+</form>

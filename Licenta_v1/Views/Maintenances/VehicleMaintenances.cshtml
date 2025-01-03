@@ -1,0 +1,60 @@
+﻿@*
+    For more information on enabling MVC for empty projects, visit https://go.microsoft.com/fwlink/?LinkID=397860
+*@
+@model IEnumerable<Maintenance>
+@{
+    var vehicle = ViewBag.Vehicle as Vehicle;
+    ViewBag.Title = $"Maintenances for {vehicle?.Brand} {vehicle?.Model} ({vehicle?.RegistrationNumber})";
+}
+
+<h2 class="text-center">@ViewBag.Title</h2>
+<br />
+
+<div class="card mt-3" id="light-blue-elements-background-id">
+    <div class="card-body">
+        <h4>Vehicle Details</h4>
+        <p>
+            <strong>Brand:</strong> @vehicle?.Brand <br />
+            <strong>Model:</strong> @vehicle?.Model <br />
+            <strong>Registration Number:</strong> @vehicle?.RegistrationNumber <br />
+            <strong>Year of Manufacture:</strong> @vehicle?.YearOfManufacture <br />
+        </p>
+    </div>
+</div>
+
+<table class="table table-striped mt-3">
+    <thead>
+        <tr>
+            <th id="light-blue-elements-background-id">#</th>
+            <th id="light-blue-elements-background-id">Type</th>
+            <th id="light-blue-elements-background-id">Scheduled Date</th>
+            <th id="light-blue-elements-background-id">Completed Date</th>
+            <th id="light-blue-elements-background-id">Status</th>
+        </tr>
+    </thead>
+    <tbody>
+        @if (Model.Any())
+        {
+            int count = 1;
+            foreach (var maintenance in Model)
+            {
+                <tr>
+                    <td id="light-blue-elements-background-id">@count</td>
+                    <td id="light-blue-elements-background-id">@maintenance.MaintenanceType.ToString()</td>
+                    <td id="light-blue-elements-background-id">@maintenance.ScheduledDate.ToShortDateString()</td>
+                    <td id="light-blue-elements-background-id">@maintenance.CompletedDate?.ToShortDateString()</td>
+                    <td id="light-blue-elements-background-id">@maintenance.Status</td>
+                </tr>
+                count++;
+            }
+        }
+        else
+        {
+            <tr>
+                <td colspan="5" class="text-center" id="light-blue-elements-background-id">No maintenance records found for this vehicle.</td>
+            </tr>
+        }
+    </tbody>
+</table>
+
+<a asp-action="Index" asp-controller="Vehicles" class="btn btn-secondary">Back to Vehicles</a>

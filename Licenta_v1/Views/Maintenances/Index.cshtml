@@ -1,0 +1,60 @@
+﻿@*
+    For more information on enabling MVC for empty projects, visit https://go.microsoft.com/fwlink/?LinkID=397860
+*@
+@using System.ComponentModel.DataAnnotations
+@using System.Reflection
+@model IEnumerable<Licenta_v1.Models.Maintenance>
+@{
+    ViewBag.Title = "Maintenance List";
+}
+
+@if (TempData["Success"] != null)
+{
+    <div class="alert alert-success">@TempData["Success"]</div>
+}
+
+@if (TempData["Error"] != null)
+{
+	<div class="alert alert-danger">@TempData["Error"]</div>
+}
+
+<h2 class="text-center">@ViewBag.Title</h2>
+<br />
+
+<table class="table">
+    <thead>
+        <tr>
+            <th id="light-blue-elements-background-id">Vehicle</th>
+            <th id="light-blue-elements-background-id">Type</th>
+            <th id="light-blue-elements-background-id">Scheduled Date</th>
+            <th id="light-blue-elements-background-id">Status</th>
+            <th id="light-blue-elements-background-id">Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var item in Model)
+        {
+            <tr>
+                <td id="light-blue-elements-background-id">@($"{item.Vehicle?.Brand} {item.Vehicle?.Model} [{item.Vehicle?.RegistrationNumber}]")</td>
+                <td id="light-blue-elements-background-id">@GetMaintenanceDisplayName(item.MaintenanceType)</td>
+                <td id="light-blue-elements-background-id">@item.ScheduledDate.ToShortDateString()</td>
+                <td id="light-blue-elements-background-id">@item.Status</td>
+                <td id="light-blue-elements-background-id">
+                    @if (item.Status == "Scheduled" || item.Status == "In Progress")
+                    {
+                        <a asp-action="Complete" asp-route-id="@item.Id" class="btn btn-primary btn-sm">Complete</a>
+                    }
+                </td>
+            </tr>
+        }
+    </tbody>
+</table>
+
+@functions {
+    private string GetMaintenanceDisplayName(MaintenanceTypes maintenanceType)
+    {
+        var field = maintenanceType.GetType().GetField(maintenanceType.ToString());
+        var attribute = field?.GetCustomAttribute<DisplayAttribute>();
+        return attribute?.GetName() ?? maintenanceType.ToString();
+    }
+}

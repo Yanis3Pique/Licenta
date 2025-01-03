@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Licenta_v1.Data;
 using Licenta_v1.Models;
+using Microsoft.EntityFrameworkCore;
 
 public class TaskuriAutomate : BackgroundService
 {
@@ -20,17 +21,23 @@ public class TaskuriAutomate : BackgroundService
 	{
 		while (!stoppingToken.IsCancellationRequested)
 		{
-			// Execut metoda
+			// Execut metodele
 			using (var scope = _serviceProvider.CreateScope())
 			{
-				var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+				var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
 
 				// Verific conditiile de stergere a userilor din baza de date
-				await CheckAndDeleteUsers(dbContext);
+				await CheckAndDeleteUsers(db);
+
+				// Verific conditiile de programare a mentenantei
+				await CheckAndScheduleMaintenance(db);
+
+				// Updatez vehiculele in functie de mentenantele programate
+				await UpdateVehicles(db);
 			}
 
-			// Stau 60 de minute si execut din nou metoda
-			await Task.Delay(TimeSpan.FromMinutes(60), stoppingToken);
+			// Stau o ora si execut din nou metoda
+			await Task.Delay(TimeSpan.FromHours(1), stoppingToken);
 		}
 	}
 
@@ -55,4 +62,80 @@ public class TaskuriAutomate : BackgroundService
 		// Salvez modificarile
 		await dbContext.SaveChangesAsync();
 	}
+
+	private async Task CheckAndScheduleMaintenance(ApplicationDbContext dbContext)
+	{
+		// Iau toate masinile cu mentenantele lors
+		var vehicles = await dbContext.Vehicles.Include(v => v.MaintenanceRecords).ToListAsync();
+
+		foreach (var vehicle in vehicles)
+		{
+			// Iau toate taskurile de mentenanta necesare pentru masina
+			var tasks = FleetManager.CheckAndScheduleMaintenance(vehicle);
+
+			foreach (var task in tasks)
+			{
+				// Ma asigur ca nu exista deja un task de mentenanta pentru masina
+				var existingTask = vehicle.MaintenanceRecords
+					.Any(m => m.MaintenanceType == task.MaintenanceType && m.Status == "Scheduled");
+
+				if (!existingTask)
+				{
+					dbContext.Maintenances.Add(task);
+				}
+			}
+		}
+
+		// Salvez modificarile
+		await dbContext.SaveChangesAsync();
+	}
+
+	private async Task UpdateVehicles(ApplicationDbContext dbContext)
+	{
+		var today = DateTime.Today;
+
+		// Iau toate mentenantele programate sau in curs pentru astazi
+		var todayMaintenances = await dbContext.Maintenances
+			.Include(m => m.Vehicle)
+			.Where(m => m.ScheduledDate.Date == today && m.Status == "Scheduled" ||
+						m.Status == "In Progress")
+			.ToListAsync();
+
+		// Fac un set cu id-urile vehiculelor care au mentenante active
+		var vehiclesWithActiveMaintenance = new HashSet<int>();
+
+		foreach (var maintenance in todayMaintenances)
+		{
+			var vehicle = maintenance.Vehicle;
+
+			if (vehicle != null)
+			{
+				vehiclesWithActiveMaintenance.Add(vehicle.Id);
+
+				if (maintenance.Status == "Scheduled")
+				{
+					vehicle.Status = VehicleStatus.Maintenance;
+
+					maintenance.Status = "In Progress";
+				}
+			}
+		}
+
+		// Iau toate vehiculele care sunt in mentenanta
+		var vehiclesInMaintenance = await dbContext.Vehicles
+			.Where(v => v.Status == VehicleStatus.Maintenance)
+			.ToListAsync();
+
+		foreach (var vehicle in vehiclesInMaintenance)
+		{
+			// Daca un vehicul nu are mentenante active, il fac disponibil
+			if (!vehiclesWithActiveMaintenance.Contains(vehicle.Id))
+			{
+				vehicle.Status = VehicleStatus.Available;
+			}
+		}
+
+		await dbContext.SaveChangesAsync();
+	}
+
 }

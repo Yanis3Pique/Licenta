@@ -163,6 +163,14 @@ namespace Licenta_v1.Controllers
 				return View(order);
 			}
 
+			if(!IsValidAddressInRomania(order.Address))
+			{
+				TempData["Error"] = "The address must contain at least 4 parts and end with 'Romania'.";
+				ViewBag.RegionId = new SelectList(db.Regions.ToList(), "Id", "County", order.RegionId);
+				ViewBag.ClientId = client.Id;
+				return View(order);
+			}
+
 			try
 			{
 				db.Orders.Add(order);

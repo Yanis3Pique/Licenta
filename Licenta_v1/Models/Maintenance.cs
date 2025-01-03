@@ -9,12 +9,11 @@ namespace Licenta_v1.Models
 		[Required(ErrorMessage = "The vehicle is mandatory.")]
 		public int VehicleId { get; set; }
 		[Required(ErrorMessage = "The maintenance type is mandatory.")]
-		public string MaintenanceType { get; set; } // Oil Change, Tire Change, Inspection, Repair, Other
+		public MaintenanceTypes MaintenanceType { get; set; }
 		public DateTime ScheduledDate { get; set; }
 		public DateTime? CompletedDate { get; set; }
-		public string Status { get; set; } = "Scheduled";
+		public string Status { get; set; } = "Scheduled"; // (Scheduled, In Progress, Completed)
 
 		public virtual Vehicle? Vehicle { get; set; }
 	}
-
 }

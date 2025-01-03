@@ -87,6 +87,9 @@
                 <div class="card-footer">
                     <div class="d-flex justify-content-center">
                         <a asp-action="Show" asp-route-id="@vehicle.Id" class="btn btn-primary btn-sm mb-2 mx-2">View</a>
+                        <a asp-action="VehicleMaintenances" asp-controller="Maintenances" asp-route-vehicleId="@vehicle.Id" class="btn btn-primary btn-sm mb-2 mx-2">
+                            View Maintenances
+                        </a>
                     </div>
                 </div>
             </div>

@@ -43,6 +43,28 @@ namespace Licenta_v1.Models
 		public virtual Region? Region { get; set; }
 		public virtual ICollection<Delivery>? Deliveries { get; set; }
 		public virtual ICollection<Maintenance>? MaintenanceRecords { get; set; }
-	}
 
+
+		// Urmarire mentenanta - ultima data sau distanta la care fiecare tip de revizie a fost facut
+		public double LastEngineServiceKM { get; set; } = 0;
+		public DateTime LastEngineServiceDate { get; set; } = DateTime.Now;
+
+		public double LastTireChangeKM { get; set; } = 0;
+		public DateTime LastTireChangeDate { get; set; } = DateTime.Now;
+
+		public double LastBrakePadChangeKM { get; set; } = 0;
+
+		public double LastSuspensionServiceKM { get; set; } = 0;
+		public DateTime LastSuspensionServiceDate { get; set; } = DateTime.Now;
+
+		public double LastGeneralInspectionKM { get; set; } = 0;
+		public DateTime LastGeneralInspectionDate { get; set; } = DateTime.Now;
+
+		// Pentru vehiculele electrice/hibride
+		public double LastBatteryCheckKM { get; set; } = 0;
+		public DateTime LastBatteryCheckDate { get; set; } = DateTime.Now;
+
+		public double LastCoolantCheckKM { get; set; } = 0;
+		public DateTime LastCoolantCheckDate { get; set; } = DateTime.Now;
+	}
 }

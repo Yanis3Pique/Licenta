@@ -789,7 +789,7 @@ namespace Licenta_v1.Controllers
 				{
 					foreach (var delivery in user.Deliveries)
 					{
-						if (delivery.Status.Contains("InProgress"))
+						if (delivery.Status.Contains("In Progress"))
 						{
 							TempData["Error"] = "The driver cannot be fired because he has deliveries in progress!";
 							return RedirectToAction("Index");

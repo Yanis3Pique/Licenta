@@ -4,6 +4,7 @@ using Licenta_v1.Models;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.UI.Services;
 using Microsoft.EntityFrameworkCore;
+using SendGrid;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -23,6 +24,9 @@ builder.Services.AddDatabaseDeveloperPageExceptionFilter();
 builder.Services.AddDefaultIdentity<ApplicationUser>(options => options.SignIn.RequireConfirmedAccount = true)
 	.AddRoles<IdentityRole>().AddEntityFrameworkStores<ApplicationDbContext>();
 builder.Services.AddControllersWithViews();
+
+builder.Services.AddSingleton<ISendGridClient>(provider =>
+	new SendGridClient(cheie_API_confirmare_email_Sendgrid));
 
 builder.Services.AddTransient<IEmailSender, EmailConfirmationSender>(provider =>
     new EmailConfirmationSender(cheie_API_confirmare_email_Sendgrid, email_personal, nume_personal));

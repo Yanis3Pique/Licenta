@@ -7,7 +7,7 @@
 		public int VehicleId { get; set; }
 		public DateTime PlannedStartDate { get; set; }
 		public DateTime? ActualEndDate { get; set; }
-		public string Status { get; set; } = "Planned"; // (Planned, InProgress, Completed)
+		public string Status { get; set; } = "Planned"; // (Planned, In Progress, Completed)
 		public string? RouteData { get; set; } // JSON Route
 		public double? EmissionsEstimated { get; set; }
 		public double? DistanceEstimated { get; set; }

@@ -5,6 +5,8 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Rendering;
 using Microsoft.EntityFrameworkCore;
+using SendGrid;
+using SendGrid.Helpers.Mail;
 using System.Linq;
 
 namespace Licenta_v1.Controllers
@@ -14,16 +16,18 @@ namespace Licenta_v1.Controllers
 		private readonly ApplicationDbContext db;
 		private readonly UserManager<ApplicationUser> _userManager;
 		private readonly RoleManager<IdentityRole> _roleManager;
+		private readonly ISendGridClient _sendGridClient; // Inject your SendGrid client
 
 		public VehiclesController(
 			ApplicationDbContext context,
 			UserManager<ApplicationUser> userManager,
-			RoleManager<IdentityRole> roleManager
-			)
+			RoleManager<IdentityRole> roleManager,
+			ISendGridClient sendGridClient)
 		{
 			db = context;
 			_userManager = userManager;
 			_roleManager = roleManager;
+			_sendGridClient = sendGridClient;
 		}
 
 		[NonAction]
@@ -407,6 +411,148 @@ namespace Licenta_v1.Controllers
 			await db.SaveChangesAsync();
 
 			TempData["Success"] = "Vehicle deleted successfully!";
+			return RedirectToAction("Index");
+		}
+
+		// Get - Vehicles/ScheduleMaintenance/id
+		[Authorize(Roles = "Admin,Dispecer")]
+		public async Task<IActionResult> ScheduleMaintenance(int id)
+		{
+			if (id <= 0)
+			{
+				TempData["Error"] = "Invalid vehicle ID!";
+				return RedirectToAction("Index");
+			}
+
+			var vehicle = await db.Vehicles.FindAsync(id);
+
+			if (vehicle == null)
+			{
+				TempData["Error"] = "Vehicle not found!";
+				return RedirectToAction("Index");
+			}
+
+			// Iau toate tipurile de mentenanta pentru dropdown
+			ViewBag.MaintenanceTypes = Enum.GetValues(typeof(MaintenanceTypes))
+										   .Cast<MaintenanceTypes>()
+										   .Select(mt => new SelectListItem
+										   {
+											   Text = mt.GetDisplayName(),
+											   Value = mt.ToString()
+										   }).ToList();
+
+			return View(vehicle);
+		}
+
+		// Post - Vehicles/ScheduleMaintenance/id
+		[Authorize(Roles = "Admin,Dispecer")]
+		[HttpPost]
+		public async Task<IActionResult> ScheduleMaintenance(int id, [FromForm] string selectedMaintenanceType)
+		{
+			if (id <= 0)
+			{
+				TempData["Error"] = "Invalid vehicle ID!";
+				return RedirectToAction("Index");
+			}
+
+			var vehicle = await db.Vehicles.FindAsync(id);
+
+			if (vehicle == null)
+			{
+				TempData["Error"] = "Vehicle not found!";
+				return RedirectToAction("Index");
+			}
+
+			if (string.IsNullOrEmpty(selectedMaintenanceType))
+			{
+				TempData["Error"] = "Please select a maintenance type.";
+				return RedirectToAction("ScheduleMaintenance", new { id });
+			}
+
+			// Adaug o noua mentenanta in BD peste 7 zile
+			var maintenance = new Maintenance
+			{
+				VehicleId = id,
+				MaintenanceType = Enum.Parse<MaintenanceTypes>(selectedMaintenanceType),
+				ScheduledDate = DateTime.Now.AddDays(7),
+				Status = "Scheduled"
+			};
+
+			db.Maintenances.Add(maintenance);
+			await db.SaveChangesAsync();
+
+			TempData["Success"] = $"Maintenance for {vehicle.Brand} {vehicle.Model} scheduled successfully!";
+
+			// Dau mail la toti adminii ca s-a programat o mentenanta
+			await NotifyAdmins(vehicle, maintenance);
+
+			return RedirectToAction("Index");
+		}
+
+		// Dau mail la toti adminii ca s-a programat o mentenanta
+		private async Task NotifyAdmins(Vehicle vehicle, Maintenance maintenance)
+		{
+			var admins = await _userManager.GetUsersInRoleAsync("Admin");
+			var emailAddresses = admins.Select(a => a.Email).Where(email => !string.IsNullOrEmpty(email)).ToList();
+
+			if (!emailAddresses.Any()) return;
+
+			var message = new SendGridMessage
+			{
+				From = new EmailAddress("your_email@example.com", "EcoDelivery"),
+				Subject = "New Maintenance Scheduled",
+				HtmlContent = $@"
+            <p>A new maintenance task has been scheduled:</p>
+            <ul>
+                <li><strong>Vehicle:</strong> {vehicle.Brand} {vehicle.Model} ({vehicle.RegistrationNumber})</li>
+                <li><strong>Type:</strong> {maintenance.MaintenanceType.GetDisplayName()}</li>
+                <li><strong>Scheduled Date:</strong> {maintenance.ScheduledDate.ToString("g")}</li>
+            </ul>
+            <p>Please review the details in the system.</p>"
+			};
+
+			foreach (var email in emailAddresses)
+			{
+				message.AddTo(email);
+			}
+
+			await _sendGridClient.SendEmailAsync(message);
+		}
+
+		// Post - Vehicles/Retire/id
+		[Authorize(Roles = "Admin")]
+		[HttpPost]
+		[ValidateAntiForgeryToken]
+		public async Task<IActionResult> Retire(int id)
+		{
+			if (id <= 0)
+			{
+				TempData["Error"] = "Invalid vehicle ID!";
+				return RedirectToAction("Index");
+			}
+			var vehicle = await db.Vehicles.FindAsync(id);
+			if (vehicle == null)
+			{
+				TempData["Error"] = "Vehicle not found!";
+				return RedirectToAction("Index");
+			}
+			// Daca masina are deja statusul "Retired", nu o mai pot retrage
+			if (vehicle.Status == VehicleStatus.Retired)
+			{
+				TempData["Error"] = "Vehicle already retired!";
+				return RedirectToAction("Index");
+			}
+			vehicle.Status = VehicleStatus.Retired;
+
+			// Sterg toate mentenantele programate pentru masina
+			var maintenances = await db.Maintenances
+				.Where(m => m.VehicleId == id)
+				.ToListAsync();
+			db.Maintenances.RemoveRange(maintenances);
+
+			db.Vehicles.Update(vehicle);
+			await db.SaveChangesAsync();
+			TempData["Success"] = "Vehicle retired successfully!";
 			return RedirectToAction("Index");
 		}
 	}

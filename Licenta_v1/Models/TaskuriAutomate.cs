@@ -7,37 +7,48 @@ using System.Threading.Tasks;
 using Licenta_v1.Data;
 using Licenta_v1.Models;
 using Microsoft.EntityFrameworkCore;
+using System.Net.Mail;
+using System.Net;
+using Microsoft.AspNetCore.Identity.UI.Services;
 
 public class TaskuriAutomate : BackgroundService
 {
 	private readonly IServiceProvider _serviceProvider;
+	private readonly IEmailSender _emailSender;
 
-	public TaskuriAutomate(IServiceProvider serviceProvider)
+	public TaskuriAutomate(IServiceProvider serviceProvider, IEmailSender emailSender)
 	{
 		_serviceProvider = serviceProvider;
+		_emailSender = emailSender;
 	}
 
 	protected override async Task ExecuteAsync(CancellationToken stoppingToken)
 	{
+		var lastUserCheck = DateTime.MinValue;
+
 		while (!stoppingToken.IsCancellationRequested)
 		{
-			// Execut metodele
+			// Iau timpul curent
+			var currentTime = DateTime.Now;
+
 			using (var scope = _serviceProvider.CreateScope())
 			{
 				var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
 
-				// Verific conditiile de stergere a userilor din baza de date
-				await CheckAndDeleteUsers(db);
+				// Task-ul de CheckAndDeleteUsers se ruleaza zilnic
+				if ((currentTime - lastUserCheck).TotalDays >= 1)
+				{
+					await CheckAndDeleteUsers(db);
+					lastUserCheck = currentTime; // Actualizez timpul la care s-a rulat comanda
+				}
 
-				// Verific conditiile de programare a mentenantei
+				// Celelalte doua metode se ruleaza la fiecare minut
 				await CheckAndScheduleMaintenance(db);
-
-				// Updatez vehiculele in functie de mentenantele programate
 				await UpdateVehicles(db);
 			}
 
-			// Stau o ora si execut din nou metoda
-			await Task.Delay(TimeSpan.FromHours(1), stoppingToken);
+			// Astept un minut pana la urmatoarea iteratie a while-ului
+			await Task.Delay(TimeSpan.FromMinutes(1), stoppingToken);
 		}
 	}
 
@@ -65,29 +76,90 @@ public class TaskuriAutomate : BackgroundService
 
 	private async Task CheckAndScheduleMaintenance(ApplicationDbContext dbContext)
 	{
-		// Iau toate masinile cu mentenantele lors
+		// Iau toate vehiculele si mentenantele lor
 		var vehicles = await dbContext.Vehicles.Include(v => v.MaintenanceRecords).ToListAsync();
+
+		var newMaintenances = new List<Maintenance>();
 
 		foreach (var vehicle in vehicles)
 		{
-			// Iau toate taskurile de mentenanta necesare pentru masina
+			// Iau mentenantele care trebuie programate pentru vehiculul curent
 			var tasks = FleetManager.CheckAndScheduleMaintenance(vehicle);
 
 			foreach (var task in tasks)
 			{
-				// Ma asigur ca nu exista deja un task de mentenanta pentru masina
+				// Ma asigur ca nu exista deja o mentenanta programata pentru acelasi tip de mentenanta
 				var existingTask = vehicle.MaintenanceRecords
 					.Any(m => m.MaintenanceType == task.MaintenanceType && m.Status == "Scheduled");
 
 				if (!existingTask)
 				{
 					dbContext.Maintenances.Add(task);
+					newMaintenances.Add(task); // Tin cont de mentenantele noi pentru notificari
 				}
 			}
 		}
 
-		// Salvez modificarile
 		await dbContext.SaveChangesAsync();
+
+		// Daca exista mentenante noi, trimit notificari
+		if (newMaintenances.Count != 0)
+		{
+			await NotifyAdminsAndDispatchers(newMaintenances, dbContext);
+		}
+	}
+
+	private async Task NotifyAdminsAndDispatchers(List<Maintenance> newMaintenances, ApplicationDbContext dbContext)
+	{
+		// Iau toti utilizatorii care sunt Admini sau Dispeceri
+		var recipients = await dbContext.ApplicationUsers
+			.Join(dbContext.UserRoles,
+				  user => user.Id,
+				  userRole => userRole.UserId,
+				  (user, userRole) => new { user, userRole })
+			.Join(dbContext.Roles,
+				  combined => combined.userRole.RoleId,
+				  role => role.Id,
+				  (combined, role) => new { combined.user, role })
+			.Where(result => result.role.Name == "Admin" || result.role.Name == "Dispecer")
+			.Select(result => result.user.Email)
+			.ToListAsync();
+
+		if (recipients.Count == 0) return; // No recipients to notify
+
+		// Continutul mail-ului basically
+		var emailBody = "<div style='font-family: Arial, sans-serif; line-height: 1.6; max-width: 600px; margin: auto;'>" +
+						"<div style='text-align: center; padding: 20px; background-color: #f4f4f4; border-bottom: 1px solid #ddd;'>" +
+						"<h1 style='color: #333;'>Vehicle Maintenance Notification</h1>" +
+						"</div><div style='padding: 20px; background-color: #ffffff;'>";
+
+		emailBody += "<h2 style='color: #555;'>Scheduled Maintenance</h2>" +
+					 "<p style='color: #666;'>The following vehicles have been scheduled for maintenance:</p>" +
+					 "<ul style='color: #666;'>";
+
+		foreach (var maintenance in newMaintenances)
+		{
+			emailBody += $"<li><strong>Vehicle:</strong> {maintenance.Vehicle.Brand} {maintenance.Vehicle.Model} " +
+						 $"[{maintenance.Vehicle.RegistrationNumber}]<br>" +
+						 $"<strong>Maintenance Type:</strong> {maintenance.MaintenanceType}<br>" +
+						 $"<strong>Scheduled Date:</strong> {maintenance.ScheduledDate.ToShortDateString()}</li>";
+		}
+
+		emailBody += "</ul>" +
+					 "<p style='color: #666;'>Please ensure these vehicles are available for maintenance on the scheduled dates.</p>" +
+					 "</div><div style='text-align: center; padding: 10px; background-color: #f4f4f4; border-top: 1px solid #ddd;'>" +
+					 "<p style='color: #888; font-size: 12px;'>EcoDelivery | All Rights Reserved</p>" +
+					 "</div></div>";
+
+		// Trimit mail-uri catre toti destinatarii
+		foreach (var recipient in recipients)
+		{
+			await _emailSender.SendEmailAsync(
+				recipient,
+				"Scheduled Maintenance Notification",
+				emailBody
+			);
+		}
 	}
 
 	private async Task UpdateVehicles(ApplicationDbContext dbContext)
@@ -137,5 +209,4 @@ public class TaskuriAutomate : BackgroundService
 
 		await dbContext.SaveChangesAsync();
 	}
-
 }

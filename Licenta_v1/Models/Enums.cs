@@ -34,26 +34,26 @@ namespace Licenta_v1.Models
 
 	public enum MaintenanceTypes
 	{
-		[Display(Name = "Engine (Oil & Filter)")]
-		EngineOilFilter,
-
-		[Display(Name = "Tire Replacement")]
-		TireReplacement,
-
-		[Display(Name = "Brake Pad Replacement")]
-		BrakePadReplacement,
-
-		[Display(Name = "Suspension Service")]
-		SuspensionService,
-
-		[Display(Name = "General Inspection")]
-		GeneralInspection,
+		[Display(Name = "Battery Coolant Change")]
+		BatteryCoolantChange,
 
 		[Display(Name = "Battery Health Check")]
 		BatteryHealthCheck,
 
-		[Display(Name = "Battery Coolant Change")]
-		BatteryCoolantChange
+		[Display(Name = "Brake Pad Replacement")]
+		BrakePadReplacement,
+
+		[Display(Name = "Engine (Oil & Filter)")]
+		EngineOilFilter,
+
+		[Display(Name = "General Inspection")]
+		GeneralInspection,
+
+		[Display(Name = "Suspension Service")]
+		SuspensionService,
+
+		[Display(Name = "Tire Replacement")]
+		TireReplacement
 	}
 
 	public static class EnumExtensions

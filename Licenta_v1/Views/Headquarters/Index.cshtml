@@ -17,81 +17,92 @@
 <h2 class="text-center">@ViewBag.Title</h2>
 <br />
 
-<!-- Bara de search -->
+<!-- Search, Sort -->
 <div class="card shadow-sm p-3 mb-4" id="light-blue-elements-background-id">
     <form asp-action="Index" method="get">
         <div class="row g-2">
-            <div class="col-12 col-md-10">
+            <!-- Search -->
+            <div class="col-12 col-md-8">
                 <div class="input-group">
                     <input type="text" name="searchString" class="form-control" placeholder="Search Headquarters"
                            value="@ViewBag.SearchString" />
-                    <button type="submit" class="btn btn-primary">Search</button>
                 </div>
             </div>
 
+            <!-- Sort -->
             <div class="col-12 col-md-2">
-                <a class="btn btn-primary w-100" asp-area="" asp-controller="Headquarters" asp-action="Create">
-                    Add Headquarter
-                </a>
+                <select name="sortOrder" class="form-select">
+                    <option value="name" selected="@(ViewBag.CurrentSort == "name" ? "selected" : "")">Sort by Name (A-Z)</option>
+                    <option value="name_desc" selected="@(ViewBag.CurrentSort == "name_desc" ? "selected" : "")">Sort by Name (Z-A)</option>
+                    <option value="address" selected="@(ViewBag.CurrentSort == "address" ? "selected" : "")">Sort by Address (A-Z)</option>
+                    <option value="address_desc" selected="@(ViewBag.CurrentSort == "address_desc" ? "selected" : "")">Sort by Address (Z-A)</option>
+                </select>
+            </div>
+
+            <!-- Add -->
+            <div class="col-12 col-md-2">
+                <button type="submit" class="btn btn-primary w-100">Search & Sort</button>
             </div>
         </div>
     </form>
 </div>
 
-<!-- Tabel plus optiune de a-l sorta -->
-<table class="table table-bordered table-striped">
-    <thead>
-        <tr>
-            <th id="light-blue-elements-background-id">
-                <a asp-action="Index" asp-route-sortOrder="@ViewBag.NameSortParam" asp-route-searchString="@ViewBag.SearchString">
-                    Name
-                    @if (ViewBag.CurrentSort == "name")
-                    {
-                        <i class="bi bi-sort-alpha-down"></i>
-                    }
-                    else if (ViewBag.CurrentSort == "name_desc")
-                    {
-                        <i class="bi bi-sort-alpha-up"></i>
-                    }
-                </a>
-            </th>
-            <th id="light-blue-elements-background-id">
-                <a asp-action="Index" asp-route-sortOrder="@ViewBag.AddressSortParam" asp-route-searchString="@ViewBag.SearchString">
-                    Address
-                    @if (ViewBag.CurrentSort == "address")
-                    {
-                        <i class="bi bi-sort-alpha-down"></i>
-                    }
-                    else if (ViewBag.CurrentSort == "address_desc")
-                    {
-                        <i class="bi bi-sort-alpha-up"></i>
-                    }
-                </a>
-            </th>
-            <th id="light-blue-elements-background-id">Region</th>
-            <th id="light-blue-elements-background-id">Actions</th>
-        </tr>
-    </thead>
-    <tbody>
-        @if (Model.Count == 0)
-        {
+<!-- Pt PC - Table -->
+<div class="d-none d-md-block table-responsive">
+    <table class="table table-bordered table-striped">
+        <thead>
             <tr>
-                <td colspan="3" class="text-center">No headquarters found.</td>
+                <th id="light-blue-elements-background-id">Name</th>
+                <th id="light-blue-elements-background-id">Address</th>
+                <th id="light-blue-elements-background-id">Region</th>
+                <th id="light-blue-elements-background-id">Actions</th>
             </tr>
-        }
-        else
-        {
-            @foreach (var hq in Model)
+        </thead>
+        <tbody>
+            @if (Model.Count == 0)
             {
                 <tr>
-                    <td id="light-blue-elements-background-id">@hq.Name</td>
-                    <td id="light-blue-elements-background-id">@hq.Address</td>
-                    <td id="light-blue-elements-background-id">@hq.Region?.County</td>
-                    <td id="light-blue-elements-background-id">
-                        <a asp-action="Show" asp-route-id="@hq.Id" class="btn btn-primary btn-sm mb-2 mx-2">View</a>
-                    </td>
+                    <td colspan="4" class="text-center">No headquarters found.</td>
                 </tr>
             }
+            else
+            {
+                @foreach (var hq in Model)
+                {
+                    <tr>
+                        <td id="light-blue-elements-background-id">@hq.Name</td>
+                        <td id="light-blue-elements-background-id">@hq.Address</td>
+                        <td id="light-blue-elements-background-id">@hq.Region?.County</td>
+                        <td id="light-blue-elements-background-id">
+                            <a asp-action="Show" asp-route-id="@hq.Id" class="btn btn-primary btn-sm mb-2 mx-2">View</a>
+                        </td>
+                    </tr>
+                }
+            }
+        </tbody>
+    </table>
+</div>
+
+<!-- Pt ecrane mici -->
+<div class="d-block d-md-none">
+    @if (Model.Count == 0)
+    {
+        <div class="alert alert-info text-center">No headquarters found.</div>
+    }
+    else
+    {
+        @foreach (var hq in Model)
+        {
+            <div class="card mb-3 shadow-sm text-center" id="light-blue-elements-background-id">
+                <div class="card-body">
+                    <h5 class="card-title">@hq.Name</h5>
+                    <p class="card-text">
+                        <strong>Address:</strong> @hq.Address<br />
+                        <strong>Region:</strong> @hq.Region?.County
+                    </p>
+                    <a asp-action="Show" asp-route-id="@hq.Id" class="btn btn-primary btn-sm">View</a>
+                </div>
+            </div>
         }
-    </tbody>
-</table>
+    }
+</div>

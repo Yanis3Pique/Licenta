@@ -21,34 +21,125 @@
 <h2 class="text-center">@ViewBag.Title</h2>
 <br />
 
-<table class="table">
-    <thead>
-        <tr>
-            <th id="light-blue-elements-background-id">Vehicle</th>
-            <th id="light-blue-elements-background-id">Type</th>
-            <th id="light-blue-elements-background-id">Scheduled Date</th>
-            <th id="light-blue-elements-background-id">Status</th>
-            <th id="light-blue-elements-background-id">Actions</th>
-        </tr>
-    </thead>
-    <tbody>
-        @foreach (var item in Model)
-        {
+<!-- Search, Sort -->
+<div class="card shadow-sm p-3 mb-4" id="light-blue-elements-background-id">
+    <form asp-action="Index" method="get">
+        <div class="row g-2">
+            <div class="col-12 col-md-8">
+                <div class="input-group">
+                    <input type="text" name="searchString" class="form-control" placeholder="Search Records"
+                           value="@ViewBag.SearchString" />
+                </div>
+            </div>
+
+            <div class="col-12 col-md-2">
+                <select name="sortOrder" class="form-select">
+                    <option value="vehicle" selected="@(ViewBag.CurrentSort == "vehicle" ? "selected" : "")">Sort by Vehicle (A-Z)</option>
+                    <option value="vehicle_desc" selected="@(ViewBag.CurrentSort == "vehicle_desc" ? "selected" : "")">Sort by Vehicle (Z-A)</option>
+                    <option value="type" selected="@(ViewBag.CurrentSort == "type" ? "selected" : "")">Sort by Type (A-Z)</option>
+                    <option value="type_desc" selected="@(ViewBag.CurrentSort == "type_desc" ? "selected" : "")">Sort by Type (Z-A)</option>
+                    <option value="scheduled_date" selected="@(ViewBag.CurrentSort == "scheduled_date" ? "selected" : "")">Sort by Scheduled Date (Oldest)</option>
+                    <option value="scheduled_date_desc" selected="@(ViewBag.CurrentSort == "scheduled_date_desc" ? "selected" : "")">Sort by Scheduled Date (Newest)</option>
+                    <option value="status" selected="@(ViewBag.CurrentSort == "status" ? "selected" : "")">Sort by Status (A-Z)</option>
+                    <option value="status_desc" selected="@(ViewBag.CurrentSort == "status_desc" ? "selected" : "")">Sort by Status (Z-A)</option>
+                </select>
+            </div>
+
+            <div class="col-12 col-md-2">
+                <button type="submit" class="btn btn-primary w-100">Search & Sort</button>
+            </div>
+        </div>
+    </form>
+</div>
+
+<!-- Pt PC - Table -->
+<div class="d-none d-md-block table-responsive">
+    <table class="table table-bordered table-striped">
+        <thead class="thead-light">
             <tr>
-                <td id="light-blue-elements-background-id">@($"{item.Vehicle?.Brand} {item.Vehicle?.Model} [{item.Vehicle?.RegistrationNumber}]")</td>
-                <td id="light-blue-elements-background-id">@GetMaintenanceDisplayName(item.MaintenanceType)</td>
-                <td id="light-blue-elements-background-id">@item.ScheduledDate.ToShortDateString()</td>
-                <td id="light-blue-elements-background-id">@item.Status</td>
-                <td id="light-blue-elements-background-id">
-                    @if (item.Status == "Scheduled" || item.Status == "In Progress")
-                    {
-                        <a asp-action="Complete" asp-route-id="@item.Id" class="btn btn-primary btn-sm">Complete</a>
-                    }
-                </td>
+                <th scope="col" id="light-blue-elements-background-id">Vehicle</th>
+                <th scope="col" id="light-blue-elements-background-id">Type</th>
+                <th scope="col" id="light-blue-elements-background-id">Scheduled Date</th>
+                <th scope="col" id="light-blue-elements-background-id">Status</th>
+                <th scope="col" id="light-blue-elements-background-id">Actions</th>
             </tr>
+        </thead>
+        <tbody>
+            @if (!Model.Any())
+            {
+                <tr>
+                    <td colspan="5" class="text-center">No maintenance records found.</td>
+                </tr>
+            }
+            else
+            {
+                @foreach (var maintenance in Model)
+                {
+                    <tr>
+                        <td id="light-blue-elements-background-id">
+                            @($"{maintenance.Vehicle?.Brand} {maintenance.Vehicle?.Model} [{maintenance.Vehicle?.RegistrationNumber}]")
+                        </td>
+                        <td id="light-blue-elements-background-id">@GetMaintenanceDisplayName(maintenance.MaintenanceType)</td>
+                        <td id="light-blue-elements-background-id">@maintenance.ScheduledDate.ToShortDateString()</td>
+                        <td id="light-blue-elements-background-id">@maintenance.Status</td>
+                        <td id="light-blue-elements-background-id">
+                            @if ((maintenance.Status == "Scheduled" || maintenance.Status == "In Progress") && User.IsInRole("Admin"))
+                            {
+                                <a asp-action="Complete" asp-route-id="@maintenance.Id" class="btn btn-primary btn-sm">Complete</a>
+                            }
+                        </td>
+                    </tr>
+                }
+            }
+        </tbody>
+    </table>
+</div>
+
+<script>
+    document.getElementById('search-bar').addEventListener('input', function () {
+        const searchValue = this.value.toLowerCase();
+        const tableRows = document.querySelectorAll('#maintenance-table tr');
+
+        tableRows.forEach(row => {
+            const cells = Array.from(row.getElementsByTagName('td'));
+            const rowText = cells.map(cell => cell.textContent.toLowerCase()).join(' ');
+
+            if (rowText.includes(searchValue)) {
+                row.style.display = '';
+            } else {
+                row.style.display = 'none';
+            }
+        });
+    });
+</script>
+
+<!-- Pt ecrane mici -->
+<div class="d-block d-md-none">
+    @if (!Model.Any())
+    {
+        <div class="alert alert-info text-center">No maintenance records found.</div>
+    }
+    else
+    {
+        @foreach (var maintenance in Model)
+        {
+            <div class="card mb-3 shadow-sm text-center" id="light-blue-elements-background-id">
+                <div class="card-body">
+                    <h5 class="card-title">@($"{maintenance.Vehicle?.Brand} {maintenance.Vehicle?.Model}")</h5>
+                    <p class="card-text">
+                        <strong>Type:</strong> @GetMaintenanceDisplayName(maintenance.MaintenanceType)<br />
+                        <strong>Scheduled Date:</strong> @maintenance.ScheduledDate.ToShortDateString()<br />
+                        <strong>Status:</strong> @maintenance.Status
+                    </p>
+                    @if ((maintenance.Status == "Scheduled" || maintenance.Status == "In Progress") && User.IsInRole("Admin"))
+                    {
+                        <a asp-action="Complete" asp-route-id="@maintenance.Id" class="btn btn-primary btn-sm">Complete</a>
+                    }
+                </div>
+            </div>
         }
-    </tbody>
-</table>
+    }
+</div>
 
 @functions {
     private string GetMaintenanceDisplayName(MaintenanceTypes maintenanceType)
@@ -58,3 +149,4 @@
         return attribute?.GetName() ?? maintenanceType.ToString();
     }
 }
+

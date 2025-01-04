@@ -24,18 +24,18 @@ namespace Licenta_v1.Models
 		{
 			var client = new SendGridClient(cheieAPI);
 			var from = new EmailAddress(emailSender, numeSender);
-			var emailSubject = "Confirm Your Email";
 			var to = new EmailAddress(email);
 			var plainTextContent = "Please confirm your email.";
 			var htmlContent = htmlMessage;
-			var msg = MailHelper.CreateSingleEmail(from, to, emailSubject, plainTextContent, htmlContent);
+
+			// Folosesc subiectul mail-ului de la parametru
+			var msg = MailHelper.CreateSingleEmail(from, to, subject, plainTextContent, htmlContent);
 			var response = await client.SendEmailAsync(msg);
-			
+
 			if ((int)response.StatusCode >= 400)
 			{
 				throw new Exception($"Failed to send email. Status Code: {response.StatusCode}, Body: {await response.Body.ReadAsStringAsync()}");
 			}
-
 		}
 	}
 }

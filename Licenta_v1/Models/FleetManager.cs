@@ -3,22 +3,22 @@
 	public static class FleetManager
 	{
 		// Diesel, Petrol, GPL, Hybrid(ICE) constante in KM si luni/ani
-		private const double ENGINE_SERVICE_KM = 9600;
-		private const int ENGINE_SERVICE_MONTHS = 6;
-		private const double TIRE_SERVICE_KM = 48000;
-		private const int TIRE_SERVICE_YEARS = 4;
-		private const double BRAKE_SERVICE_KM = 80000;
-		private const double SUSPENSION_SERVICE_KM = 112000;
-		private const int SUSPENSION_SERVICE_YEARS = 7;
-		private const double GENERAL_SERVICE_KM = 19000;
-		private const int GENERAL_SERVICE_MONTHS = 12;
+		private const double ENGINE_SERVICE_KM = 9600;         // Merge
+		private const int ENGINE_SERVICE_MONTHS = 6;           // Merge
+		private const double TIRE_SERVICE_KM = 48000;          // Merge
+		private const int TIRE_SERVICE_YEARS = 4;              // Merge
+		private const double BRAKE_SERVICE_KM = 80000;         // Merge
+		private const double SUSPENSION_SERVICE_KM = 112000;   // Merge
+		private const int SUSPENSION_SERVICE_YEARS = 7;        // Merge
+		private const double GENERAL_SERVICE_KM = 19000;       // Merge
+		private const int GENERAL_SERVICE_MONTHS = 12;         // Merge
 
 		// Electric / Hybrid(EV) constante in KM si luni/ani
-		private const double BATTERY_CHECK_KM = 40000;
-		private const int BATTERY_CHECK_YEARS = 2;
-		private const double COOLANT_CHECK_KM = 80000;
-		private const int COOLANT_CHECK_YEARS = 4;
-		private const double EV_BRAKE_SERVICE_KM = 100000;
+		private const double BATTERY_CHECK_KM = 40000;         // Merge
+		private const int BATTERY_CHECK_YEARS = 2;             // Merge
+		private const double COOLANT_CHECK_KM = 80000;         // Merge
+		private const int COOLANT_CHECK_YEARS = 4;             // Merge
+		private const double EV_BRAKE_SERVICE_KM = 100000;     // Merge
 		// In cazuk EV-urilor, placutele de frana rezista mai mult
 
 		public static List<Maintenance> CheckAndScheduleMaintenance(Vehicle vehicle)
@@ -30,29 +30,39 @@
 
 			bool isElectric = (vehicle.FuelType == FuelType.Electric);
 			bool isHybrid = (vehicle.FuelType == FuelType.Hybrid);
+			bool isICE = !isElectric && !isHybrid;
 
-			if (isElectric || isHybrid)
+			if (isElectric)
 			{
-				CheckBatteryHealth(vehicle, currentKM, now, neededMaintenance);
-				CheckCoolantHealth(vehicle, currentKM, now, neededMaintenance);
-				CheckEVBrakePads(vehicle, currentKM, neededMaintenance);
-				CheckSuspensionEV(vehicle, currentKM, now, neededMaintenance);
-				CheckGeneralEV(vehicle, currentKM, now, neededMaintenance);
+				CheckBatteryHealth(vehicle, currentKM, now, neededMaintenance);     // Merge
+				CheckCoolantHealth(vehicle, currentKM, now, neededMaintenance);     // Merge
+				CheckTires(vehicle, currentKM, now, neededMaintenance);             // Merge
+				CheckEVBrakePads(vehicle, currentKM, neededMaintenance);            // Merge
+				CheckSuspension(vehicle, currentKM, now, neededMaintenance);        // Merge
+				CheckGeneral(vehicle, currentKM, now, neededMaintenance);           // Merge
 			}
-
-			if (!isElectric || isHybrid)
+			else if (isHybrid)
 			{
-				CheckEngineOilFilter(vehicle, currentKM, now, neededMaintenance);
-				CheckTires(vehicle, currentKM, now, neededMaintenance);
-				CheckBrakePads(vehicle, currentKM, neededMaintenance);
-				CheckSuspension(vehicle, currentKM, now, neededMaintenance);
-				CheckGeneral(vehicle, currentKM, now, neededMaintenance);
+				CheckBatteryHealth(vehicle, currentKM, now, neededMaintenance);     // Merge
+				CheckCoolantHealth(vehicle, currentKM, now, neededMaintenance);     // Merge
+
+				CheckEngineOilFilter(vehicle, currentKM, now, neededMaintenance);   // Merge
+				CheckTires(vehicle, currentKM, now, neededMaintenance);             // Merge
+				CheckBrakePads(vehicle, currentKM, neededMaintenance);              // Merge
+				CheckSuspension(vehicle, currentKM, now, neededMaintenance);        // Merge
+				CheckGeneral(vehicle, currentKM, now, neededMaintenance);           // Merge
+			}
+			else if (isICE)
+			{
+				CheckEngineOilFilter(vehicle, currentKM, now, neededMaintenance); // Merge
+				CheckTires(vehicle, currentKM, now, neededMaintenance);           // Merge
+				CheckBrakePads(vehicle, currentKM, neededMaintenance);            // Merge
+				CheckSuspension(vehicle, currentKM, now, neededMaintenance);      // Merge
+				CheckGeneral(vehicle, currentKM, now, neededMaintenance);         // Merge
 			}
 
 			return neededMaintenance;
 		}
-
-		// Fosil / Hybrid(Fosil)
 
 		private static void CheckEngineOilFilter(Vehicle v, double currentKM, DateTime now, List<Maintenance> tasks)
 		{
@@ -137,8 +147,6 @@
 			}
 		}
 
-		// Electrice / Hybrid(Electrice)
-
 		private static void CheckBatteryHealth(Vehicle v, double currentKM, DateTime now, List<Maintenance> tasks)
 		{
 			double kmSinceLast = currentKM - v.LastBatteryCheckKM;
@@ -183,40 +191,6 @@
 					VehicleId = v.Id,
 					MaintenanceType = MaintenanceTypes.BrakePadReplacement,
 					ScheduledDate = DateTime.Now.AddDays(7),
-					Status = "Scheduled"
-				});
-			}
-		}
-
-		private static void CheckSuspensionEV(Vehicle v, double currentKM, DateTime now, List<Maintenance> tasks)
-		{
-			double kmSinceLast = currentKM - v.LastSuspensionServiceKM;
-			double yearsSince = (now - v.LastSuspensionServiceDate).TotalDays / 365.0;
-
-			if (kmSinceLast >= SUSPENSION_SERVICE_KM || yearsSince >= SUSPENSION_SERVICE_YEARS)
-			{
-				tasks.Add(new Maintenance
-				{
-					VehicleId = v.Id,
-					MaintenanceType = MaintenanceTypes.SuspensionService,
-					ScheduledDate = now.AddDays(7),
-					Status = "Scheduled"
-				});
-			}
-		}
-
-		private static void CheckGeneralEV(Vehicle v, double currentKM, DateTime now, List<Maintenance> tasks)
-		{
-			double kmSinceLast = currentKM - v.LastGeneralInspectionKM;
-			double monthsSince = (now - v.LastGeneralInspectionDate).TotalDays / 30.0;
-
-			if (kmSinceLast >= GENERAL_SERVICE_KM || monthsSince >= GENERAL_SERVICE_MONTHS)
-			{
-				tasks.Add(new Maintenance
-				{
-					VehicleId = v.Id,
-					MaintenanceType = MaintenanceTypes.GeneralInspection,
-					ScheduledDate = now.AddDays(7),
 					Status = "Scheduled"
 				});
 			}

@@ -128,7 +128,7 @@
             <!-- Pt Dispecer -->
             @if (ViewBag.UserRole == "Sofer" && User.IsInRole("Admin"))
             {
-                <div class="d-flex align-items-center gap-3 border border-3 rounded p-2">
+                <div class="d-flex align-items-center gap-3 border border-3 border-dark rounded p-2">
                     <label for="dispatcherId" class="mb-0">Assign Dispatcher:</label>
                     <form id="dispatcherForm" asp-action="AssignDriverToDispatcherByRegionId" asp-controller="Users" method="post" class="mb-0">
                         <input type="hidden" name="driverId" value="@Model.Id" />
@@ -143,11 +143,6 @@
                     </form>
                 </div>
             }
-
-            <!-- Back -->
-            <div class="d-flex align-items-center">
-                <a href="@Url.Action("Index", "Users")" class="btn btn-secondary" style="min-width: 100px;">Back</a>
-            </div>
         </div>
     </div>
 </div>

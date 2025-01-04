@@ -1,7 +1,9 @@
 ﻿@*
     For more information on enabling MVC for empty projects, visit https://go.microsoft.com/fwlink/?LinkID=397860
 *@
-@model IEnumerable<Maintenance>
+@using System.ComponentModel.DataAnnotations
+@using System.Reflection
+@model IEnumerable<Licenta_v1.Models.Maintenance>
 @{
     var vehicle = ViewBag.Vehicle as Vehicle;
     ViewBag.Title = $"Maintenances for {vehicle?.Brand} {vehicle?.Model} ({vehicle?.RegistrationNumber})";
@@ -40,7 +42,7 @@
             {
                 <tr>
                     <td id="light-blue-elements-background-id">@count</td>
-                    <td id="light-blue-elements-background-id">@maintenance.MaintenanceType.ToString()</td>
+                    <td id="light-blue-elements-background-id">@GetMaintenanceDisplayName(maintenance.MaintenanceType)</td>
                     <td id="light-blue-elements-background-id">@maintenance.ScheduledDate.ToShortDateString()</td>
                     <td id="light-blue-elements-background-id">@maintenance.CompletedDate?.ToShortDateString()</td>
                     <td id="light-blue-elements-background-id">@maintenance.Status</td>
@@ -58,3 +60,12 @@
 </table>
 
 <a asp-action="Index" asp-controller="Vehicles" class="btn btn-secondary">Back to Vehicles</a>
+
+@functions {
+    private string GetMaintenanceDisplayName(MaintenanceTypes maintenanceType)
+    {
+        var field = maintenanceType.GetType().GetField(maintenanceType.ToString());
+        var attribute = field?.GetCustomAttribute<DisplayAttribute>();
+        return attribute?.GetName() ?? maintenanceType.ToString();
+    }
+}

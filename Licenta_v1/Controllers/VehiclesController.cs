@@ -2,6 +2,7 @@
 using Licenta_v1.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Identity.UI.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Rendering;
 using Microsoft.EntityFrameworkCore;
@@ -16,18 +17,18 @@ namespace Licenta_v1.Controllers
 		private readonly ApplicationDbContext db;
 		private readonly UserManager<ApplicationUser> _userManager;
 		private readonly RoleManager<IdentityRole> _roleManager;
-		private readonly ISendGridClient _sendGridClient; // Inject your SendGrid client
+		private readonly IEmailSender _emailSender;
 
 		public VehiclesController(
 			ApplicationDbContext context,
 			UserManager<ApplicationUser> userManager,
 			RoleManager<IdentityRole> roleManager,
-			ISendGridClient sendGridClient)
+			IEmailSender emailSender)
 		{
 			db = context;
 			_userManager = userManager;
 			_roleManager = roleManager;
-			_sendGridClient = sendGridClient;
+			_emailSender = emailSender;
 		}
 
 		[NonAction]
@@ -432,14 +433,45 @@ namespace Licenta_v1.Controllers
 				return RedirectToAction("Index");
 			}
 
-			// Iau toate tipurile de mentenanta pentru dropdown
-			ViewBag.MaintenanceTypes = Enum.GetValues(typeof(MaintenanceTypes))
-										   .Cast<MaintenanceTypes>()
-										   .Select(mt => new SelectListItem
-										   {
-											   Text = mt.GetDisplayName(),
-											   Value = mt.ToString()
-										   }).ToList();
+			// Iau toate tipurile de mentenanta la care vehiculul are drept in functie de tipul de combustibil
+			var maintenanceTypes = Enum.GetValues(typeof(MaintenanceTypes))
+						   .Cast<MaintenanceTypes>()
+						   .Where(mt =>
+						   {
+							   switch (vehicle.FuelType)
+							   {
+								   case FuelType.Electric: // Electric
+									   return mt == MaintenanceTypes.BatteryHealthCheck ||
+											  mt == MaintenanceTypes.BatteryCoolantChange ||
+											  mt == MaintenanceTypes.TireReplacement ||
+											  mt == MaintenanceTypes.BrakePadReplacement ||
+											  mt == MaintenanceTypes.SuspensionService ||
+											  mt == MaintenanceTypes.GeneralInspection;
+
+								   case FuelType.Hybrid: // ICE + Electric = Hybrid
+									   return mt == MaintenanceTypes.EngineOilFilter ||
+											  mt == MaintenanceTypes.BatteryHealthCheck ||
+											  mt == MaintenanceTypes.BatteryCoolantChange ||
+											  mt == MaintenanceTypes.TireReplacement ||
+											  mt == MaintenanceTypes.BrakePadReplacement ||
+											  mt == MaintenanceTypes.SuspensionService ||
+											  mt == MaintenanceTypes.GeneralInspection;
+
+								   default: // ICE
+									   return mt == MaintenanceTypes.EngineOilFilter ||
+											  mt == MaintenanceTypes.TireReplacement ||
+											  mt == MaintenanceTypes.BrakePadReplacement ||
+											  mt == MaintenanceTypes.SuspensionService ||
+											  mt == MaintenanceTypes.GeneralInspection;
+							   }
+						   })
+						   .Select(mt => new SelectListItem
+						   {
+							   Text = mt.GetDisplayName(),
+							   Value = mt.ToString()
+						   }).ToList();
+
+			ViewBag.MaintenanceTypes = maintenanceTypes;
 
 			return View(vehicle);
 		}
@@ -484,40 +516,58 @@ namespace Licenta_v1.Controllers
 			TempData["Success"] = $"Maintenance for {vehicle.Brand} {vehicle.Model} scheduled successfully!";
 
 			// Dau mail la toti adminii ca s-a programat o mentenanta
-			await NotifyAdmins(vehicle, maintenance);
+			await NotifyUsers(vehicle, maintenance);
 
-			return RedirectToAction("Index");
+			if(User.IsInRole("Admin"))
+			{
+				return RedirectToAction("Index");
+			}
+			else
+			{
+				return RedirectToAction("VehicleMaintenances", "Maintenances", new { vehicleId = id });
+			}
 		}
 
 		// Dau mail la toti adminii ca s-a programat o mentenanta
-		private async Task NotifyAdmins(Vehicle vehicle, Maintenance maintenance)
+		private async Task NotifyUsers(Vehicle vehicle, Maintenance maintenance)
 		{
+			// Iau toti adminii
 			var admins = await _userManager.GetUsersInRoleAsync("Admin");
 			var emailAddresses = admins.Select(a => a.Email).Where(email => !string.IsNullOrEmpty(email)).ToList();
 
-			if (!emailAddresses.Any()) return;
+			if (emailAddresses.Count == 0) return; // Inseamna ca n-am cui sa dau mail
 
-			var message = new SendGridMessage
-			{
-				From = new EmailAddress("your_email@example.com", "EcoDelivery"),
-				Subject = "New Maintenance Scheduled",
-				HtmlContent = $@"
-            <p>A new maintenance task has been scheduled:</p>
-            <ul>
-                <li><strong>Vehicle:</strong> {vehicle.Brand} {vehicle.Model} ({vehicle.RegistrationNumber})</li>
-                <li><strong>Type:</strong> {maintenance.MaintenanceType.GetDisplayName()}</li>
-                <li><strong>Scheduled Date:</strong> {maintenance.ScheduledDate.ToString("g")}</li>
-            </ul>
-            <p>Please review the details in the system.</p>"
-			};
+			// Continutul mail-ului basically
+			var emailBody = $@"
+        <div style='font-family: Arial, sans-serif; line-height: 1.6; max-width: 600px; margin: auto;'>
+            <div style='text-align: center; padding: 20px; background-color: #f4f4f4; border-bottom: 1px solid #ddd;'>
+                <h1 style='color: #333;'>New Maintenance Scheduled</h1>
+            </div>
+            <div style='padding: 20px; background-color: #ffffff;'>
+                <p>A new maintenance task has been scheduled:</p>
+                <ul style='color: #666;'>
+                    <li><strong>Vehicle:</strong> {vehicle.Brand} {vehicle.Model} ({vehicle.RegistrationNumber})</li>
+                    <li><strong>Type:</strong> {maintenance.MaintenanceType.GetDisplayName()}</li>
+                    <li><strong>Scheduled Date:</strong> {maintenance.ScheduledDate.ToString("g")}</li>
+                </ul>
+                <p style='color: #666;'>Please review the details in the system.</p>
+            </div>
+            <div style='text-align: center; padding: 10px; background-color: #f4f4f4; border-top: 1px solid #ddd;'>
+                <p style='color: #888; font-size: 12px;'>EcoDelivery | All Rights Reserved</p>
+            </div>
+        </div>";
 
+			// Trimit mail fiecarui admin
 			foreach (var email in emailAddresses)
 			{
-				message.AddTo(email);
+				await _emailSender.SendEmailAsync(
+					email,
+					"New Maintenance Scheduled",
+					emailBody
+				);
 			}
-
-			await _sendGridClient.SendEmailAsync(message);
 		}
+
 
 		// Post - Vehicles/Retire/id
 		[Authorize(Roles = "Admin")]

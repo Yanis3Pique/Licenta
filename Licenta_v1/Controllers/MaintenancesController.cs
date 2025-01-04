@@ -27,17 +27,41 @@ namespace Licenta_v1.Controllers
 		}
 
 		// Get - Maintenance/Index
-		public IActionResult Index()
+		[Authorize(Roles = "Admin")]
+		public IActionResult Index(string searchString, string sortOrder)
 		{
-			// Iau toate mentenantele programate sau in curs
 			var tasks = db.Maintenances
 				.Include(m => m.Vehicle)
-				.Where(m => m.Status == "Scheduled" || m.Status == "In Progress")
-				.OrderBy(m => m.ScheduledDate)
-				.ToList();
+				.Where(m => m.Status == "Scheduled" || m.Status == "In Progress");
 
-			return View(tasks);
+			// Search-ul se petrece aci
+			if (!string.IsNullOrEmpty(searchString))
+			{
+				tasks = tasks.Where(m =>
+					(m.Vehicle.Brand != null && m.Vehicle.Brand.Contains(searchString)) ||
+					(m.Vehicle.Model != null && m.Vehicle.Model.Contains(searchString)) ||
+					(m.Vehicle.RegistrationNumber != null && m.Vehicle.RegistrationNumber.Contains(searchString)) ||
+					m.MaintenanceType.ToString().Contains(searchString) ||
+					m.Status.Contains(searchString));
+			}
+
+			// Sortarea se petrece aci
+			tasks = sortOrder switch
+			{
+				"vehicle" => tasks.OrderBy(m => m.Vehicle.Brand),
+				"vehicle_desc" => tasks.OrderByDescending(m => m.Vehicle.Brand),
+				"type" => tasks.OrderBy(m => m.MaintenanceType),
+				"type_desc" => tasks.OrderByDescending(m => m.MaintenanceType),
+				"scheduled_date" => tasks.OrderBy(m => m.ScheduledDate),
+				"scheduled_date_desc" => tasks.OrderByDescending(m => m.ScheduledDate),
+				"status" => tasks.OrderBy(m => m.Status),
+				"status_desc" => tasks.OrderByDescending(m => m.Status),
+				_ => tasks.OrderBy(m => m.ScheduledDate),
+			};
+
+			return View(tasks.ToList());
 		}
+
 
 		// Get - Maintenance/Complete/id
 		public IActionResult Complete(int id)
@@ -54,6 +78,7 @@ namespace Licenta_v1.Controllers
 		// Post - Maintenance/Complete/id
 		[HttpPost]
 		[ValidateAntiForgeryToken]
+		[Authorize(Roles = "Admin")]
 		public IActionResult CompleteConfirmed(int id)
 		{
 			var record = db.Maintenances
@@ -62,18 +87,18 @@ namespace Licenta_v1.Controllers
 
 			if (record == null) return NotFound();
 
-			// Ensure the maintenance can only be completed on or after the scheduled date
+			// Ma asigur ca mentenanta poate fi completata doar dupa data programata
 			if (record.ScheduledDate.Date > DateTime.Now.Date)
 			{
 				TempData["Error"] = "Maintenance cannot be completed before the scheduled date.";
 				return RedirectToAction(nameof(Complete), new { id });
 			}
 
-			// Mark maintenance as completed
+			// Marchez mentenanta ca fiind completata
 			record.Status = "Completed";
 			record.CompletedDate = DateTime.Now;
 
-			// Update service fields for the vehicle
+			// Updatez ultima mentenanta efectuata pe vehicul
 			var vehicle = record.Vehicle;
 			if (vehicle != null)
 			{

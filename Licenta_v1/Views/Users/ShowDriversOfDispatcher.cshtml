@@ -3,7 +3,7 @@
 <h2 class="text-center">@ViewBag.Title</h2>
 <br />
 
-<div class="card shadow-sm p-3 mb-3">
+<div class="card shadow-sm p-3 mb-3" id="light-blue-elements-background-id">
     <form method="get">
         <div class="row g-2 align-items-center">
             <!-- Bara de cautare -->
@@ -41,7 +41,7 @@
                      alt="Driver Photo"
                      style="height: auto; max-height: 300px; object-fit: cover;">
 
-                <div class="card-body">
+                <div class="card-body" id="light-blue-elements-background-id">
                     <h5 class="card-title">@driver.FirstName @driver.LastName</h5>
                     <p class="card-text">
                         <strong>User Name:</strong> @driver.UserName<br />
@@ -49,7 +49,7 @@
                     </p>
                 </div>
 
-                <div class="card-footer text-center">
+                <div class="card-footer text-center" id="light-blue-elements-background-id">
                     <a href="@Url.Action("Show", "Users", new { id = driver.Id })" class="btn btn-primary btn-sm">Details</a>
                 </div>
             </div>
@@ -64,20 +64,56 @@
         @{
             int totalPages = ViewBag.TotalPages;
             int pageNumber = ViewBag.PageNumber;
-            string query = $"&searchString={ViewBag.SearchString}&sortOrder={ViewBag.CurrentSort}";
+            string query = $"&searchString={ViewBag.SearchString}&regionId={ViewBag.RegionId}&sortOrder={ViewBag.CurrentSort}";
+
+            // Afisez o pagina la inceput, una la final si una la stanga si/sau dreapta celei curente
+            int range = 1;
+            int startPage = Math.Max(1, pageNumber - range);
+            int endPage = Math.Min(totalPages, pageNumber + range);
         }
 
+        <!-- Previous -->
         <li class="page-item @(pageNumber == 1 ? "disabled" : "")">
-            <a class="page-link" href="?pageNumber=@(pageNumber - 1)@query">Previous</a>
+            <a class="page-link" href="?pageNumber=@(pageNumber - 1)@query" tabindex="-1">Previous</a>
         </li>
 
-        @for (int i = 1; i <= totalPages; i++)
+        <!-- Arat mereu prima pagina -->
+        @if (startPage > 1)
+        {
+            <li class="page-item @(pageNumber == 1 ? "active" : "")">
+                <a class="page-link" href="?pageNumber=1@query">1</a>
+            </li>
+
+            <!-- Pun ... daca e spatiu prea mare intre pagini -->
+            @if (startPage > 2)
+            {
+                <li class="page-item disabled"><span class="page-link">...</span></li>
+            }
+        }
+
+        <!-- Arat range-ul pentru pagini -->
+        @for (int i = startPage; i <= endPage; i++)
         {
             <li class="page-item @(i == pageNumber ? "active" : "")">
                 <a class="page-link" href="?pageNumber=@i@query">@i</a>
             </li>
         }
 
+        <!-- Arat mereu ultima pagina -->
+        @if (endPage < totalPages)
+        {
+            <!-- Pun ... daca e spatiu prea mare intre pagini -->
+            @if (endPage < totalPages - 1)
+            {
+                <li class="page-item disabled"><span class="page-link">...</span></li>
+            }
+
+            <li class="page-item @(pageNumber == totalPages ? "active" : "")">
+                <a class="page-link" href="?pageNumber=@totalPages@query">@totalPages</a>
+            </li>
+        }
+
+        <!-- Next -->
         <li class="page-item @(pageNumber == totalPages ? "disabled" : "")">
             <a class="page-link" href="?pageNumber=@(pageNumber + 1)@query">Next</a>
         </li>

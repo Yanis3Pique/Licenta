@@ -3,7 +3,7 @@
 <h2 class="text-center">@ViewBag.Title</h2>
 <br />
 
-<div class="card shadow-sm p-3 mb-3">
+<div class="card shadow-sm p-3 mb-3" id="light-blue-elements-background-id">
     <form method="get">
         <div class="row g-2 align-items-center">
             <!-- Bara de cautare -->
@@ -47,19 +47,22 @@
                          style="height: 100%; width: 100%; object-fit: cover;">
                 </div>
 
-                <div class="card-body">
+                <div class="card-body" id="light-blue-elements-background-id">
                     <h4 class="card-title">@vehicle.Brand @vehicle.Model</h4>
                     <p class="card-text">
                         <strong>Registration:</strong> @vehicle.RegistrationNumber<br />
                         <strong>Region:</strong> @(vehicle.Region?.County ?? "N/A")<br />
                         <strong>Year:</strong> @vehicle.YearOfManufacture<br />
-                        <strong>Status:</strong> @vehicle.Status.ToString()<br />
+                        <strong>Status: </strong><span class="@GetStatusClass((VehicleStatus)vehicle.Status)">@vehicle.Status.ToString()</span><br />
                     </p>
                 </div>
 
-                <div class="card-footer">
+                <div class="card-footer" id="light-blue-elements-background-id">
                     <div class="d-flex justify-content-center">
                         <a asp-controller="Vehicles" asp-action="Show" asp-route-id="@vehicle.Id" class="btn btn-primary btn-sm mb-2 mx-2">View</a>
+                        <a asp-action="VehicleMaintenances" asp-controller="Maintenances" asp-route-vehicleId="@vehicle.Id" class="btn btn-primary btn-sm mb-2 mx-2">
+                            View Maintenances
+                        </a>
                     </div>
                 </div>
             </div>
@@ -75,21 +78,71 @@
             int totalPages = ViewBag.TotalPages;
             int pageNumber = ViewBag.PageNumber;
             string query = $"&searchString={ViewBag.SearchString}&regionId={ViewBag.RegionId}&sortOrder={ViewBag.CurrentSort}";
+
+            // Afisez o pagina la inceput, una la final si una la stanga si/sau dreapta celei curente
+            int range = 1;
+            int startPage = Math.Max(1, pageNumber - range);
+            int endPage = Math.Min(totalPages, pageNumber + range);
         }
 
+        <!-- Previous -->
         <li class="page-item @(pageNumber == 1 ? "disabled" : "")">
             <a class="page-link" href="?pageNumber=@(pageNumber - 1)@query" tabindex="-1">Previous</a>
         </li>
 
-        @for (int i = 1; i <= totalPages; i++)
+        <!-- Arat mereu prima pagina -->
+        @if (startPage > 1)
+        {
+            <li class="page-item @(pageNumber == 1 ? "active" : "")">
+                <a class="page-link" href="?pageNumber=1@query">1</a>
+            </li>
+
+            <!-- Pun ... daca e spatiu prea mare intre pagini -->
+            @if (startPage > 2)
+            {
+                <li class="page-item disabled"><span class="page-link">...</span></li>
+            }
+        }
+
+        <!-- Arat range-ul pentru pagini -->
+        @for (int i = startPage; i <= endPage; i++)
         {
             <li class="page-item @(i == pageNumber ? "active" : "")">
                 <a class="page-link" href="?pageNumber=@i@query">@i</a>
             </li>
         }
 
+        <!-- Arat mereu ultima pagina -->
+        @if (endPage < totalPages)
+        {
+            <!-- Pun ... daca e spatiu prea mare intre pagini -->
+            @if (endPage < totalPages - 1)
+            {
+                <li class="page-item disabled"><span class="page-link">...</span></li>
+            }
+
+            <li class="page-item @(pageNumber == totalPages ? "active" : "")">
+                <a class="page-link" href="?pageNumber=@totalPages@query">@totalPages</a>
+            </li>
+        }
+
+        <!-- Next -->
         <li class="page-item @(pageNumber == totalPages ? "disabled" : "")">
             <a class="page-link" href="?pageNumber=@(pageNumber + 1)@query">Next</a>
         </li>
     </ul>
 </nav>
+
+@functions {
+    public string GetStatusClass(VehicleStatus status)
+    {
+        return status switch
+        {
+            VehicleStatus.Available => "text-success",      // Verde - Available
+            VehicleStatus.Busy => "text-warning",           // Galben - Busy
+            VehicleStatus.Maintenance => "text-primary",    // Albastru - Maintenance
+            VehicleStatus.Retired => "text-danger",         // Rosu - Retired
+            _ => throw new InvalidOperationException("Unexpected status value.") // Nu vom ajunge aici, dar totusi
+        };
+    }
+}

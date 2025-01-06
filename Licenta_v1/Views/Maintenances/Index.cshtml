@@ -42,6 +42,7 @@
                     <option value="scheduled_date_desc" selected="@(ViewBag.CurrentSort == "scheduled_date_desc" ? "selected" : "")">Sort by Scheduled Date (Newest)</option>
                     <option value="status" selected="@(ViewBag.CurrentSort == "status" ? "selected" : "")">Sort by Status (A-Z)</option>
                     <option value="status_desc" selected="@(ViewBag.CurrentSort == "status_desc" ? "selected" : "")">Sort by Status (Z-A)</option>
+                    <option value="" selected="@(string.IsNullOrEmpty(ViewBag.CurrentSort) ? "selected" : "")">Sort by</option>
                 </select>
             </div>
 

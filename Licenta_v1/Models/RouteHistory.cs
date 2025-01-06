@@ -12,5 +12,4 @@
 
 		public virtual Delivery? Delivery { get; set; }
 	}
-
 }

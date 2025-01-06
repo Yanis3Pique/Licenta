@@ -32,7 +32,7 @@ namespace Licenta_v1.Controllers
 		{
 			var tasks = db.Maintenances
 				.Include(m => m.Vehicle)
-				.Where(m => m.Status == "Scheduled" || m.Status == "In Progress");
+				.Where(m => m.Status == "Scheduled" || m.Status == "In Progress" || m.Status == "Completed");
 
 			// Search-ul se petrece aci
 			if (!string.IsNullOrEmpty(searchString))

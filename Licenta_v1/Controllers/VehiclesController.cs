@@ -501,6 +501,13 @@ namespace Licenta_v1.Controllers
 				return RedirectToAction("ScheduleMaintenance", new { id });
 			}
 
+			// Verific sa nu mai fie o mentenanta de acelasi tip programata pentru vehicul ("Scheduled")
+			if (await db.Maintenances.AnyAsync(m => m.VehicleId == id && m.MaintenanceType.ToString() == selectedMaintenanceType && m.Status == "Scheduled"))
+			{
+				TempData["Error"] = "A maintenance of the same type is already scheduled for this vehicle!";
+				return RedirectToAction("ScheduleMaintenance", new { id });
+			}
+
 			// Adaug o noua mentenanta in BD peste 7 zile
 			var maintenance = new Maintenance
 			{
@@ -528,36 +535,50 @@ namespace Licenta_v1.Controllers
 			}
 		}
 
-		// Dau mail la toti adminii ca s-a programat o mentenanta
+		// Dau mail la toti adminii si dispecerilor din regiunea specificata ca s-a programat o mentenanta
 		private async Task NotifyUsers(Vehicle vehicle, Maintenance maintenance)
 		{
+			// Iau mail-ul userului curent(adica cel care a creat mentenanta)
+			var currentUser = await _userManager.GetUserAsync(User);
+			var currentUserEmail = currentUser.Email;
+
 			// Iau toti adminii
 			var admins = await _userManager.GetUsersInRoleAsync("Admin");
-			var emailAddresses = admins.Select(a => a.Email).Where(email => !string.IsNullOrEmpty(email)).ToList();
 
-			if (emailAddresses.Count == 0) return; // Inseamna ca n-am cui sa dau mail
+			// Iau toti dispecerii din regiunea vehiculului
+			var dispatchers = (await _userManager.GetUsersInRoleAsync("Dispecer"))
+				.Where(d => d.RegionId == vehicle.RegionId);
 
-			// Continutul mail-ului basically
+			// Combin emailurile fara duplicate si eliminand pe cel care apeleaza metoda ScheduleMaintenance
+			var emailAddresses = admins.Select(a => a.Email)
+				.Concat(dispatchers.Select(d => d.Email))
+				.Where(email => !string.IsNullOrEmpty(email) && email != currentUserEmail) // Exclud utilizatorul curent
+				.Distinct() // Fara duplicate
+				.ToList();
+
+			if (emailAddresses.Count == 0) return; // N-am cui sa dau mail
+
+			// Mail-ul propriu-zis basically
 			var emailBody = $@"
-        <div style='font-family: Arial, sans-serif; line-height: 1.6; max-width: 600px; margin: auto;'>
-            <div style='text-align: center; padding: 20px; background-color: #f4f4f4; border-bottom: 1px solid #ddd;'>
-                <h1 style='color: #333;'>New Maintenance Scheduled</h1>
-            </div>
-            <div style='padding: 20px; background-color: #ffffff;'>
-                <p>A new maintenance task has been scheduled:</p>
-                <ul style='color: #666;'>
-                    <li><strong>Vehicle:</strong> {vehicle.Brand} {vehicle.Model} ({vehicle.RegistrationNumber})</li>
-                    <li><strong>Type:</strong> {maintenance.MaintenanceType.GetDisplayName()}</li>
-                    <li><strong>Scheduled Date:</strong> {maintenance.ScheduledDate.ToString("g")}</li>
-                </ul>
-                <p style='color: #666;'>Please review the details in the system.</p>
-            </div>
-            <div style='text-align: center; padding: 10px; background-color: #f4f4f4; border-top: 1px solid #ddd;'>
-                <p style='color: #888; font-size: 12px;'>EcoDelivery | All Rights Reserved</p>
-            </div>
-        </div>";
+			<div style='font-family: Arial, sans-serif; line-height: 1.6; max-width: 600px; margin: auto;'>
+				<div style='text-align: center; padding: 20px; background-color: #f4f4f4; border-bottom: 1px solid #ddd;'>
+					<h1 style='color: #333;'>New Maintenance Scheduled</h1>
+				</div>
+				<div style='padding: 20px; background-color: #ffffff;'>
+					<p>A new maintenance task has been scheduled:</p>
+					<ul style='color: #666;'>
+						<li><strong>Vehicle:</strong> {vehicle.Brand} {vehicle.Model} ({vehicle.RegistrationNumber})</li>
+						<li><strong>Type:</strong> {maintenance.MaintenanceType.GetDisplayName()}</li>
+						<li><strong>Scheduled Date:</strong> {maintenance.ScheduledDate.ToString("g")}</li>
+					</ul>
+					<p style='color: #666;'>Please review the details in the system.</p>
+				</div>
+				<div style='text-align: center; padding: 10px; background-color: #f4f4f4; border-top: 1px solid #ddd;'>
+					<p style='color: #888; font-size: 12px;'>EcoDelivery | All Rights Reserved</p>
+				</div>
+			</div>";
 
-			// Trimit mail fiecarui admin
+			// Trimit mail-ul destinatarilor
 			foreach (var email in emailAddresses)
 			{
 				await _emailSender.SendEmailAsync(
@@ -567,7 +588,6 @@ namespace Licenta_v1.Controllers
 				);
 			}
 		}
-
 
 		// Post - Vehicles/Retire/id
 		[Authorize(Roles = "Admin")]

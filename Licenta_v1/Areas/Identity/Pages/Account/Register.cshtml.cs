@@ -174,6 +174,13 @@ namespace Licenta_v1.Areas.Identity.Pages.Account
 					return Page();
 				}
 
+				// Verific daca UserName-ul are spatii
+				if (Input.UserName.Contains(" "))
+				{
+					TempData["Error"] = "The username must not contain spaces.";
+					return Page();
+				}
+
 				// Creez userul si ma ocup de erori
 				var result = await _userManager.CreateAsync(user, Input.Password);
 

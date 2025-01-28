@@ -10,6 +10,7 @@ using Microsoft.EntityFrameworkCore;
 using System.Net.Mail;
 using System.Net;
 using Microsoft.AspNetCore.Identity.UI.Services;
+using Licenta_v1.Services;
 
 public class TaskuriAutomate : BackgroundService
 {

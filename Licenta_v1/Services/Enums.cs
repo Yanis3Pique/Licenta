@@ -1,7 +1,7 @@
 ﻿using System.ComponentModel.DataAnnotations;
 using System.Reflection;
 
-namespace Licenta_v1.Models
+namespace Licenta_v1.Services
 {
 	public enum VehicleStatus
 	{

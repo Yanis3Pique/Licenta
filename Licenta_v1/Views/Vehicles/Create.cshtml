@@ -1,4 +1,5 @@
-﻿@*
+﻿@using Licenta_v1.Services
+@*
     For more information on enabling MVC for empty projects, visit https://go.microsoft.com/fwlink/?LinkID=397860
 *@
 @model Licenta_v1.Models.Vehicle
@@ -47,7 +48,7 @@
                 <div class="form-group">
                     @Html.LabelFor(m => m.Status, "Status")
                     @Html.DropDownListFor(m => m.Status,
-                             new SelectList(Enum.GetValues(typeof(Licenta_v1.Models.VehicleStatus))),
+                             new SelectList(Enum.GetValues(typeof(VehicleStatus))),
                              "Select Status",
                              new { @class = "form-control" })
                     @Html.ValidationMessageFor(m => m.Status, "", new { @class = "text-danger" })
@@ -57,7 +58,7 @@
                 <div class="form-group">
                     @Html.LabelFor(m => m.FuelType, "Fuel Type")
                     @Html.DropDownListFor(m => m.FuelType,
-                             new SelectList(Enum.GetValues(typeof(Licenta_v1.Models.FuelType))),
+                             new SelectList(Enum.GetValues(typeof(FuelType))),
                              "Select Fuel Type",
                              new { @class = "form-control" })
                     @Html.ValidationMessageFor(m => m.FuelType, "", new { @class = "text-danger" })

@@ -4,8 +4,9 @@ using System.Data;
 using Licenta_v1.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Identity;
+using Licenta_v1.Models;
 
-namespace Licenta_v1.Models
+namespace Licenta_v1.Services
 {
 	public static class SeedData
 	{
@@ -74,7 +75,7 @@ namespace Licenta_v1.Models
 				await context.SaveChangesAsync();
 
 				// Adaug depozitele/bazele in baza de date
-				if(context.Headquarters.Any())
+				if (context.Headquarters.Any())
 				{
 					return;
 				}
@@ -463,7 +464,7 @@ namespace Licenta_v1.Models
 				await context.SaveChangesAsync();
 
 				// Acum ma ocup de vehicule
-				if(context.Vehicles.Any())
+				if (context.Vehicles.Any())
 				{
 					return;
 				}

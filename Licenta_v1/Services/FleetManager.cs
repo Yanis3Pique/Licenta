@@ -1,4 +1,6 @@
-﻿namespace Licenta_v1.Models
+﻿using Licenta_v1.Models;
+
+namespace Licenta_v1.Services
 {
 	public static class FleetManager
 	{
@@ -19,7 +21,7 @@
 		private const double COOLANT_CHECK_KM = 80000;         // Merge
 		private const int COOLANT_CHECK_YEARS = 4;             // Merge
 		private const double EV_BRAKE_SERVICE_KM = 100000;     // Merge
-		// In cazuk EV-urilor, placutele de frana rezista mai mult
+															   // In cazuk EV-urilor, placutele de frana rezista mai mult
 
 		public static List<Maintenance> CheckAndScheduleMaintenance(Vehicle vehicle)
 		{
@@ -28,8 +30,8 @@
 			double currentKM = vehicle.TotalDistanceTraveledKM ?? 0;
 			DateTime now = DateTime.Now;
 
-			bool isElectric = (vehicle.FuelType == FuelType.Electric);
-			bool isHybrid = (vehicle.FuelType == FuelType.Hybrid);
+			bool isElectric = vehicle.FuelType == FuelType.Electric;
+			bool isHybrid = vehicle.FuelType == FuelType.Hybrid;
 			bool isICE = !isElectric && !isHybrid;
 
 			if (isElectric)

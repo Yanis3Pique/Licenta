@@ -1,4 +1,5 @@
-﻿using System.ComponentModel.DataAnnotations;
+﻿using Licenta_v1.Services;
+using System.ComponentModel.DataAnnotations;
 
 namespace Licenta_v1.Models
 {

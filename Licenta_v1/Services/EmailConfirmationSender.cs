@@ -5,7 +5,7 @@ using SendGrid.Helpers.Mail;
 using System;
 using System.Threading.Tasks;
 
-namespace Licenta_v1.Models
+namespace Licenta_v1.Services
 {
 	public class EmailConfirmationSender : IEmailSender
 	{

@@ -1,6 +1,7 @@
 using DotNetEnv;
 using Licenta_v1.Data;
 using Licenta_v1.Models;
+using Licenta_v1.Services;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.UI.Services;
 using Microsoft.EntityFrameworkCore;

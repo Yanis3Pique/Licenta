@@ -1,5 +1,136 @@
-﻿@*
-    For more information on enabling MVC for empty projects, visit https://go.microsoft.com/fwlink/?LinkID=397860
-*@
+﻿@model Licenta_v1.Models.Order
 @{
+    ViewBag.Title = "Order Details";
 }
+
+@if (TempData["Success"] != null)
+{
+    <div class="alert alert-success">@TempData["Success"]</div>
+}
+
+@if (TempData["Error"] != null)
+{
+    <div class="alert alert-danger">@TempData["Error"]</div>
+}
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+<script src="~/js/map_show_order.js"></script>
+
+<div class="container mt-5">
+    <h2 class="text-center">@ViewBag.Title</h2>
+    <br />
+
+    <div class="row align-items-stretch">
+        <!-- Tabel cu date despre comanda -->
+        <div class="col-lg-8 col-md-10 mx-auto">
+            <table class="table table-bordered table-striped">
+                <tbody>
+                    <tr>
+                        <th>Order ID</th>
+                        <td>@Model.Id</td>
+                    </tr>
+                    <tr>
+                        <th>Priority</th>
+                        <td>
+                            @if (Model.Priority == Licenta_v1.Services.OrderPriority.High)
+                            {
+                                <span class="badge bg-danger">High</span>
+                            }
+                            else
+                            {
+                                <span class="badge bg-secondary">Normal</span>
+                            }
+                        </td>
+                    </tr>
+                    <tr>
+                        <th>Status</th>
+                        <td>
+                            @if (Model.Status == Licenta_v1.Services.OrderStatus.Placed)
+                            {
+                                <span class="badge bg-primary">Placed</span>
+                            }
+                            else if (Model.Status == Licenta_v1.Services.OrderStatus.InProgress)
+                            {
+                                <span class="badge bg-warning text-dark">In Progress</span>
+                            }
+                            else
+                            {
+                                <span class="badge bg-success">Delivered</span>
+                            }
+                        </td>
+                    </tr>
+                    <tr>
+                        <th>Weight</th>
+                        <td>@Model.Weight kg</td>
+                    </tr>
+                    <tr>
+                        <th>Volume</th>
+                        <td>@Model.Volume m³</td>
+                    </tr>
+                    <tr>
+                        <th>Address</th>
+                        <td>@Model.Address</td>
+                    </tr>
+                    <tr>
+                        <th>Region</th>
+                        <td>@(Model.Region?.County ?? "N/A")</td>
+                    </tr>
+                    <tr>
+                        <th>Placed Date</th>
+                        <td>@Model.PlacedDate.ToString("dd/MM/yyyy")</td>
+                    </tr>
+                    <tr>
+                        <th>Estimated Delivery Date</th>
+                        <td>@(Model.EstimatedDeliveryDate?.ToString("dd/MM/yyyy") ?? "N/A")</td>
+                    </tr>
+                    @if (User.IsInRole("Admin"))
+                    {
+                        <tr>
+                            <th>Client</th>
+                            <td>@(Model.Client?.UserName ?? "N/A")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <input type="hidden" id="orderLatitude" value="@Model.Latitude" />
+    <input type="hidden" id="orderLongitude" value="@Model.Longitude" />
+    <input type="hidden" id="orderAddress" value="@Model.Address" />
+
+    <div class="mt-4">
+        <h4 class="text-center">Order Location</h4>
+        <div id="map" style="height: 400px; width: 100%; border-radius: 10px;"></div>
+    </div>
+
+    <!-- Butoane -->
+    <div class="mt-4 text-center">
+        <div class="d-flex justify-content-center gap-3 flex-wrap">
+            <a href="@Url.Action("Index", "Orders")" class="btn btn-secondary">Back</a>
+        </div>
+    </div>
+</div>
+
+<script>
+    document.addEventListener("DOMContentLoaded", function () {
+        var latitude = @Model.Latitude;
+        var longitude = @Model.Longitude;
+
+        if (!latitude || !longitude) {
+            console.error("No valid latitude or longitude found.");
+            return;
+        }
+
+        var map = L.map('map').setView([latitude, longitude], 14);
+
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors'
+        }).addTo(map);
+
+        L.marker([latitude, longitude]).addTo(map)
+            .bindPopup("<b>Order Location</b><br>@Model.Address")
+            .openPopup();
+    });
+</script>

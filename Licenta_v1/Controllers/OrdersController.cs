@@ -216,57 +216,6 @@ namespace Licenta_v1.Controllers
 			return View(order);
 		}
 
-		// Get - Orders/ShowOrdersOfClient/id
-		[Authorize(Roles = "Admin,Client")]
-		public async Task<IActionResult> ShowOrdersOfClient(
-			string id, 
-			string searchString, 
-			int? regionId, 
-			string sortOrder, 
-			int pageNumber = 1)
-		{
-			if (id == null) return NotFound();
-
-			// Ma asigur ca doar clientul care a plasat comanda poate sa vada comanda lui
-			var user = await db.ApplicationUsers.FirstOrDefaultAsync(u => u.Id == id);
-
-			if (user == null) return NotFound();
-
-			if (id != user.Id)
-			{
-				return Unauthorized();
-			}
-			var orders = await db.Orders.Include(o => o.Client).Where(o => o.ClientId == id).ToListAsync();
-
-			int pageSize = 6;
-
-			ViewBag.CurrentSort = sortOrder;
-			ViewBag.ClientSortParam = sortOrder == "client" ? "client_desc" : "client";
-			ViewBag.PrioritySortParam = sortOrder == "priority" ? "priority_desc" : "priority";
-			ViewBag.WeightSortParam = sortOrder == "weight" ? "weight_desc" : "weight";
-			ViewBag.VolumeSortParam = sortOrder == "volume" ? "volume_desc" : "volume";
-			ViewBag.AddressSortParam = sortOrder == "address" ? "address_desc" : "address";
-			ViewBag.StatusSortParam = sortOrder == "status" ? "status_desc" : "status";
-			ViewBag.PlacedDateSortParam = sortOrder == "placedDate" ? "placedDate_desc" : "placedDate";
-
-			ViewBag.SearchString = searchString;
-			ViewBag.RegionId = regionId;
-			ViewBag.Regions = new SelectList(db.Regions, "Id", "County");
-
-			// Iau id-ul utilizatorului curent si rolul acestuia
-			var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
-			var userRoles = await _userManager.GetRolesAsync(await _userManager.FindByIdAsync(userId));
-			var userRole = userRoles.Contains("Admin") ? "Admin" : "Client";
-
-			// Iau comenzile filtrate si numarul total de comenzi pt paginare
-			var (pagedOrders, count) = await GetFilteredOrders(searchString, regionId, sortOrder, pageNumber, pageSize, userRole, userId);
-
-			ViewBag.PageNumber = pageNumber;
-			ViewBag.TotalPages = (int)Math.Ceiling(count / (double)pageSize);
-
-			return View(pagedOrders);
-		}
-
 		[NonAction]
 		public bool IsValidAddressInRomania(string address)
 		{

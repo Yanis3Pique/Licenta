@@ -28,10 +28,11 @@ namespace Licenta_v1.Models
 		public double? Longitude { get; set; }
 		[Required(ErrorMessage = "The region id is mandatory.")]
 		public int? RegionId { get; set; }
-		public OrderStatus Status { get; set; } = OrderStatus.Placed; // (Placed, InDelivery, Delivered)
+		public OrderStatus Status { get; set; } = OrderStatus.Placed; // (Placed, InProgress, Delivered)
 		public DateTime PlacedDate { get; set; } = System.DateTime.Now;
 		public DateTime? EstimatedDeliveryDate { get; set; }
 		public DateTime? DeliveredDate { get; set; }
+		public OrderStatus? LastNotifiedStatus { get; set; } // Folosit pentru mail-urile catre clienti
 
 		public virtual ApplicationUser? Client { get; set; }
 		public virtual Region? Region { get; set; }

@@ -28,7 +28,7 @@ namespace Licenta_v1.Services
 	public enum OrderStatus
 	{
 		Placed,
-		InDelivery,
+		InProgress,
 		Delivered
 	}
 

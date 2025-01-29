@@ -43,9 +43,10 @@ public class TaskuriAutomate : BackgroundService
 					lastUserCheck = currentTime; // Actualizez timpul la care s-a rulat comanda
 				}
 
-				// Celelalte doua metode se ruleaza la fiecare minut
+				// Celelalte trei metode se ruleaza la fiecare minut
 				await CheckAndScheduleMaintenance(db);
 				await UpdateVehicles(db);
+				await NotifyClientOfOrderStatus(db);
 			}
 
 			// Astept un minut pana la urmatoarea iteratie a while-ului
@@ -126,7 +127,7 @@ public class TaskuriAutomate : BackgroundService
 			.Select(result => result.user.Email)
 			.ToListAsync();
 
-		if (recipients.Count == 0) return; // No recipients to notify
+		if (recipients.Count == 0) return;
 
 		// Continutul mail-ului basically
 		var emailBody = "<div style='font-family: Arial, sans-serif; line-height: 1.6; max-width: 600px; margin: auto;'>" +
@@ -161,6 +162,62 @@ public class TaskuriAutomate : BackgroundService
 				emailBody
 			);
 		}
+	}
+
+	private async Task NotifyClientOfOrderStatus(ApplicationDbContext db)
+	{
+		// Iau toate comenzile care au fost abia plasate(Status == Placed && LastNotifiedStatus is null)
+		// sau care si-au schimbat statusul (Status != LastNotifiedStatus)
+		var ordersToNotify = await db.Orders
+			.Where(o => o.ClientId != null &&
+						(o.LastNotifiedStatus == null || o.LastNotifiedStatus != o.Status))
+			.Include(o => o.Client)
+			.ToListAsync();
+
+		foreach (var order in ordersToNotify)
+		{
+			if (order.Client == null || string.IsNullOrEmpty(order.Client.Email))
+				continue; // Daca clientul nu gasesc mail-ul, sar peste notificare
+
+			string subject = $"Order #{order.Id} - Status Update";
+			string messageBody = GenerateOrderStatusEmail(order);
+
+			await _emailSender.SendEmailAsync(order.Client.Email, subject, messageBody);
+
+			// Actualizez LastNotifiedStatus ca sa nu spamez clientii cu mail-uri
+			order.LastNotifiedStatus = order.Status;
+		}
+
+		await db.SaveChangesAsync();
+	}
+
+	private string GenerateOrderStatusEmail(Order order)
+	{
+		string statusMessage = order.Status switch
+		{
+			OrderStatus.Placed => "Your order has been successfully placed. We will notify you once it's out for delivery.",
+			OrderStatus.InProgress => "Your order is on the way! Our driver is working hard to get it to you.",
+			OrderStatus.Delivered => "Your order has been delivered successfully! We hope you enjoy your purchase.",
+			_ => "There is an update on your order. Please check your account for details."
+		};
+
+		return $@"
+        <div style='font-family: Arial, sans-serif; line-height: 1.6; max-width: 600px; margin: auto;'>
+            <div style='text-align: center; padding: 20px; background-color: #f4f4f4; border-bottom: 1px solid #ddd;'>
+                <img src='https://cdn.pixabay.com/photo/2024/04/01/14/43/ai-generated-8669101_1280.png' alt='EcoDelivery' style='max-width: 150px;'>
+                <h2 style='color: #333;'>EcoDelivery - Order Update</h2>
+            </div>
+            <div style='padding: 20px; background-color: #ffffff;'>
+                <h3 style='color: #555;'>Order #{order.Id} - {order.Status}</h3>
+                <p style='color: #666;'>{statusMessage}</p>
+                <p><strong>Address:</strong> {order.Address}</p>
+                <p><strong>Estimated Delivery Date:</strong> {order.EstimatedDeliveryDate?.ToString("dd/MM/yyyy") ?? "N/A"}</p>
+                <p>Thank you for choosing EcoDelivery!</p>
+            </div>
+            <div style='text-align: center; padding: 10px; background-color: #f4f4f4; border-top: 1px solid #ddd;'>
+                <p style='color: #888; font-size: 12px;'>EcoDelivery | All Rights Reserved</p>
+            </div>
+        </div>";
 	}
 
 	private async Task UpdateVehicles(ApplicationDbContext dbContext)

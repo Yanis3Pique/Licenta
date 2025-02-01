@@ -24,10 +24,10 @@ namespace Licenta_v1.Controllers
 		{
 			var user = db.ApplicationUsers.FirstOrDefault(u => u.UserName == User.Identity.Name);
 
-			var deliveries = db.Deliveries        // Adminii vad toate deliveries.
-				.Include(d => d.Vehicle)          // Dispecerii vad doar deliveries din regiunea lor.
+			var deliveries = db.Deliveries     // Adminii vad toate deliveries.
+				.Include(d => d.Vehicle)       // Dispecerii vad doar deliveries din regiunea lor.
 				.Include(d => d.Driver)
-				.Where(d => User.IsInRole("Admin") || d.Vehicle.RegionId == user.RegionId) // Admin sees all, Dispecer sees only their region
+				.Where(d => User.IsInRole("Admin") || d.Vehicle.RegionId == user.RegionId)
 				.ToList();
 
 			return View(deliveries);
@@ -38,9 +38,9 @@ namespace Licenta_v1.Controllers
 		{
 			var user = db.ApplicationUsers.FirstOrDefault(u => u.UserName == User.Identity.Name);
 
-			var delivery = db.Deliveries          // Adminii vad detaliile tuturor deliveries.
-				.Include(d => d.Vehicle)          // Dispecerii vad doar detaliile deliveries din regiunea lor.
-				.ThenInclude(v => v.Region)       // Ca sa avem acces si la regiune prin Vehicle.
+			var delivery = db.Deliveries       // Adminii vad detaliile tuturor deliveries.
+				.Include(d => d.Vehicle)       // Dispecerii vad doar detaliile deliveries din regiunea lor.
+				.ThenInclude(v => v.Region)    // Ca sa avem acces si la regiune prin Vehicle.
 				.Include(d => d.Driver)
 				.Include(d => d.Orders)
 				.FirstOrDefault(d => d.Id == id && (User.IsInRole("Admin") || d.Vehicle.RegionId == user.RegionId));
@@ -100,24 +100,27 @@ namespace Licenta_v1.Controllers
 				.Where(d => d.DriverId == id)
 				.AsQueryable();
 
-			// Filtrez dupa brand + marca si numar de inmatriculare
+			// Filtrare dupa numar de inmatriculare sau Brand + Model
 			if (!string.IsNullOrEmpty(searchString))
 			{
+				string lowerSearch = searchString.ToLower();
 				deliveriesQuery = deliveriesQuery.Where(d =>
-					(d.Vehicle.Brand + " " + d.Vehicle.Model).Contains(searchString) ||
-					d.Vehicle.RegistrationNumber.Contains(searchString));
+					(d.Vehicle.Brand + " " + d.Vehicle.Model).ToLower().Contains(lowerSearch) ||
+					d.Vehicle.RegistrationNumber.ToLower().Contains(lowerSearch));
 			}
 
-			// Filtrez dupa data de livrare planificata
+			// Filtrare dupa data, fara a lua in considerare ora
 			if (deliveryDate.HasValue)
 			{
-				deliveriesQuery = deliveriesQuery.Where(d => d.PlannedStartDate.Date == deliveryDate.Value.Date);
+				deliveriesQuery = deliveriesQuery.Where(d =>
+					d.PlannedStartDate.Date == deliveryDate.Value.Date);
 			}
 
-			// Filtrez dupa status
+			// Filtrare dupa status
 			if (!string.IsNullOrEmpty(statusFilter) && statusFilter != "All")
 			{
-				deliveriesQuery = deliveriesQuery.Where(d => d.Status == statusFilter);
+				string lowerStatusFilter = statusFilter.ToLower();
+				deliveriesQuery = deliveriesQuery.Where(d => d.Status.ToLower() == lowerStatusFilter);
 			}
 
 			// Sortarea dupa data sau status
@@ -129,8 +132,11 @@ namespace Licenta_v1.Controllers
 				case "date_desc":
 					deliveriesQuery = deliveriesQuery.OrderByDescending(d => d.PlannedStartDate);
 					break;
-				case "status":
+				case "status_asc":
 					deliveriesQuery = deliveriesQuery.OrderBy(d => d.Status);
+					break;
+				case "status_desc":
+					deliveriesQuery = deliveriesQuery.OrderByDescending(d => d.Status);
 					break;
 				default:
 					deliveriesQuery = deliveriesQuery.OrderByDescending(d => d.PlannedStartDate);

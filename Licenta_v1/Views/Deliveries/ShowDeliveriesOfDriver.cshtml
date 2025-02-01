@@ -37,10 +37,10 @@
         <!-- Filtrare dupa Status -->
         <div class="col-md-3 col-sm-6">
             <select class="form-select" name="statusFilter">
-                <option value="All" selected="@(ViewBag.StatusFilter == "All" ? "selected" : "")">All Statuses</option>
                 <option value="Planned" selected="@(ViewBag.StatusFilter == "Planned" ? "selected" : "")">Planned</option>
                 <option value="InProgress" selected="@(ViewBag.StatusFilter == "InProgress" ? "selected" : "")">In Progress</option>
                 <option value="Completed" selected="@(ViewBag.StatusFilter == "Completed" ? "selected" : "")">Completed</option>
+                <option value="All" selected="@(ViewBag.StatusFilter == "All" ? "selected" : "")">All Statuses</option>
             </select>
         </div>
 
@@ -49,11 +49,12 @@
             <select class="form-select" name="sortOrder">
                 <option value="date_asc" selected="@(ViewBag.SortOrder == "date_asc" ? "selected" : "")">Planned Date (Ascending)</option>
                 <option value="date_desc" selected="@(ViewBag.SortOrder == "date_desc" ? "selected" : "")">Planned Date (Descending)</option>
-                <option value="status" selected="@(ViewBag.SortOrder == "status" ? "selected" : "")">Status</option>
+                <option value="status_asc" selected="@(ViewBag.SortOrder == "status_asc" ? "selected" : "")">Status (Ascending)</option>
+                <option value="status_desc" selected="@(ViewBag.SortOrder == "status_desc" ? "selected" : "")">Status (Descending)</option>
             </select>
         </div>
 
-        <!-- Filter Button -->
+        <!-- Buton pt Filter -->
         <div class="col-12 col-md-auto">
             <button type="submit" class="btn btn-primary w-100">Filter</button>
         </div>
@@ -72,7 +73,7 @@
                         <strong>Planned Start:</strong> @delivery.PlannedStartDate.ToString("d MMM yyyy")<br />
                         <strong>Vehicle:</strong> @delivery.Vehicle.Brand @delivery.Vehicle.Model (@delivery.Vehicle.RegistrationNumber)<br />
                         <strong>Status:</strong>
-                        <span style="color: @(delivery.Status == "Planned" ? "blue" : delivery.Status == "InProgress" ? "orange" : "gray")">
+                        <span style="color: @(delivery.Status == "Planned" ? "blue" : delivery.Status == "InProgress" ? "orange" : "#006400")">
                             @(delivery.Status == "InProgress" ? "In Progress" : delivery.Status)
                         </span><br />
                         <strong>Total Orders:</strong> @delivery.Orders.Count()

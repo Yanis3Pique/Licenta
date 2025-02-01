@@ -1,0 +1,149 @@
+﻿@model IEnumerable<Licenta_v1.Models.Delivery>
+@{
+    ViewBag.Title = "Driver's Deliveries";
+    var driver = ViewBag.Driver as Licenta_v1.Models.ApplicationUser;
+}
+
+@if (TempData["Success"] != null)
+{
+    <div class="alert alert-success">@TempData["Success"]</div>
+}
+
+@if (TempData["Error"] != null)
+{
+    <div class="alert alert-danger">@TempData["Error"]</div>
+}
+
+<h2 class="text-center">@ViewBag.Title - @driver.FirstName @driver.LastName</h2>
+<br />
+
+<!-- Filtrare si Sortare -->
+<div class="card shadow-sm p-3 mb-4" id="light-blue-elements-background-id">
+    <form method="get" class="row g-3 align-items-center">
+        <input type="hidden" name="id" value="@driver.Id" />
+
+        <!-- Search dupa Brand + Model -->
+        <div class="col-12 col-md-3">
+            <input type="text" name="searchString" value="@ViewBag.SearchString"
+                   class="form-control" placeholder="Search Vehicle(Brand + Model)" />
+        </div>
+
+        <!-- Filtrare dupa Data Planificata de Livrare -->
+        <div class="col-md-2 col-sm-6">
+            <input type="date" name="deliveryDate" value="@ViewBag.DeliveryDate"
+                   class="form-control" />
+        </div>
+
+        <!-- Filtrare dupa Status -->
+        <div class="col-md-3 col-sm-6">
+            <select class="form-select" name="statusFilter">
+                <option value="All" selected="@(ViewBag.StatusFilter == "All" ? "selected" : "")">All Statuses</option>
+                <option value="Planned" selected="@(ViewBag.StatusFilter == "Planned" ? "selected" : "")">Planned</option>
+                <option value="InProgress" selected="@(ViewBag.StatusFilter == "InProgress" ? "selected" : "")">In Progress</option>
+                <option value="Completed" selected="@(ViewBag.StatusFilter == "Completed" ? "selected" : "")">Completed</option>
+            </select>
+        </div>
+
+        <!-- Sortare dupa Data Planificare de Livrare sau Status -->
+        <div class="col-md-3 col-sm-6">
+            <select class="form-select" name="sortOrder">
+                <option value="date_asc" selected="@(ViewBag.SortOrder == "date_asc" ? "selected" : "")">Planned Date (Ascending)</option>
+                <option value="date_desc" selected="@(ViewBag.SortOrder == "date_desc" ? "selected" : "")">Planned Date (Descending)</option>
+                <option value="status" selected="@(ViewBag.SortOrder == "status" ? "selected" : "")">Status</option>
+            </select>
+        </div>
+
+        <!-- Filter Button -->
+        <div class="col-12 col-md-auto">
+            <button type="submit" class="btn btn-primary w-100">Filter</button>
+        </div>
+    </form>
+</div>
+
+<!-- Carduri pentru Deliveries -->
+<div class="row row-cols-1 row-cols-md-3 g-4">
+    @foreach (var delivery in Model)
+    {
+        <div class="col">
+            <div class="card h-100 text-center" id="light-blue-elements-background-id">
+                <div class="card-body">
+                    <h5 class="card-title">Delivery ID: @delivery.Id</h5>
+                    <p class="card-text">
+                        <strong>Planned Start:</strong> @delivery.PlannedStartDate.ToString("d MMM yyyy")<br />
+                        <strong>Vehicle:</strong> @delivery.Vehicle.Brand @delivery.Vehicle.Model (@delivery.Vehicle.RegistrationNumber)<br />
+                        <strong>Status:</strong>
+                        <span style="color: @(delivery.Status == "Planned" ? "blue" : delivery.Status == "InProgress" ? "orange" : "gray")">
+                            @(delivery.Status == "InProgress" ? "In Progress" : delivery.Status)
+                        </span><br />
+                        <strong>Total Orders:</strong> @delivery.Orders.Count()
+                    </p>
+                </div>
+
+                <div class="card-footer">
+                    <div class="d-flex justify-content-center">
+                        <a asp-action="Show" asp-route-id="@delivery.Id" class="btn btn-primary btn-sm mb-2 mx-2">View</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+<br />
+
+<!-- Paginare -->
+<nav>
+    <ul class="pagination justify-content-center">
+        @{
+            int totalPages = ViewBag.TotalPages;
+            int pageNumber = ViewBag.PageNumber;
+            string query = $"&searchString={ViewBag.SearchString}&deliveryDate={ViewBag.DeliveryDate}&sortOrder={ViewBag.SortOrder}";
+
+            int range = 1;
+            int startPage = Math.Max(1, pageNumber - range);
+            int endPage = Math.Min(totalPages, pageNumber + range);
+        }
+
+        <!-- Pagina Inapoi -->
+        <li class="page-item @(pageNumber == 1 ? "disabled" : "")">
+            <a class="page-link" href="?pageNumber=@(pageNumber - 1)@query" tabindex="-1">Previous</a>
+        </li>
+
+        @if (startPage > 1)
+        {
+            <li class="page-item @(pageNumber == 1 ? "active" : "")">
+                <a class="page-link" href="?pageNumber=1@query">1</a>
+            </li>
+
+            <!-- Se pun "..." daca sunt prea multe pagini -->
+            @if (startPage > 2)
+            {
+                <li class="page-item disabled"><span class="page-link">...</span></li>
+            }
+        }
+
+        @for (int i = startPage; i <= endPage; i++)
+        {
+            <li class="page-item @(i == pageNumber ? "active" : "")">
+                <a class="page-link" href="?pageNumber=@i@query">@i</a>
+            </li>
+        }
+
+        @if (endPage < totalPages)
+        {
+            <!-- Se pun "..." daca sunt prea multe pagini -->
+            @if (endPage < totalPages - 1)
+            {
+                <li class="page-item disabled"><span class="page-link">...</span></li>
+            }
+
+            <li class="page-item @(pageNumber == totalPages ? "active" : "")">
+                <a class="page-link" href="?pageNumber=@totalPages@query">@totalPages</a>
+            </li>
+        }
+
+        <!-- Pagina Inainte -->
+        <li class="page-item @(pageNumber == totalPages ? "disabled" : "")">
+            <a class="page-link" href="?pageNumber=@(pageNumber + 1)@query">Next</a>
+        </li>
+    </ul>
+</nav>

@@ -1,0 +1,57 @@
+﻿@*
+    For more information on enabling MVC for empty projects, visit https://go.microsoft.com/fwlink/?LinkID=397860
+*@
+@model Licenta_v1.Models.Delivery
+
+@{
+    ViewBag.Title = "Delivery Details";
+}
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+<script src="~/js/map_show_delivery.js"></script>
+
+<div class="container mt-5">
+    <h2 class="text-center">@ViewBag.Title</h2>
+    <br />
+
+    <div class="row align-items-stretch">
+        <div class="col-lg-8 col-md-10 mx-auto">
+            <table class="table table-bordered table-striped">
+                <tbody>
+                    <tr>
+                        <th>Delivery ID</th>
+                        <td>@Model.Id</td>
+                    </tr>
+                    <tr>
+                        <th>Driver</th>
+                        <td>@Model.Driver?.UserName</td>
+                    </tr>
+                    <tr>
+                        <th>Vehicle</th>
+                        <td>@Model.Vehicle?.Model (@Model.Vehicle?.RegistrationNumber)</td>
+                    </tr>
+                    <tr>
+                        <th>Planned Start</th>
+                        <td>@Model.PlannedStartDate.ToString("d")</td>
+                    </tr>
+                    <tr>
+                        <th>Status</th>
+                        <td>@Model.Status</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <input type="hidden" id="ordersData" value='@Html.Raw(Json.Serialize(Model.Orders.Select(o => new { o.Latitude, o.Longitude, o.Address })))' />
+
+    <h4 class="text-center mt-4">Order Locations</h4>
+    <div id="map-container" style="width: 100%; height: 400px;">
+        <div id="map" style="width: 100%; height: 100%; border-radius: 10px;"></div>
+    </div>
+
+    <div class="mt-4 text-center">
+        <a href="@Url.Action("Index", "Deliveries")" class="btn btn-secondary">Back</a>
+    </div>
+</div>

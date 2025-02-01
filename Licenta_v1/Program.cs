@@ -17,6 +17,8 @@ var email_personal = Env.GetString("Email_personal");
 var nume_personal = Env.GetString("Nume_personal");
 
 // Add services to the container.
+builder.Services.AddScoped<OrderDeliveryOptimizer>();
+
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection") ??
 	throw new InvalidOperationException("Connection string 'DefaultConnection' not found.");
 builder.Services.AddDbContext<ApplicationDbContext>(options => options.UseSqlServer(connectionString));

@@ -45,17 +45,23 @@
                                     <li><a href="@Url.Action("IndexClients", "Users")">Clients</a></li>
                                 </ul>
                             </div>
+                            <div class="dropdown-wrapper">
+                                <button class="dropdown-toggle-btn">Fleet</button>
+                                <ul class="dropdown-menu">
+                                    <li><a href="@Url.Action("Index", "Vehicles")">Vehicles</a></li>
+                                    <li><a href="@Url.Action("Index", "Headquarters")">Headquarters</a></li>
+                                    <li><a href="@Url.Action("Index", "Maintenances")">Maintenances</a></li>
+                                </ul>
+                            </div>
                             <li class="nav-item">
-                                <a class="nav-link text-light" asp-area="" asp-controller="Vehicles" asp-action="Index">Vehicles</a>
+                                <a class="nav-link text-light" asp-area="" asp-controller="Orders" asp-action="Index">
+                                    Orders
+                                </a>
                             </li>
                             <li class="nav-item">
-                                <a class="nav-link text-light" asp-area="" asp-controller="Headquarters" asp-action="Index">Headquarters</a>
-                            </li>
-                            <li class="nav-item">
-                                <a class="nav-link text-light" asp-area="" asp-controller="Orders" asp-action="Index">Orders</a>
-                            </li>
-                            <li class="nav-item">
-                                <a class="nav-link text-light" asp-area="" asp-controller="Maintenances" asp-action="Index">Maintenances</a>
+                                <a class="nav-link text-light" asp-area="" asp-controller="Deliveries" asp-action="Index">
+                                    Deliveries
+                                </a>
                             </li>
                         }
                         @if (User.IsInRole("Dispecer"))
@@ -69,6 +75,11 @@
                             <li class="nav-item">
                                 <a class="nav-link text-light" asp-area="" asp-controller="Users" asp-action="ShowVehiclesOfDispatcher" asp-route-id="@dispatcherId">
                                     My Vehicles
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link text-light" asp-area="" asp-controller="Deliveries" asp-action="Index">
+                                    Deliveries
                                 </a>
                             </li>
                         }
@@ -118,28 +129,49 @@
                 @if (User.IsInRole("Admin"))
                 {
                     <li class="nav-item" style="border-bottom: 1px solid black;">
-                        <a class="nav-link text-dark" asp-area="" asp-controller="Users" asp-action="Index">Users</a>
+                        <a class="nav-link text-dark" asp-area="" asp-controller="Users" asp-action="Index">
+                            Users
+                        </a>
                     </li>
                     <li class="nav-item" style="border-bottom: 1px solid black;">
-                        <a class="nav-link text-dark" asp-area="" asp-controller="Users" asp-action="IndexDispatchers">Dispatchers</a>
+                        <a class="nav-link text-dark" asp-area="" asp-controller="Users" asp-action="IndexDispatchers">
+                            Dispatchers
+                        </a>
                     </li>
                     <li class="nav-item" style="border-bottom: 1px solid black;">
-                        <a class="nav-link text-dark" asp-area="" asp-controller="Users" asp-action="IndexDrivers">Drivers</a>
+                        <a class="nav-link text-dark" asp-area="" asp-controller="Users" asp-action="IndexDrivers">
+                            Drivers
+                        </a>
                     </li>
                     <li class="nav-item" style="border-bottom: 1px solid black;">
-                        <a class="nav-link text-dark" asp-area="" asp-controller="Users" asp-action="IndexClients">Clients</a>
+                        <a class="nav-link text-dark" asp-area="" asp-controller="Users" asp-action="IndexClients">
+                            Clients
+                        </a>
                     </li>
                     <li class="nav-item" style="border-bottom: 1px solid black;">
-                        <a class="nav-link text-dark" asp-area="" asp-controller="Vehicles" asp-action="Index">Vehicles</a>
+                        <a class="nav-link text-dark" asp-area="" asp-controller="Vehicles" asp-action="Index">
+                            Vehicles
+                        </a>
                     </li>
                     <li class="nav-item" style="border-bottom: 1px solid black;">
-                        <a class="nav-link text-dark" asp-area="" asp-controller="Headquarters" asp-action="Index">Headquarters</a>
+                        <a class="nav-link text-dark" asp-area="" asp-controller="Headquarters" asp-action="Index">
+                            Headquarters
+                        </a>
                     </li>
                     <li class="nav-item" style="border-bottom: 1px solid black;">
-                        <a class="nav-link text-dark" asp-area="" asp-controller="Orders" asp-action="Index">Orders</a>
+                        <a class="nav-link text-dark" asp-area="" asp-controller="Orders" asp-action="Index">
+                            Orders
+                        </a>
                     </li>
                     <li class="nav-item" style="border-bottom: 1px solid black;">
-                        <a class="nav-link text-dark" asp-area="" asp-controller="Maintenances" asp-action="Index">Maintenances</a>
+                        <a class="nav-link text-dark" asp-area="" asp-controller="Maintenances" asp-action="Index">
+                            Maintenances
+                        </a>
+                    </li>
+                    <li class="nav-item" style="border-bottom: 1px solid black;">
+                        <a class="nav-link text-dark" asp-area="" asp-controller="Deliveries" asp-action="Index">
+                            Deliveries
+                        </a>
                     </li>
                 }
                 @if (User.IsInRole("Dispecer"))

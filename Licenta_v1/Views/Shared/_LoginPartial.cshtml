@@ -14,7 +14,7 @@
                 var user = await UserManager.FindByIdAsync(userId);
                 var photoPath = user?.PhotoPath ?? "Images/Default.jpg";
             }
-            <a class="nav-link p-0" asp-controller="Users" asp-action="Profile">
+            <a class="d-inline-block p-0" asp-controller="Users" asp-action="Profile">
                 <img src="@(Url.Content("~/" + photoPath))"
                      alt="User Photo"
                      class="rounded-circle"

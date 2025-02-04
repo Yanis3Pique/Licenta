@@ -7,6 +7,16 @@
     ViewBag.Title = "Delivery Details";
 }
 
+@if (TempData["Success"] != null)
+{
+    <div class="alert alert-success">@TempData["Success"]</div>
+}
+
+@if (TempData["Error"] != null)
+{
+    <div class="alert alert-danger">@TempData["Error"]</div>
+}
+
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
 <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
 <script src="~/js/map_show_delivery.js"></script>
@@ -29,7 +39,7 @@
                     </tr>
                     <tr>
                         <th>Vehicle</th>
-                        <td>@Model.Vehicle?.Model (@Model.Vehicle?.RegistrationNumber)</td>
+                        <td>@Model.Vehicle?.Brand @Model.Vehicle?.Model (@Model.Vehicle?.RegistrationNumber)</td>
                     </tr>
                     <tr>
                         <th>Planned Start</th>
@@ -44,14 +54,58 @@
         </div>
     </div>
 
-    <input type="hidden" id="ordersData" value='@Html.Raw(Json.Serialize(Model.Orders.Select(o => new { o.Latitude, o.Longitude, o.Address })))' />
+    <input type="hidden" id="ordersData" value='@Html.Raw(Json.Serialize(Model.Orders.Select(o => new { o.Latitude, o.Longitude, o.Address, o.Id })))' />
 
     <h4 class="text-center mt-4">Order Locations</h4>
     <div id="map-container" style="width: 100%; height: 400px;">
         <div id="map" style="width: 100%; height: 100%; border-radius: 10px;"></div>
     </div>
-
-    <div class="mt-4 text-center">
-        <a href="@Url.Action("Index", "Deliveries")" class="btn btn-secondary">Back</a>
-    </div>
 </div>
+
+@if (User.IsInRole("Sofer") && Model.DriverId?.ToString() == ViewBag.CurrentUserId?.ToString())
+{
+    <div class="mt-4 p-4">
+        <h4 class="text-center mb-3">📦 Orders in this Delivery</h4>
+
+        <ul class="list-group order-list">
+            @foreach (var order in Model.Orders)
+            {
+                <li class="list-group-item d-flex justify-content-between align-items-center order-item">
+                    <span>
+                        <strong>Order #@order.Id</strong> - @order.Address
+                    </span>
+
+                    @if (order.Status == Licenta_v1.Services.OrderStatus.Delivered)
+                    {
+                        <span class="badge bg-success">✅ Delivered</span>
+                    }
+                    else
+                    {
+                        <form asp-action="MarkOrderDelivered" method="post" class="d-inline">
+                            <input type="hidden" name="orderId" value="@order.Id" />
+                            <button type="submit" class="btn btn-outline-primary btn-sm">Mark as Delivered</button>
+                        </form>
+                    }
+                </li>
+            }
+        </ul>
+
+        <div class="text-center mt-4">
+            @if (Model.Status == "Planned")
+            {
+                <a asp-action="StartDelivery" asp-route-id="@Model.Id"
+                   class="btn btn-success btn-lg fw-bold action-btn">
+                    🚐 Start Delivery
+                </a>
+            }
+
+            @if (Model.Status == "In Progress" && Model.Orders.All(o => o.Status == Licenta_v1.Services.OrderStatus.Delivered))
+            {
+                <a asp-action="CompleteDelivery" asp-route-id="@Model.Id"
+                   class="btn btn-primary btn-lg fw-bold action-btn">
+                    ✅ Complete Delivery
+                </a>
+            }
+        </div>
+    </div>
+}

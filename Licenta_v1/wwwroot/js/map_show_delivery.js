@@ -39,7 +39,7 @@
 
     validOrders.forEach(function (order) {
         var marker = L.marker([order.latitude, order.longitude]).addTo(map)
-            .bindPopup(`<b>Order Location</b><br>${order.address}`);
+            .bindPopup(`<b>Order ${order.id}</b><br>${order.address}`);
         bounds.extend(marker.getLatLng()); // Cresc limita ca sa includ si locatia asta
     });
 

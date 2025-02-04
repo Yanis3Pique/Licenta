@@ -83,6 +83,14 @@
                 <div class="card-footer">
                     <div class="d-flex justify-content-center">
                         <a asp-action="Show" asp-route-id="@delivery.Id" class="btn btn-primary btn-sm mb-2 mx-2">View</a>
+
+                        @if (delivery.DriverId == null && DateTime.Now.Hour < 18)
+                        {
+                            <form asp-action="ClaimDelivery" method="post" class="d-inline">
+                                <input type="hidden" name="id" value="@delivery.Id" />
+                                <button type="submit" class="btn btn-success btn-sm mb-2 mx-2">🚚 Take Delivery</button>
+                            </form>
+                        }
                     </div>
                 </div>
             </div>

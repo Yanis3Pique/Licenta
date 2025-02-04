@@ -6,8 +6,7 @@ namespace Licenta_v1.Models
 	{
 		[Key]
 		public int Id { get; set; }
-		[Required(ErrorMessage = "The driver id is mandatory.")]
-		public string DriverId { get; set; }
+		public string? DriverId { get; set; }
 		[Required(ErrorMessage = "The vehicle id is mandatory.")]
 		public int VehicleId { get; set; }
 		[Required(ErrorMessage = "The planned start date is mandatory.")]

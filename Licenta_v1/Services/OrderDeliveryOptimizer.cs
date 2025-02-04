@@ -47,10 +47,15 @@ namespace Licenta_v1.Services
 
 		private void OptimizeRegionDeliveries(int regionId, List<Order> orders)
 		{
+			var tomorrow = DateTime.Now.AddDays(1).Date;
+
 			var vehicles = db.Vehicles
 							 .Include(v => v.Region)
-							 .Where(v => v.RegionId == regionId && v.Status == VehicleStatus.Available)
+							 .Where(v => v.RegionId == regionId &&
+								 v.Status == VehicleStatus.Available &&
+								 !db.Maintenances.Any(m => m.VehicleId == v.Id && m.ScheduledDate.Date == tomorrow)) // Exclude vehicles with maintenance scheduled
 							 .OrderBy(v => v.MaxWeightCapacity)
+							 .ThenBy(v => v.MaxVolumeCapacity)
 							 .ToList();
 
 			var clusteredOrders = ClusterOrders(orders);
@@ -66,6 +71,8 @@ namespace Licenta_v1.Services
 		{
 			var clusters = new List<List<Order>>();
 			var visited = new HashSet<Order>();
+			var singleOrders = new List<Order>();
+
 			foreach (var order in orders)
 			{
 				if (visited.Contains(order))
@@ -73,12 +80,23 @@ namespace Licenta_v1.Services
 
 				var cluster = new List<Order>();
 				var neighbors = GetNeighbors(order, orders);
+
 				if (neighbors.Count < MinClusterSize)
+				{
+					singleOrders.Add(order); // Comenzile izolate le salvez separat
 					continue;
+				}
 
 				ExpandCluster(order, neighbors, cluster, orders, visited);
 				clusters.Add(cluster);
 			}
+
+			// Comenzile izolate le adaug in cluster-uri separate
+			foreach (var singleOrder in singleOrders)
+			{
+				clusters.Add(new List<Order> { singleOrder });
+			}
+
 			return clusters;
 		}
 
@@ -147,34 +165,68 @@ namespace Licenta_v1.Services
 
 		private bool AssignOrdersToDeliveries(List<Order> orders, List<Vehicle> vehicles)
 		{
-			var vehicle = vehicles.FirstOrDefault(v => CanFitOrders(v, orders));
-			if (vehicle == null) return false;
+			orders = orders.Where(o => o.DeliveryId == null).ToList();
 
-			var driver = (from user in db.Users
-						  join userRole in db.UserRoles on user.Id equals userRole.UserId
-						  join role in db.Roles on userRole.RoleId equals role.Id
-						  where user.RegionId == vehicle.RegionId && role.Name == "Sofer"
-						  select user).FirstOrDefault();
-			if (driver == null) return false;
+			if (orders.Count == 0) return false; // Daca nu mai am comenzi neasignate, ies
+
+			// Iau id-uri vehiculelor care au o livrare planificata maine in aceeasi regiune
+			var plannedDate = DateTime.Now.AddDays(1).Date;
+			var assignedVehicleIds = db.Deliveries
+				.Where(d => d.PlannedStartDate.Date == plannedDate && 
+							d.Vehicle.RegionId == orders.First().RegionId)
+				.Select(d => d.VehicleId)
+				.ToHashSet();
+
+			// Iau vehiculele disponibile pentru a primi un Delivery maine
+			var availableVehicles = vehicles.Where(v => !assignedVehicleIds.Contains(v.Id) &&
+														!db.Maintenances.Any(m => m.VehicleId == v.Id && m.ScheduledDate.Date == plannedDate))
+											.ToList();
+			if (!availableVehicles.Any()) return false; // Nu am vehicule disponibile
+
+			var vehicle = availableVehicles.FirstOrDefault(v => CanFitOrders(v, orders));
+
+			// Daca nu am gasit un vehicul care sa incapa toate comenzile, incerc sa gasesc unul care sa incapa doar o comanda
+			if (vehicle == null && orders.Count == 1)
+			{
+				vehicle = availableVehicles.FirstOrDefault();
+				if (vehicle == null) return false;
+			}
+
+			// Iau soferii disponibili in regiunea vehiculului
+			var availableDrivers = (from user in db.Users
+									join userRole in db.UserRoles on user.Id equals userRole.UserId
+									join role in db.Roles on userRole.RoleId equals role.Id
+									where role.Name == "Sofer"
+										&& user.RegionId == vehicle.RegionId
+										&& user.IsAvailable == true
+									orderby user.AverageRating descending // Cei mai buni soferi primesc prioritate
+									select user).ToList();
+
+			var driver = availableDrivers.FirstOrDefault(); // Iau primul sofer disponibil
+
+			// Daca nu am un sofer disponibil, las Delivery-ul sa fie luat de oricine devine disponibil
+			string driverId = driver?.Id;
+			string deliveryStatus = driver == null ? "Up for Taking" : "Planned";
 
 			var delivery = new Delivery
 			{
-				DriverId = driver.Id,
+				DriverId = driverId,
 				VehicleId = vehicle.Id,
-				PlannedStartDate = DateTime.Now.AddDays(1),
-				Status = "Planned"
+				PlannedStartDate = plannedDate,
+				Status = deliveryStatus
 			};
 
 			db.Deliveries.Add(delivery);
-			db.SaveChanges(); // Salvez Delivery pentru a obtine DeliveryId
+			db.SaveChanges(); // Salvez pentru a avea acces la Id-ul Delivery
 
-			// Acum pot sa actualizez Orders cu DeliveryId
+			// Pun Orders in Delivery
 			orders.ForEach(o => o.DeliveryId = delivery.Id);
 			db.Orders.UpdateRange(orders);
 
+			if (driver != null) driver.IsAvailable = false; // Soferul e acum ocupat
 			vehicle.Status = VehicleStatus.Busy;
-			db.SaveChanges(); // Salvez modificarile comenzilor si a vehiculului
 
+			db.SaveChanges();
 			return true;
 		}
 

@@ -24,29 +24,46 @@ namespace Licenta_v1.Controllers
 		{
 			var user = db.ApplicationUsers.FirstOrDefault(u => u.UserName == User.Identity.Name);
 
+			if (user == null)
+			{
+				return Unauthorized(); // Trebuie sa fie un user autentificat
+			}
+
 			var deliveries = db.Deliveries     // Adminii vad toate deliveries.
 				.Include(d => d.Vehicle)       // Dispecerii vad doar deliveries din regiunea lor.
 				.Include(d => d.Driver)
+				.Include(d => d.Orders)
+				.ThenInclude(o => o.Region)
 				.Where(d => User.IsInRole("Admin") || d.Vehicle.RegionId == user.RegionId)
 				.ToList();
 
 			return View(deliveries);
 		}
 
-		[Authorize(Roles = "Admin,Dispecer")]
+		[Authorize(Roles = "Admin,Dispecer,Sofer")]
 		public IActionResult Show(int id)
 		{
 			var user = db.ApplicationUsers.FirstOrDefault(u => u.UserName == User.Identity.Name);
+			
+			if (user == null)
+			{
+				return Unauthorized(); // Trebuie sa fie un user autentificat
+			}
 
-			var delivery = db.Deliveries       // Adminii vad detaliile tuturor deliveries.
+			var delivery = db.Deliveries       // Adminii vad detaliile tuturor deliveries. Soferii vad doar Deliveries asignate lor.
 				.Include(d => d.Vehicle)       // Dispecerii vad doar detaliile deliveries din regiunea lor.
 				.ThenInclude(v => v.Region)    // Ca sa avem acces si la regiune prin Vehicle.
 				.Include(d => d.Driver)
 				.Include(d => d.Orders)
-				.FirstOrDefault(d => d.Id == id && (User.IsInRole("Admin") || d.Vehicle.RegionId == user.RegionId));
+				.FirstOrDefault(d => d.Id == id &&
+					(User.IsInRole("Admin") ||
+					(User.IsInRole("Dispecer") && d.Vehicle.RegionId == user.RegionId) ||
+					(User.IsInRole("Sofer") && d.DriverId == user.Id)));
 
 			if (delivery == null)
 				return NotFound();
+
+			ViewBag.CurrentUserId = user.Id;
 
 			return View(delivery);
 		}
@@ -97,7 +114,7 @@ namespace Licenta_v1.Controllers
 			var deliveriesQuery = db.Deliveries
 				.Include(d => d.Vehicle)
 				.Include(d => d.Orders)
-				.Where(d => d.DriverId == id)
+				.Where(d => d.DriverId == id || d.DriverId == null)
 				.AsQueryable();
 
 			// Filtrare dupa numar de inmatriculare sau Brand + Model
@@ -160,6 +177,128 @@ namespace Licenta_v1.Controllers
 			ViewBag.TotalPages = (int)Math.Ceiling(totalDeliveries / (double)pageSize);
 
 			return View(deliveries);
+		}
+
+		[Authorize(Roles = "Sofer")]
+		public IActionResult StartDelivery(int id)
+		{
+			var user = db.ApplicationUsers.FirstOrDefault(u => u.UserName == User.Identity.Name);
+			if (user == null) return Unauthorized();
+
+			// Verific daca soferul are deja o livrare in curs
+			var existingDelivery = db.Deliveries
+				.FirstOrDefault(d => d.DriverId == user.Id && d.Status == "In Progress");
+
+			if (existingDelivery != null)
+			{
+				TempData["Error"] = "You already have an ongoing delivery!";
+				return RedirectToAction("Show", new { id });
+			}
+
+			var delivery = db.Deliveries
+				.Include(d => d.Vehicle)
+				.Include(d => d.Orders)
+				.FirstOrDefault(d => d.Id == id && d.DriverId == user.Id);
+
+			if (delivery == null || delivery.Status != "Planned") return NotFound();
+
+			// Actualizez statusul User, Vehicle, Delivery si al Orders
+			user.IsAvailable = false;
+			delivery.Vehicle.Status = VehicleStatus.Busy;
+			delivery.Status = "In Progress";
+
+			foreach (var order in delivery.Orders)
+			{
+				order.Status = OrderStatus.InProgress;
+			}
+
+			db.SaveChanges();
+			return RedirectToAction("Show", new { id });
+		}
+
+		[Authorize(Roles = "Sofer")]
+		public IActionResult MarkOrderDelivered(int orderId)
+		{
+			var user = db.ApplicationUsers.FirstOrDefault(u => u.UserName == User.Identity.Name);
+			if (user == null) return Unauthorized();
+
+			var order = db.Orders.Include(o => o.Delivery)
+								 .FirstOrDefault(o => o.Id == orderId && o.Delivery.DriverId == user.Id);
+
+			if (order == null || order.Status != OrderStatus.InProgress) return NotFound();
+
+			// Marchez Order ca fiind livrata
+			order.Status = OrderStatus.Delivered;
+			order.DeliveredDate = DateTime.Now;
+
+			db.SaveChanges();
+			return RedirectToAction("Show", new { id = order.DeliveryId });
+		}
+
+		[Authorize(Roles = "Sofer")]
+		public IActionResult CompleteDelivery(int id)
+		{
+			var user = db.ApplicationUsers.FirstOrDefault(u => u.UserName == User.Identity.Name);
+			if (user == null) return Unauthorized();
+
+			var delivery = db.Deliveries
+				.Include(d => d.Vehicle)
+				.Include(d => d.Orders)
+				.Include(d => d.Driver)
+				.FirstOrDefault(d => d.Id == id && d.DriverId == user.Id);
+
+			if (delivery == null || delivery.Status != "In Progress") return NotFound();
+
+			// Ma asigur ca toate Orders din Delivery au fost livrate
+			if (delivery.Orders.Any(o => o.Status != OrderStatus.Delivered))
+			{
+				TempData["Error"] = "Not all orders have been delivered yet!";
+				return RedirectToAction("Show", new { id });
+			}
+
+			// Marchez Delivery ca fiind completa
+			delivery.Status = "Completed";
+			delivery.ActualEndDate = DateTime.Now;
+
+			// Fac soferul si masina disponibili din nou
+			user.IsAvailable = true;
+			delivery.Vehicle.Status = VehicleStatus.Available;
+
+			db.SaveChanges();
+			return RedirectToAction("Show", new { id });
+		}
+
+		[Authorize(Roles = "Sofer")]
+		public IActionResult ClaimDelivery(int id)
+		{
+			if (id <= 0)
+			{
+				TempData["Error"] = "Invalid delivery ID!";
+				return RedirectToAction("Index");
+			}
+
+			var user = db.ApplicationUsers.FirstOrDefault(u => u.UserName == User.Identity.Name);
+			if (user == null) return Unauthorized();
+
+			var delivery = db.Deliveries
+				.Include(d => d.Vehicle)
+				.Include(d => d.Orders)
+				.FirstOrDefault(d => d.Id == id && d.DriverId == null); // Doar Deliveries care nu au fost deja luate
+
+			if (delivery == null || DateTime.Now.Hour >= 18) // SA NU UITI SA MODIFICI LA 12, NU 18
+			{
+				TempData["Error"] = "This delivery is no longer available or it's past 12:00 PM!";
+				return RedirectToAction("Index");
+			}
+
+			// Pun soferul la Delivery si actualizez statusul
+			delivery.DriverId = user.Id;
+			delivery.Status = "Planned";
+			user.IsAvailable = false;
+
+			db.SaveChanges();
+			TempData["Success"] = "Delivery successfully claimed!";
+			return RedirectToAction("ShowDeliveriesOfDriver", new { user.Id });
 		}
 	}
 }

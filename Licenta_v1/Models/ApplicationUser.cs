@@ -41,6 +41,7 @@ namespace Licenta_v1.Models
 		public int? RegionId { get; set; }
 		public DateTime? DismissalNoticeDate { get; set; }
 		public string? PhotoPath { get; set; }
+		public bool? IsAvailable { get; set; } = true;
 
 		public virtual Region? Region { get; set; }
 		public virtual ICollection<Order>? Orders { get; set; }

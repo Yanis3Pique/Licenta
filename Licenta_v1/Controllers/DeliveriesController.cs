@@ -58,7 +58,7 @@ namespace Licenta_v1.Controllers
 				.FirstOrDefault(d => d.Id == id &&
 					(User.IsInRole("Admin") ||
 					(User.IsInRole("Dispecer") && d.Vehicle.RegionId == user.RegionId) ||
-					(User.IsInRole("Sofer") && d.DriverId == user.Id)));
+					(User.IsInRole("Sofer") && (d.DriverId == null || d.DriverId == user.Id))));
 
 			if (delivery == null)
 				return NotFound();
@@ -280,15 +280,24 @@ namespace Licenta_v1.Controllers
 			var user = db.ApplicationUsers.FirstOrDefault(u => u.UserName == User.Identity.Name);
 			if (user == null) return Unauthorized();
 
+			bool hasUnfinishedDeliveries = db.Deliveries
+				.Any(d => d.DriverId == user.Id && d.Status != "Completed");
+
+			if (hasUnfinishedDeliveries)
+			{
+				TempData["Error"] = "You must complete all your current deliveries before claiming a new one!";
+				return RedirectToAction("ShowDeliveriesOfDriver", new { user.Id });
+			}
+
 			var delivery = db.Deliveries
 				.Include(d => d.Vehicle)
 				.Include(d => d.Orders)
 				.FirstOrDefault(d => d.Id == id && d.DriverId == null); // Doar Deliveries care nu au fost deja luate
 
-			if (delivery == null || DateTime.Now.Hour >= 18) // SA NU UITI SA MODIFICI LA 12, NU 18
+			if (delivery == null)
 			{
-				TempData["Error"] = "This delivery is no longer available or it's past 12:00 PM!";
-				return RedirectToAction("Index");
+				TempData["Error"] = "This delivery is no longer available!";
+				return RedirectToAction("ShowDeliveriesOfDriver", new { user.Id });
 			}
 
 			// Pun soferul la Delivery si actualizez statusul

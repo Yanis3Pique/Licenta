@@ -52,7 +52,11 @@
                     </tr>
                     <tr>
                         <th>Phone Number</th>
-                        <td>@Html.DisplayFor(model => model.PhoneNumber)</td>
+                        <td>
+                            <a href="tel:@Model.PhoneNumber" class="text-decoration-none">
+                                @Html.DisplayFor(model => model.PhoneNumber)
+                            </a>
+                        </td>
                     </tr>
                     <tr>
                         <th>Region</th>

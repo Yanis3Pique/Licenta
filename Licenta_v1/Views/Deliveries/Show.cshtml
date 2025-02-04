@@ -35,7 +35,7 @@
                     </tr>
                     <tr>
                         <th>Driver</th>
-                        <td>@Model.Driver?.UserName</td>
+                        <td>@(Model?.Driver?.UserName ?? "Not Assigned")</td>
                     </tr>
                     <tr>
                         <th>Vehicle</th>
@@ -79,7 +79,7 @@
                     {
                         <span class="badge bg-success">✅ Delivered</span>
                     }
-                    else
+                    else if (Model.Status == "In Progress") // Show only if Delivery is In Progress
                     {
                         <form asp-action="MarkOrderDelivered" method="post" class="d-inline">
                             <input type="hidden" name="orderId" value="@order.Id" />

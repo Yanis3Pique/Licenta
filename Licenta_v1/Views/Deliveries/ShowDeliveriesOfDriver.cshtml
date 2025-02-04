@@ -73,7 +73,7 @@
                         <strong>Planned Start:</strong> @delivery.PlannedStartDate.ToString("d MMM yyyy")<br />
                         <strong>Vehicle:</strong> @delivery.Vehicle.Brand @delivery.Vehicle.Model (@delivery.Vehicle.RegistrationNumber)<br />
                         <strong>Status:</strong>
-                        <span style="color: @(delivery.Status == "Planned" ? "blue" : delivery.Status == "InProgress" ? "orange" : "#006400")">
+                        <span style="color: @(delivery.Status == "Planned" ? "blue" : delivery.Status == "InProgress" ? "orange" : delivery.Status == "Completed" ? "#006400" : " #00cada")">
                             @(delivery.Status == "InProgress" ? "In Progress" : delivery.Status)
                         </span><br />
                         <strong>Total Orders:</strong> @delivery.Orders.Count()
@@ -84,7 +84,7 @@
                     <div class="d-flex justify-content-center">
                         <a asp-action="Show" asp-route-id="@delivery.Id" class="btn btn-primary btn-sm mb-2 mx-2">View</a>
 
-                        @if (delivery.DriverId == null && DateTime.Now.Hour < 18)
+                        @if (delivery.DriverId == null)
                         {
                             <form asp-action="ClaimDelivery" method="post" class="d-inline">
                                 <input type="hidden" name="id" value="@delivery.Id" />

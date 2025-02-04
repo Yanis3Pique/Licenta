@@ -36,10 +36,12 @@
     {
         <div class="col">
             <div class="card h-100 text-center">
-                <img src="@(Url.Content("~/" + (driver.PhotoPath ?? "Images/Default.jpg")))"
-                     class="card-img-top img-fluid"
-                     alt="Driver Photo"
-                     style="height: auto; max-height: 300px; object-fit: cover;">
+                <div style="height: 300px; overflow: hidden;">
+                    <img src="@(Url.Content("~/" + (driver.PhotoPath ?? "Images/Default.jpg")))"
+                         class="card-img-top img-fluid"
+                         alt="Driver Photo"
+                         style="height: 300px; width: 100%; object-fit: cover;">
+                </div>
 
                 <div class="card-body" id="light-blue-elements-background-id">
                     <h5 class="card-title">@driver.FirstName @driver.LastName</h5>

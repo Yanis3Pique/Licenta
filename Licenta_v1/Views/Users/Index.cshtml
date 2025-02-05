@@ -39,8 +39,8 @@
                     <select class="form-select" name="sortOrder">
                         <option value="name" selected = "@(ViewBag.CurrentSort == "name" ? "selected" : "")">Name (Ascending)</option>
                         <option value="name_desc" selected = "@(ViewBag.CurrentSort == "name_desc" ? "selected" : "")">Name (Descending)</option>
-                        <option value="date" selected = "@(ViewBag.CurrentSort == "date" ? "selected" : "")">Date Hired (Ascending)</option>
-                        <option value="date_desc" selected = "@(ViewBag.CurrentSort == "date_desc" ? "selected" : "")">Date Hired (Descending)</option>
+                        <option value="date" selected = "@(ViewBag.CurrentSort == "date" ? "selected" : "")">Date Joined (Ascending)</option>
+                        <option value="date_desc" selected = "@(ViewBag.CurrentSort == "date_desc" ? "selected" : "")">Date Joined (Descending)</option>
                         <option value="" selected="@(string.IsNullOrEmpty(ViewBag.CurrentSort) ? "selected" : "")">Sort by</option>
                     </select>
                 </form>
@@ -72,7 +72,7 @@
                     <p class="card-text">
                         <strong>User Name:</strong> @Html.DisplayFor(modelItem => user.UserName)<br />
                         <strong>Region:</strong> @(user.Region?.County ?? "N/A")<br />
-                        <strong>Date Hired:</strong> @(user.DateHired.ToShortDateString() ?? "N/A")
+                        <strong>Date Joined:</strong> @(user.DateHired.ToShortDateString() ?? "N/A")
                     </p>
                 </div>
 
@@ -89,6 +89,19 @@
                                 </a>
                                 <a href="@Url.Action("ShowVehiclesOfDispatcher", "Users", new { id = user.Id })" class="btn btn-primary btn-sm mb-2 mx-2">
                                     Show Vehicles
+                                </a>
+                            }
+                            if (userRoles.Contains("Sofer"))
+                            {
+                                <a href="@Url.Action("ShowFeedbacksOfDriver", "Feedbacks", new { driverId = user.Id })" class="btn btn-primary btn-sm mb-2 mx-2">
+                                    Driver Feedbacks
+                                </a>
+                            }
+
+                            if (userRoles.Contains("Client"))
+                            {
+                                <a href="@Url.Action("ShowFeedbacksGivenByClient", "Feedbacks", new { clientId = user.Id })" class="btn btn-primary btn-sm mb-2 mx-2">
+                                    Client Feedbacks
                                 </a>
                             }
                         }

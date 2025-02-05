@@ -85,7 +85,7 @@
                 </div>
                 <br />
 
-                @Html.LabelFor(model => model.DateHired, "Date Hired")
+                @Html.LabelFor(model => model.DateHired, "Date Joined")
                 <input asp-for="DateHired" type="date" class="form-control" value="@Model.DateHired.ToString("yyyy-MM-dd")" />
                 @Html.ValidationMessageFor(model => model.DateHired, null, new { @class = "text-danger" })
                 <br />

@@ -53,16 +53,14 @@
                                     <li><a href="@Url.Action("Index", "Maintenances")">Maintenances</a></li>
                                 </ul>
                             </div>
-                            <li class="nav-item">
-                                <a class="nav-link text-light" asp-area="" asp-controller="Orders" asp-action="Index">
-                                    Orders
-                                </a>
-                            </li>
-                            <li class="nav-item">
-                                <a class="nav-link text-light" asp-area="" asp-controller="Deliveries" asp-action="Index">
-                                    Deliveries
-                                </a>
-                            </li>
+                            <div class="dropdown-wrapper">
+                                <button class="dropdown-toggle-btn">Packages</button>
+                                <ul class="dropdown-menu">
+                                    <li><a href="@Url.Action("Index", "Orders")">Orders</a></li>
+                                    <li><a href="@Url.Action("Index", "Deliveries")">Deliveries</a></li>
+                                    <li><a href="@Url.Action("Index", "Feedbacks")">Feedbacks</a></li>
+                                </ul>
+                            </div>
                         }
                         @if (User.IsInRole("Dispecer"))
                         {

@@ -91,6 +91,16 @@
                 <div class="card-footer">
                     <div class="d-flex justify-content-center">
                         <a asp-action="Show" asp-route-id="@order.Id" class="btn btn-primary btn-sm mb-2 mx-2">View</a>
+
+                        @if (order.Status == Licenta_v1.Services.OrderStatus.Delivered && order.Delivery?.Driver != null)
+                        {
+                            <a asp-action="GiveFeedback" asp-controller="Feedback"
+                               asp-route-driverId="@order.Delivery.Driver.Id"
+                               asp-route-orderId="@order.Id"
+                               class="btn btn-warning btn-sm mb-2 mx-2">
+                                ⭐ Rate Driver
+                            </a>
+                        }
                     </div>
                 </div>
             </div>

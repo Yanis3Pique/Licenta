@@ -27,12 +27,12 @@
             <table class="table table-bordered table-striped">
                 <tbody>
                     <tr>
-                        <th>Order ID</th>
-                        <td>@Model.Id</td>
+                        <th id="light-blue-elements-background-id">Order ID</th>
+                        <td id="light-blue-elements-background-id">@Model.Id</td>
                     </tr>
                     <tr>
-                        <th>Priority</th>
-                        <td>
+                        <th id="light-blue-elements-background-id">Priority</th>
+                        <td id="light-blue-elements-background-id">
                             @if (Model.Priority == Licenta_v1.Services.OrderPriority.High)
                             {
                                 <span class="badge bg-danger">High</span>
@@ -44,8 +44,8 @@
                         </td>
                     </tr>
                     <tr>
-                        <th>Status</th>
-                        <td>
+                        <th id="light-blue-elements-background-id">Status</th>
+                        <td id="light-blue-elements-background-id">
                             @if (Model.Status == Licenta_v1.Services.OrderStatus.Placed)
                             {
                                 <span class="badge bg-primary">Placed</span>
@@ -61,34 +61,34 @@
                         </td>
                     </tr>
                     <tr>
-                        <th>Weight</th>
-                        <td>@Model.Weight kg</td>
+                        <th id="light-blue-elements-background-id">Weight</th>
+                        <td id="light-blue-elements-background-id">@Model.Weight kg</td>
                     </tr>
                     <tr>
-                        <th>Volume</th>
-                        <td>@Model.Volume m³</td>
+                        <th id="light-blue-elements-background-id">Volume</th>
+                        <td id="light-blue-elements-background-id">@Model.Volume m³</td>
                     </tr>
                     <tr>
-                        <th>Address</th>
-                        <td>@Model.Address</td>
+                        <th id="light-blue-elements-background-id">Address</th>
+                        <td id="light-blue-elements-background-id">@Model.Address</td>
                     </tr>
                     <tr>
-                        <th>Region</th>
-                        <td>@(Model.Region?.County ?? "N/A")</td>
+                        <th id="light-blue-elements-background-id">Region</th>
+                        <td id="light-blue-elements-background-id">@(Model.Region?.County ?? "N/A")</td>
                     </tr>
                     <tr>
-                        <th>Placed Date</th>
-                        <td>@Model.PlacedDate.ToString("dd/MM/yyyy")</td>
+                        <th id="light-blue-elements-background-id">Placed Date</th>
+                        <td id="light-blue-elements-background-id">@Model.PlacedDate.ToString("dd/MM/yyyy")</td>
                     </tr>
                     <tr>
-                        <th>Estimated Delivery Date</th>
-                        <td>@(Model.EstimatedDeliveryDate?.ToString("dd/MM/yyyy") ?? "N/A")</td>
+                        <th id="light-blue-elements-background-id">Estimated Delivery Date</th>
+                        <td id="light-blue-elements-background-id">@(Model.EstimatedDeliveryDate?.ToString("dd/MM/yyyy") ?? "N/A")</td>
                     </tr>
                     @if (User.IsInRole("Admin"))
                     {
                         <tr>
-                            <th>Client</th>
-                            <td>@(Model.Client?.UserName ?? "N/A")</td>
+                            <th id="light-blue-elements-background-id">Client</th>
+                            <td id="light-blue-elements-background-id">@(Model.Client?.UserName ?? "N/A")</td>
                         </tr>
                     }
                 </tbody>
@@ -104,33 +104,4 @@
         <h4 class="text-center">Order Location</h4>
         <div id="map" style="height: 400px; width: 100%; border-radius: 10px;"></div>
     </div>
-
-    <!-- Butoane -->
-    <div class="mt-4 text-center">
-        <div class="d-flex justify-content-center gap-3 flex-wrap">
-            <a href="@Url.Action("Index", "Orders")" class="btn btn-secondary">Back</a>
-        </div>
-    </div>
 </div>
-
-<script>
-    document.addEventListener("DOMContentLoaded", function () {
-        var latitude = @Model.Latitude;
-        var longitude = @Model.Longitude;
-
-        if (!latitude || !longitude) {
-            console.error("No valid latitude or longitude found.");
-            return;
-        }
-
-        var map = L.map('map').setView([latitude, longitude], 14);
-
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '© OpenStreetMap contributors'
-        }).addTo(map);
-
-        L.marker([latitude, longitude]).addTo(map)
-            .bindPopup("<b>Order Location</b><br>@Model.Address")
-            .openPopup();
-    });
-</script>

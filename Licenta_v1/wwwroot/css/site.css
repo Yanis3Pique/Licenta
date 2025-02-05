@@ -142,3 +142,36 @@ body {
         transform: translateY(0);
     }
 }
+
+.star {
+    font-size: 2rem;
+    cursor: pointer;
+    transition: color 0.2s;
+    margin-right: 5px;
+    display: inline-flex;
+    align-items: center;
+    vertical-align: middle;
+}
+
+.star:last-child {
+    margin-right: 0;
+}
+
+.rating-label {
+    min-width: 80px;
+    display: flex;
+    align-items: center;
+    margin-bottom: 3px;
+}
+
+.stars-container {
+    white-space: nowrap; /* Prevent wrapping */
+    display: flex;
+    justify-content: center; /* Center align */
+    align-items: center;
+    gap: 2px; /* Small gap between stars */
+}
+
+.stars-container i {
+    font-size: 1.2rem; /* Adjust size if necessary */
+}

@@ -328,13 +328,26 @@ namespace Licenta_v1.Controllers
 		public async Task<IActionResult> AssignDriverToDispatcherByRegionId(string driverId, string dispatcherId)
 		{
 			if (driverId == null || dispatcherId == null) return NotFound();
-			var driver = await db.ApplicationUsers.FindAsync(driverId);
+			var driver = await db.ApplicationUsers
+			   .Include(d => d.Deliveries)
+			   .FirstOrDefaultAsync(d => d.Id == driverId);
+
 			var dispatcher = await db.ApplicationUsers.FindAsync(dispatcherId);
 
 			if (driver == null || dispatcher == null) return NotFound();
 			if (dispatcher.RegionId == null)
 			{
 				TempData["Error"] = "The dispatcher is not assigned to a region!";
+				return RedirectToAction("Show", new { id = driverId });
+			}
+
+			// Verific daca soferul are Deliveries pe care trebuie sa le termine
+			bool hasActiveDeliveries = await db.Deliveries
+				.AnyAsync(d => d.DriverId == driverId && (d.Status == "Planned" || d.Status == "In Progress"));
+
+			if (hasActiveDeliveries)
+			{
+				TempData["Error"] = "The driver cannot change regions while having 'Planned' or 'In Progress' deliveries.";
 				return RedirectToAction("Show", new { id = driverId });
 			}
 
@@ -346,6 +359,7 @@ namespace Licenta_v1.Controllers
 				await _userManager.AddToRoleAsync(driver, "Sofer");
 			}
 
+			TempData["Success"] = "Driver successfully assigned to new region.";
 			return RedirectToAction("Show", new { id = driverId });
 		}
 
@@ -744,7 +758,10 @@ namespace Licenta_v1.Controllers
 		{
 			if (id == null) return NotFound();
 
-			var user = await db.ApplicationUsers.FindAsync(id);
+			var user = await db.ApplicationUsers
+				.Include(u => u.Deliveries)
+				.FirstOrDefaultAsync(u => u.Id == id);
+
 			if (user == null) return NotFound();
 			var userRole = await _userManager.GetRolesAsync(user);
 
@@ -781,18 +798,18 @@ namespace Licenta_v1.Controllers
 				if (userRole.Contains("Sofer") && user.AverageRating > 3)
 				{
 					TempData["Error"] = "The driver cannot be fired because he has an average rating bigger than 3/5!";
-					return RedirectToAction("Index");
+					return RedirectToAction("IndexDrivers");
 				}
 
-				// Daca soferul are livrari in curs, nu poate fi concediat
-				if (userRole.Contains("Sofer") && user.Deliveries?.Count > 0)
+				// Daca soferul are Deliveries Planned / In Progress, nu poate fi concediat
+				if (userRole.Contains("Sofer"))
 				{
 					foreach (var delivery in user.Deliveries)
 					{
-						if (delivery.Status.Contains("In Progress"))
+						if (userRole.Contains("Sofer") && user.Deliveries?.Any(d => d.Status == "Planned" || d.Status == "In Progress") == true)
 						{
-							TempData["Error"] = "The driver cannot be fired because he has deliveries in progress!";
-							return RedirectToAction("Index");
+							TempData["Error"] = "The driver cannot be fired because he has planned or in-progress deliveries!";
+							return RedirectToAction("IndexDrivers");
 						}
 					}
 				}

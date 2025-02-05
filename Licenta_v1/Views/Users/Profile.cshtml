@@ -65,7 +65,7 @@
                         <td id="light-blue-elements-background-id">@(Model.Region?.County ?? "N/A")</td>
                     </tr>
                     <tr>
-                        <th id="light-blue-elements-background-id">Date Hired</th>
+                        <th id="light-blue-elements-background-id">Date Joined</th>
                         <td id="light-blue-elements-background-id">@(Model.DateHired.ToString("dd/MM/yyyy") ?? "N/A")</td>
                     </tr>
                     <tr>
@@ -80,7 +80,7 @@
                                 <div class="rating">
                                     @for (int i = 0; i < (int)ViewBag.FullStars; i++)
                                     {
-                                        <i class="bi bi-star-fill text-warning"></i> <!-- Stea goala -->
+                                        <i class="bi bi-star-fill text-warning"></i> <!-- Stea full -->
                                     }
 
                                     @if ((bool)ViewBag.HalfStar)

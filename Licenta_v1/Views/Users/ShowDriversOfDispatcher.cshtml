@@ -16,8 +16,8 @@
                 <select class="form-select" name="sortOrder">
                     <option value="name" selected="@(ViewBag.CurrentSort == "name" ? "selected" : "")">Name (Ascending)</option>
                     <option value="name_desc" selected="@(ViewBag.CurrentSort == "name_desc" ? "selected" : "")">Name (Descending)</option>
-                    <option value="date" selected="@(ViewBag.CurrentSort == "date" ? "selected" : "")">Date Hired (Ascending)</option>
-                    <option value="date_desc" selected="@(ViewBag.CurrentSort == "date_desc" ? "selected" : "")">Date Hired (Descending)</option>
+                    <option value="date" selected="@(ViewBag.CurrentSort == "date" ? "selected" : "")">Date Joined (Ascending)</option>
+                    <option value="date_desc" selected="@(ViewBag.CurrentSort == "date_desc" ? "selected" : "")">Date Joined (Descending)</option>
                     <option value="" selected="@(string.IsNullOrEmpty(ViewBag.CurrentSort) ? "selected" : "")">Sort by</option>
                 </select>
             </div>
@@ -47,7 +47,7 @@
                     <h5 class="card-title">@driver.FirstName @driver.LastName</h5>
                     <p class="card-text">
                         <strong>User Name:</strong> @driver.UserName<br />
-                        <strong>Date Hired:</strong> @driver.DateHired.ToShortDateString()
+                        <strong>Date Joined:</strong> @driver.DateHired.ToShortDateString()
                     </p>
                 </div>
 

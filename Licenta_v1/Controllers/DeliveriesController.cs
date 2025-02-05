@@ -55,6 +55,7 @@ namespace Licenta_v1.Controllers
 				.ThenInclude(v => v.Region)    // Ca sa avem acces si la regiune prin Vehicle.
 				.Include(d => d.Driver)
 				.Include(d => d.Orders)
+				.ThenInclude(o => o.Client)
 				.FirstOrDefault(d => d.Id == id &&
 					(User.IsInRole("Admin") ||
 					(User.IsInRole("Dispecer") && d.Vehicle.RegionId == user.RegionId) ||
@@ -114,7 +115,8 @@ namespace Licenta_v1.Controllers
 			var deliveriesQuery = db.Deliveries
 				.Include(d => d.Vehicle)
 				.Include(d => d.Orders)
-				.Where(d => d.DriverId == id || d.DriverId == null)
+				.Where(d => d.DriverId == id || d.DriverId == null &&
+							d.Vehicle.RegionId == driver.RegionId)
 				.AsQueryable();
 
 			// Filtrare dupa numar de inmatriculare sau Brand + Model

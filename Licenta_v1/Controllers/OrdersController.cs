@@ -116,6 +116,8 @@ namespace Licenta_v1.Controllers
 			var userRoles = await _userManager.GetRolesAsync(await _userManager.FindByIdAsync(userId));
 			var userRole = userRoles.Contains("Admin") ? "Admin" : "Client";
 
+			ViewBag.CurrentUserId = userId; // Imi trebuie pt feedback in View
+
 			// Iau comenzile filtrate si numarul total de comenzi pt paginare
 			var (pagedOrders, count) = await GetFilteredOrders(searchString, regionId, sortOrder, pageNumber, pageSize, userRole, userId);
 
@@ -198,7 +200,10 @@ namespace Licenta_v1.Controllers
 				return NotFound();
 			}
 
-			var order = await db.Orders.Include(o => o.Client).FirstOrDefaultAsync(o => o.Id == id);
+			var order = await db.Orders
+				.Include(o => o.Client)
+				.Include(o => o.Region)
+				.FirstOrDefaultAsync(o => o.Id == id); ;
 
 			if (order == null)
 			{

@@ -1,0 +1,93 @@
+﻿@*
+    For more information on enabling MVC for empty projects, visit https://go.microsoft.com/fwlink/?LinkID=397860
+*@
+@model IEnumerable<Licenta_v1.Models.Feedback>
+@{
+    ViewBag.Title = $"Feedbacks Given by {ViewBag.Client?.UserName ?? "Client"}";
+}
+
+<h2 class="text-center">@ViewBag.Title</h2>
+<br />
+
+<div class="card shadow-sm p-3 mb-4" id="light-blue-elements-background-id">
+    <form method="get">
+        <input type="hidden" name="clientId" value="@ViewBag.Client?.Id" />
+        <input type="hidden" name="driverId" value="@ViewBag.Driver?.Id" />
+
+        <div class="row g-2 align-items-center">
+            <!-- Search -->
+            <div class="col-12 col-md-4">
+                <input type="text" name="searchString" class="form-control" placeholder="Search Feedbacks"
+                       value="@ViewBag.SearchString" />
+            </div>
+
+            <!-- Filter -->
+            <div class="col-12 col-md-3">
+                <input type="date" name="filterDate" class="form-control" value="@ViewBag.FilterDate" />
+            </div>
+
+            <!-- Sort -->
+            <div class="col-12 col-md-3">
+                <select name="sortOrder" class="form-select">
+                    <option value="date" selected="@(ViewBag.CurrentSort == "date" ? "selected" : "")">Sort by Date (Oldest)</option>
+                    <option value="date_desc" selected="@(ViewBag.CurrentSort == "date_desc" ? "selected" : "")">Sort by Date (Newest)</option>
+                    <option value="rating" selected="@(ViewBag.CurrentSort == "rating" ? "selected" : "")">Sort by Rating (Lowest)</option>
+                    <option value="rating_desc" selected="@(ViewBag.CurrentSort == "rating_desc" ? "selected" : "")">Sort by Rating (Highest)</option>
+                </select>
+            </div>
+
+            <!-- Submit -->
+            <div class="col-12 col-md-2 d-grid">
+                <button type="submit" class="btn btn-primary">Filter & Sort</button>
+            </div>
+        </div>
+    </form>
+</div>
+
+<div class="container">
+    <div class="table-responsive">
+        <table class="table table-bordered table-striped">
+            <thead class="table-dark">
+                <tr>
+                    <th>Driver</th>
+                    <th>Order ID</th>
+                    <th>Rating</th>
+                    <th>Comment</th>
+                    <th>Date</th>
+                </tr>
+            </thead>
+            <tbody>
+                @if (!Model.Any())
+                {
+                    <tr>
+                        <td colspan="5" class="text-center">No feedbacks given by this client.</td>
+                    </tr>
+                }
+                else
+                {
+                    @foreach (var feedback in Model)
+                    {
+                        <tr>
+                            <td>@(feedback.Driver?.UserName ?? "Unknown")</td>
+                            <td>@feedback.OrderId</td>
+                            <td>
+                                <div class="stars-container d-flex">
+                                    @for (int i = 0; i < feedback.Rating; i++)
+                                    {
+                                        <i class="bi bi-star-fill text-warning"></i>
+                                    }
+                                    @for (int i = feedback.Rating; i < 5; i++)
+                                    {
+                                        <i class="bi bi-star text-muted"></i>
+                                    }
+                                </div>
+                            </td>
+                            <td>@(string.IsNullOrWhiteSpace(feedback.Comment) ? "No comment" : feedback.Comment)</td>
+                            <td>@feedback.FeedbackDate.ToString("dd/MM/yyyy")</td>
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+    </div>
+</div>

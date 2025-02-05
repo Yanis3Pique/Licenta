@@ -75,13 +75,13 @@
                         <strong>Client:</strong> @order.Client?.UserName<br />
                         <strong>Address:</strong> @order.Address<br />
                         <strong>Priority:</strong>
-                        <span style="color: @(order.Priority.ToString() == "High" ? "red" : "green")">
+                        <span style="color: @(order.Priority.ToString() == "High" ? "red" : "grey")">
                             @order.Priority.ToString()
                         </span><br />
                         <strong>Weight:</strong> @order.Weight kg<br />
                         <strong>Volume:</strong> @order.Volume m³<br />
                         <strong>Status:</strong>
-                        <span style="color: @(order.Status.ToString() == "Placed" ? "blue" : order.Status.ToString() == "InProgress" ? "orange" : "gray")">
+                        <span style="color: @(order.Status.ToString() == "Placed" ? "blue" : order.Status.ToString() == "InProgress" ? "orange" : "#006400")">
                             @(order.Status.ToString() == "InProgress" ? "In Progress" : order.Status.ToString())
                         </span><br />
                         <strong>Date Placed:</strong> @order.PlacedDate.ToString("d MMM yyyy")
@@ -91,6 +91,19 @@
                 <div class="card-footer">
                     <div class="d-flex justify-content-center">
                         <a asp-action="Show" asp-route-id="@order.Id" class="btn btn-primary btn-sm mb-2 mx-2">View</a>
+
+                        @if (order.Status == Licenta_v1.Services.OrderStatus.Delivered &&
+                             order.Delivery?.DriverId != null &&
+                             order.ClientId == ViewBag.CurrentUserId &&
+                             order.Feedback == null)
+                        {
+                            <a asp-action="GiveFeedback" asp-controller="Feedbacks"
+                               asp-route-driverId="@order.Delivery.DriverId"
+                               asp-route-orderId="@order.Id"
+                               class="btn btn-primary btn-sm mb-2 mx-2">
+                                ⭐ Rate Driver
+                            </a>
+                        }
                     </div>
                 </div>
             </div>

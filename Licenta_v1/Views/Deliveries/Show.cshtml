@@ -30,24 +30,24 @@
             <table class="table table-bordered table-striped">
                 <tbody>
                     <tr>
-                        <th>Delivery ID</th>
-                        <td>@Model.Id</td>
+                        <th id="light-blue-elements-background-id">Delivery ID</th>
+                        <td id="light-blue-elements-background-id">@Model.Id</td>
                     </tr>
                     <tr>
-                        <th>Driver</th>
-                        <td>@(Model?.Driver?.UserName ?? "Not Assigned")</td>
+                        <th id="light-blue-elements-background-id">Driver</th>
+                        <td id="light-blue-elements-background-id">@(Model?.Driver?.UserName ?? "Not Assigned")</td>
                     </tr>
                     <tr>
-                        <th>Vehicle</th>
-                        <td>@Model.Vehicle?.Brand @Model.Vehicle?.Model (@Model.Vehicle?.RegistrationNumber)</td>
+                        <th id="light-blue-elements-background-id">Vehicle</th>
+                        <td id="light-blue-elements-background-id">@Model.Vehicle?.Brand @Model.Vehicle?.Model (@Model.Vehicle?.RegistrationNumber)</td>
                     </tr>
                     <tr>
-                        <th>Planned Start</th>
-                        <td>@Model.PlannedStartDate.ToString("d")</td>
+                        <th id="light-blue-elements-background-id">Planned Start</th>
+                        <td id="light-blue-elements-background-id">@Model.PlannedStartDate.ToString("d")</td>
                     </tr>
                     <tr>
-                        <th>Status</th>
-                        <td>@Model.Status</td>
+                        <th id="light-blue-elements-background-id">Status</th>
+                        <td id="light-blue-elements-background-id">@Model.Status</td>
                     </tr>
                 </tbody>
             </table>
@@ -70,16 +70,18 @@
         <ul class="list-group order-list">
             @foreach (var order in Model.Orders)
             {
-                <li class="list-group-item d-flex justify-content-between align-items-center order-item">
+                <li class="list-group-item d-flex justify-content-between align-items-center order-item" id="light-blue-elements-background-id">
                     <span>
-                        <strong>Order #@order.Id</strong> - @order.Address
+                        <strong>Order #@order.Id</strong> - @order.Address <br />
+                        <strong>Client:</strong> @order.Client?.FirstName @order.Client?.LastName <br />
+                        <strong>Phone:</strong> <a href="tel:@order.Client?.PhoneNumber">@order.Client?.PhoneNumber</a>
                     </span>
 
                     @if (order.Status == Licenta_v1.Services.OrderStatus.Delivered)
                     {
                         <span class="badge bg-success">✅ Delivered</span>
                     }
-                    else if (Model.Status == "In Progress") // Show only if Delivery is In Progress
+                    else if (Model.Status == "In Progress") // Doar daca Delivery e In Progress arat butoanele
                     {
                         <form asp-action="MarkOrderDelivered" method="post" class="d-inline">
                             <input type="hidden" name="orderId" value="@order.Id" />

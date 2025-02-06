@@ -80,6 +80,12 @@
                                     Deliveries
                                 </a>
                             </li>
+                            <li class="nav-item">
+                                <a class="nav-link text-light" asp-area="" asp-controller="Feedbacks" asp-action="Index">
+                                    Driver Feedbacks
+                                </a>
+                            </li>
+
                         }
 						@if (User.IsInRole("Sofer"))
 						{
@@ -89,6 +95,11 @@
 									My Deliveries
 								</a>
 							</li>
+                            <li class="nav-item">
+                                <a class="nav-link text-light" asp-area="" asp-controller="Feedbacks" asp-action="ShowFeedbacksOfDriver" asp-route-id="@driverId">
+                                    My Deliveries
+                                </a>
+                            </li>
 						}
                         @if (User.IsInRole("Client"))
                         {
@@ -103,6 +114,11 @@
 									My Orders
 								</a>
 							</li>
+                            <li class="nav-item">
+                                <a class="nav-link text-light" asp-area="" asp-controller="Feedbacks" asp-action="ShowFeedbacksGivenByClient" asp-route-id="@clientId">
+                                    My Feedbacks
+                                </a>
+                            </li>
                         }
                     </ul>
                     <div class="ms-auto">

@@ -88,7 +88,7 @@
                         {
                             <form asp-action="ClaimDelivery" method="post" class="d-inline">
                                 <input type="hidden" name="id" value="@delivery.Id" />
-                                <button type="submit" class="btn btn-success btn-sm mb-2 mx-2">🚚 Take Delivery</button>
+                                <button type="button" class="btn btn-success btn-sm mb-2 mx-2" onclick="claim_delivery(@delivery.Id, this)">🚚 Take Delivery</button>
                             </form>
                         }
                     </div>
@@ -98,6 +98,8 @@
     }
 </div>
 <br />
+
+<script src="~/js/claim_delivery.js"></script>
 
 <!-- Paginare -->
 <nav>

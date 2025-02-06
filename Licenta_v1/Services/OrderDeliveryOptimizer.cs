@@ -239,7 +239,7 @@ namespace Licenta_v1.Services
 
 		private double GetDistance(Order a, Order b)
 		{
-			double R = 6371;
+			double R = 6371.0; // Raza medie a Pamantului in km
 			double dLat = ToRadians(b.Latitude.Value - a.Latitude.Value);
 			double dLon = ToRadians(b.Longitude.Value - a.Longitude.Value);
 			double aVal = Math.Sin(dLat / 2) * Math.Sin(dLat / 2) + Math.Cos(ToRadians(a.Latitude.Value)) * Math.Cos(ToRadians(b.Latitude.Value)) * Math.Sin(dLon / 2) * Math.Sin(dLon / 2);

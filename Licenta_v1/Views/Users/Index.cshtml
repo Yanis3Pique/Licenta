@@ -37,8 +37,8 @@
             <div class="col-md-3 col-sm-6">
                 <form method="get">
                     <select class="form-select" name="sortOrder">
-                        <option value="name" selected = "@(ViewBag.CurrentSort == "name" ? "selected" : "")">Name (Ascending)</option>
-                        <option value="name_desc" selected = "@(ViewBag.CurrentSort == "name_desc" ? "selected" : "")">Name (Descending)</option>
+                        <option value="name" selected = "@(ViewBag.CurrentSort == "name" ? "selected" : "")">Last Name (Ascending)</option>
+                        <option value="name_desc" selected = "@(ViewBag.CurrentSort == "name_desc" ? "selected" : "")">Last Name (Descending)</option>
                         <option value="date" selected = "@(ViewBag.CurrentSort == "date" ? "selected" : "")">Date Joined (Ascending)</option>
                         <option value="date_desc" selected = "@(ViewBag.CurrentSort == "date_desc" ? "selected" : "")">Date Joined (Descending)</option>
                         <option value="" selected="@(string.IsNullOrEmpty(ViewBag.CurrentSort) ? "selected" : "")">Sort by</option>

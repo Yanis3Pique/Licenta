@@ -106,14 +106,23 @@ namespace Licenta_v1.Controllers
 		}
 
 		// Get - Feedbacks/Index
-		[Authorize(Roles = "Admin")]
+		[Authorize(Roles = "Admin,Dispecer")]
 		public async Task<IActionResult> Index(string searchString, string sortOrder, DateTime? filterDate)
 		{
+			var user = db.ApplicationUsers.FirstOrDefault(u => u.UserName == User.Identity.Name);
+			if (user == null) return Unauthorized();
+
 			var feedbacksQuery = db.Feedbacks
 				.Include(f => f.Driver)
 				.Include(f => f.Client)
 				.Include(f => f.Order)
 				.AsQueryable();
+
+			// Dispecerii vad doar Feedbacks din Regiunea lor
+			if (User.IsInRole("Dispecer"))
+			{
+				feedbacksQuery = feedbacksQuery.Where(f => f.Driver.RegionId == user.RegionId);
+			}
 
 			// Search
 			if (!string.IsNullOrEmpty(searchString))
@@ -149,7 +158,7 @@ namespace Licenta_v1.Controllers
 				"rating_desc" => feedbacksQuery.OrderByDescending(f => f.Rating),
 				"date" => feedbacksQuery.OrderBy(f => f.FeedbackDate),
 				"date_desc" => feedbacksQuery.OrderByDescending(f => f.FeedbackDate),
-				_ => feedbacksQuery.OrderByDescending(f => f.FeedbackDate),
+				_ => feedbacksQuery,
 			};
 
 			var feedbacks = await feedbacksQuery.ToListAsync();
@@ -159,20 +168,47 @@ namespace Licenta_v1.Controllers
 			return View(feedbacks);
 		}
 
-		[Authorize(Roles = "Admin")]
-		public async Task<IActionResult> ShowFeedbacksOfDriver(string driverId, string searchString, string sortOrder, DateTime? filterDate)
+		[Authorize(Roles = "Admin,Dispecer,Sofer")]
+		public async Task<IActionResult> ShowFeedbacksOfDriver(
+			string id, 
+			string searchString, 
+			string sortOrder, 
+			DateTime? filterDate)
 		{
-			if (string.IsNullOrEmpty(driverId))
+			if (string.IsNullOrEmpty(id))
 			{
 				return NotFound("Driver ID is required.");
 			}
+
+			var user = await db.ApplicationUsers.FirstOrDefaultAsync(u => u.UserName == User.Identity.Name);
+			if (user == null) return Unauthorized();
 
 			var feedbacksQuery = db.Feedbacks
 				.Include(f => f.Driver)
 				.Include(f => f.Client)
 				.Include(f => f.Order)
-				.Where(f => f.DriverId == driverId)
+				.Where(f => f.DriverId == id)
 				.AsQueryable();
+
+			// Adminii vad toate Feedbacks
+			if (User.IsInRole("Admin"))
+			{
+				feedbacksQuery = feedbacksQuery.Where(f => f.DriverId == id);
+			}
+			// Dispecerii vad doar Feedbacks din Regiunea lor
+			else if (User.IsInRole("Dispecer"))
+			{
+				feedbacksQuery = feedbacksQuery.Where(f => f.DriverId == id && f.Driver.RegionId == user.RegionId);
+			}
+			// Soferii vede doar Feedbacks pe care le-au primit
+			else if (User.IsInRole("Sofer"))
+			{
+				if (id != user.Id)
+				{
+					return Unauthorized();
+				}
+				feedbacksQuery = feedbacksQuery.Where(f => f.DriverId == user.Id);
+			}
 
 			// Search
 			if (!string.IsNullOrEmpty(searchString))
@@ -201,32 +237,54 @@ namespace Licenta_v1.Controllers
 				"rating_desc" => feedbacksQuery.OrderByDescending(f => f.Rating),
 				"date" => feedbacksQuery.OrderBy(f => f.FeedbackDate),
 				"date_desc" => feedbacksQuery.OrderByDescending(f => f.FeedbackDate),
-				_ => feedbacksQuery.OrderByDescending(f => f.FeedbackDate),
+				_ => feedbacksQuery,
 			};
 
 			var feedbacks = await feedbacksQuery.ToListAsync();
 
-			ViewBag.Driver = await db.Users.FindAsync(driverId);
+			ViewBag.Driver = await db.Users.FindAsync(id);
 			ViewBag.SearchString = searchString;
 			ViewBag.FilterDate = filterDate?.ToString("yyyy-MM-dd");
 
 			return View(feedbacks);
 		}
 
-		[Authorize(Roles = "Admin")]
-		public async Task<IActionResult> ShowFeedbacksGivenByClient(string clientId, string searchString, string sortOrder, DateTime? filterDate)
+		[Authorize(Roles = "Admin,Client")]
+		public async Task<IActionResult> ShowFeedbacksGivenByClient(
+			string id, 
+			string searchString, 
+			string sortOrder, 
+			DateTime? filterDate)
 		{
-			if (string.IsNullOrEmpty(clientId))
+			if (string.IsNullOrEmpty(id))
 			{
 				return NotFound("Client ID is required.");
 			}
+
+			var user = await db.ApplicationUsers.FirstOrDefaultAsync(u => u.UserName == User.Identity.Name);
+			if (user == null) return Unauthorized();
 
 			var feedbacksQuery = db.Feedbacks
 				.Include(f => f.Driver)
 				.Include(f => f.Client)
 				.Include(f => f.Order)
-				.Where(f => f.ClientId == clientId)
+				.Where(f => f.ClientId == id)
 				.AsQueryable();
+
+			// Adminii vad toate Feedbacks
+			if (User.IsInRole("Admin"))
+			{
+				feedbacksQuery = feedbacksQuery.Where(f => f.ClientId == id);
+			}
+			// Clientii vad doar Feedbacks date de ei
+			else if (User.IsInRole("Client"))
+			{
+				if (id != user.Id)
+				{
+					return Unauthorized();
+				}
+				feedbacksQuery = feedbacksQuery.Where(f => f.ClientId == user.Id);
+			}
 
 			// Search
 			if (!string.IsNullOrEmpty(searchString))
@@ -255,12 +313,12 @@ namespace Licenta_v1.Controllers
 				"rating_desc" => feedbacksQuery.OrderByDescending(f => f.Rating),
 				"date" => feedbacksQuery.OrderBy(f => f.FeedbackDate),
 				"date_desc" => feedbacksQuery.OrderByDescending(f => f.FeedbackDate),
-				_ => feedbacksQuery.OrderByDescending(f => f.FeedbackDate),
+				_ => feedbacksQuery,
 			};
 
 			var feedbacks = await feedbacksQuery.ToListAsync();
 
-			ViewBag.Client = await db.Users.FindAsync(clientId);
+			ViewBag.Client = await db.Users.FindAsync(id);
 			ViewBag.SearchString = searchString;
 			ViewBag.FilterDate = filterDate?.ToString("yyyy-MM-dd");
 

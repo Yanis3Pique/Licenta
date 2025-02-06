@@ -33,19 +33,20 @@
                     <option value="date_desc" selected="@(ViewBag.CurrentSort == "date_desc" ? "selected" : "")">Sort by Date (Newest)</option>
                     <option value="rating" selected="@(ViewBag.CurrentSort == "rating" ? "selected" : "")">Sort by Rating (Lowest)</option>
                     <option value="rating_desc" selected="@(ViewBag.CurrentSort == "rating_desc" ? "selected" : "")">Sort by Rating (Highest)</option>
+                    <option value="" selected="@(string.IsNullOrEmpty(ViewBag.CurrentSort) ? "selected" : "")">Sort by</option>
                 </select>
             </div>
 
             <!-- Submit -->
             <div class="col-12 col-md-2 d-grid">
-                <button type="submit" class="btn btn-primary">Filter & Sort</button>
+                <button type="submit" class="btn btn-primary">Submit</button>
             </div>
         </div>
     </form>
 </div>
 
 <div class="container">
-    <div class="table-responsive">
+    <div class="d-none d-md-block table-responsive">
         <table class="table table-bordered table-striped">
             <thead class="table-dark">
                 <tr>
@@ -90,4 +91,39 @@
             </tbody>
         </table>
     </div>
+</div>
+
+<!-- Pt ecrane mici -->
+<div class="d-block d-md-none">
+    @if (!Model.Any())
+    {
+        <div class="alert alert-info text-center">No feedbacks found.</div>
+    }
+    else
+    {
+        @foreach (var feedback in Model)
+        {
+            <div class="card mb-3 shadow-sm text-center" id="light-blue-elements-background-id">
+                <div class="card-body">
+                    <h5 class="card-title">Order #@feedback.OrderId</h5>
+                    <p class="card-text">
+                        <strong>Client:</strong> @(feedback.Client?.UserName ?? "Unknown")<br />
+                        <strong>Driver:</strong> @(feedback.Driver?.UserName ?? "Unknown")<br />
+                        <strong>Rating:</strong>
+                        @for (int i = 0; i < feedback.Rating; i++)
+                        {
+                            <i class="bi bi-star-fill text-warning"></i>
+                        }
+                        @for (int i = feedback.Rating; i < 5; i++)
+                        {
+                            <i class="bi bi-star text-muted"></i>
+                        }
+                        <br />
+                        <strong>Comment:</strong> @(string.IsNullOrWhiteSpace(feedback.Comment) ? "No comment" : feedback.Comment)<br />
+                        <strong>Date:</strong> @feedback.FeedbackDate.ToString("dd/MM/yyyy")
+                    </p>
+                </div>
+            </div>
+        }
+    }
 </div>

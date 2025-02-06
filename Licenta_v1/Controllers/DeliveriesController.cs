@@ -271,19 +271,31 @@ namespace Licenta_v1.Controllers
 		}
 
 		[Authorize(Roles = "Sofer")]
-		public IActionResult ClaimDelivery(int id)
+		public IActionResult ClaimDelivery(int id, double? lat, double? lon)
 		{
-			if (id <= 0)
-			{
-				TempData["Error"] = "Invalid delivery ID!";
-				return RedirectToAction("Index");
-			}
-
 			var user = db.ApplicationUsers.FirstOrDefault(u => u.UserName == User.Identity.Name);
 			if (user == null) return Unauthorized();
 
+			System.Diagnostics.Debug.WriteLine($"Received ClaimDelivery Request: ID={id}, Lat={lat}, Lon={lon}");
+
+			if (id <= 0)
+			{
+				TempData["Error"] = "Invalid delivery ID!";
+				return RedirectToAction("ShowDeliveriesOfDriver",  new { user.Id });
+			}
+
+			if (!lat.HasValue || !lon.HasValue)
+			{
+				TempData["Error"] = "Invalid location coordinates!";
+				return RedirectToAction("ShowDeliveriesOfDriver", new { user.Id });
+			}
+
+			double driverLat = lat.Value;
+			double driverLon = lon.Value;
+
 			bool hasUnfinishedDeliveries = db.Deliveries
-				.Any(d => d.DriverId == user.Id && d.Status != "Completed");
+				.Where(d => d.DriverId == user.Id)
+				.Any(d => d.Status != "Completed");
 
 			if (hasUnfinishedDeliveries)
 			{
@@ -294,7 +306,7 @@ namespace Licenta_v1.Controllers
 			var delivery = db.Deliveries
 				.Include(d => d.Vehicle)
 				.Include(d => d.Orders)
-				.FirstOrDefault(d => d.Id == id && d.DriverId == null); // Doar Deliveries care nu au fost deja luate
+				.FirstOrDefault(d => d.Id == id && d.DriverId == null);
 
 			if (delivery == null)
 			{
@@ -302,14 +314,46 @@ namespace Licenta_v1.Controllers
 				return RedirectToAction("ShowDeliveriesOfDriver", new { user.Id });
 			}
 
-			// Pun soferul la Delivery si actualizez statusul
+			// Iau Headquarter-ul regiunii soferului
+			var headquarter = db.Headquarters.FirstOrDefault(h => h.RegionId == user.RegionId);
+			if (headquarter == null)
+			{
+				TempData["Error"] = "No headquarter found for your region!";
+				return RedirectToAction("ShowDeliveriesOfDriver", new { user.Id });
+			}
+
+			// Calculez distanta intre locatia Soferului si Headquarter
+			double distance = GetDistance(headquarter.Latitude.Value, headquarter.Longitude.Value, lat.Value, lon.Value);
+
+			if (distance > 1.0) // Soferul trebuie sa fie in raza de 1 km fata de Headquarter
+			{
+				TempData["Error"] = "You must be at the headquarter to claim this delivery!";
+				return RedirectToAction("ShowDeliveriesOfDriver", new { user.Id });
+			}
+
+			// Asignez Delivery-ul soferului
 			delivery.DriverId = user.Id;
 			delivery.Status = "Planned";
 			user.IsAvailable = false;
 
 			db.SaveChanges();
 			TempData["Success"] = "Delivery successfully claimed!";
-			return RedirectToAction("ShowDeliveriesOfDriver", new { user.Id });
+			return RedirectToAction("ShowDeliveriesOfDriver", new { id = user.Id });
+		}
+
+		private double GetDistance(double lat1, double lon1, double lat2, double lon2)
+		{
+			double earthRadiusKm = 6371.0; // Raza medie a Pamantului in km
+
+			double dLat = (lat2 - lat1) * (Math.PI / 180);
+			double dLon = (lon2 - lon1) * (Math.PI / 180);
+
+			double a = Math.Sin(dLat / 2) * Math.Sin(dLat / 2) +
+					   Math.Cos(lat1 * (Math.PI / 180)) * Math.Cos(lat2 * (Math.PI / 180)) *
+					   Math.Sin(dLon / 2) * Math.Sin(dLon / 2);
+
+			double c = 2 * Math.Atan2(Math.Sqrt(a), Math.Sqrt(1 - a));
+			return earthRadiusKm * c;
 		}
 	}
 }

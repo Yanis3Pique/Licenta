@@ -34,13 +34,14 @@
                         <option value="date_desc" selected="@(ViewBag.CurrentSort == "date_desc" ? "selected" : "")">Sort by Date (Newest)</option>
                         <option value="rating" selected="@(ViewBag.CurrentSort == "rating" ? "selected" : "")">Sort by Rating (Lowest)</option>
                         <option value="rating_desc" selected="@(ViewBag.CurrentSort == "rating_desc" ? "selected" : "")">Sort by Rating (Highest)</option>
+                        <option value="" selected="@(string.IsNullOrEmpty(ViewBag.CurrentSort) ? "selected" : "")">Sort by</option>
                     </select>
                 </div>
             </div>
 
             <!-- Submit -->
             <div class="col-12 col-md-2 d-grid">
-                <button type="submit" class="btn btn-primary">Filter & Sort</button>
+                <button type="submit" class="btn btn-primary">Submit</button>
             </div>
         </div>
     </form>

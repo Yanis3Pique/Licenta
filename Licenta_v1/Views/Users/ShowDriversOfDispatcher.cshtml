@@ -14,8 +14,8 @@
             <!-- Sortare dupa nume sau vechime in firma -->
             <div class="col-md-4 col-sm-12">
                 <select class="form-select" name="sortOrder">
-                    <option value="name" selected="@(ViewBag.CurrentSort == "name" ? "selected" : "")">Name (Ascending)</option>
-                    <option value="name_desc" selected="@(ViewBag.CurrentSort == "name_desc" ? "selected" : "")">Name (Descending)</option>
+                    <option value="name" selected="@(ViewBag.CurrentSort == "name" ? "selected" : "")">Last Name (Ascending)</option>
+                    <option value="name_desc" selected="@(ViewBag.CurrentSort == "name_desc" ? "selected" : "")">Last Name (Descending)</option>
                     <option value="date" selected="@(ViewBag.CurrentSort == "date" ? "selected" : "")">Date Joined (Ascending)</option>
                     <option value="date_desc" selected="@(ViewBag.CurrentSort == "date_desc" ? "selected" : "")">Date Joined (Descending)</option>
                     <option value="" selected="@(string.IsNullOrEmpty(ViewBag.CurrentSort) ? "selected" : "")">Sort by</option>
@@ -51,8 +51,17 @@
                     </p>
                 </div>
 
-                <div class="card-footer text-center" id="light-blue-elements-background-id">
-                    <a href="@Url.Action("Show", "Users", new { id = driver.Id })" class="btn btn-primary btn-sm">Details</a>
+                <div class="card-footer">
+                    <div class="d-flex flex-column flex-md-row justify-content-center align-items-center gap-2">
+                        <a href="@Url.Action("Show", "Users", new { id = driver.Id })" class="btn btn-primary btn-sm">
+                            Details
+                        </a>
+
+                        <a href="@Url.Action("ShowFeedbacksOfDriver", "Feedbacks", new { driverId = driver.Id })"
+                           class="btn btn-primary btn-sm">
+                            Driver Feedbacks
+                        </a>
+                    </div>
                 </div>
             </div>
         </div>

@@ -10,16 +10,75 @@
 <h2 class="text-center">Deliveries</h2>
 <br />
 
-<p class="text-center">
+@if (TempData["Success"] != null)
+{
+    <div class="alert alert-success">@TempData["Success"]</div>
+}
+
+@if (TempData["Error"] != null)
+{
+    <div class="alert alert-danger">@TempData["Error"]</div>
+}
+
+<!-- Search, Sort & Filter -->
+<div class="card shadow-sm p-3 mb-4" id="light-blue-elements-background-id">
+    <form asp-action="Index" method="get">
+        <div class="row g-2 align-items-end">
+            <!-- Search -->
+            <div class="col-12 col-md-3 d-flex flex-column">
+                <label for="searchString" class="form-label">Search</label>
+                <input type="text" id="searchString" name="searchString" class="form-control" placeholder="Driver, Vehicle" value="@ViewBag.SearchString" />
+            </div>
+
+            <!-- Filter by Planned Start Date -->
+            <div class="col-12 col-md-2 d-flex flex-column">
+                <label for="plannedStartDate" class="form-label">Planned</label>
+                <input type="date" id="plannedStartDate" name="plannedStartDate" class="form-control" value="@ViewBag.PlannedStartDate" />
+            </div>
+
+            <!-- Filter by Delivered Date -->
+            <div class="col-12 col-md-2 d-flex flex-column">
+                <label for="actualEndDate" class="form-label">Delivered</label>
+                <input type="date" id="actualEndDate" name="actualEndDate" class="form-control" value="@ViewBag.ActualEndDate" />
+            </div>
+
+            <!-- Filter by Region -->
+            <div class="col-12 col-md-2 d-flex flex-column">
+                <label for="regionId" class="form-label">Region</label>
+                @Html.DropDownList("regionId", ViewBag.Regions as SelectList, "All Regions", new { @class = "form-select" })
+            </div>
+
+            <!-- Filter by Status -->
+            <div class="col-12 col-md-2 d-flex flex-column">
+                <label for="status" class="form-label">Status</label>
+                <select id="status" name="status" class="form-select">
+                    <option value="Planned" selected="@(ViewBag.Status == "Planned" ? "selected" : "")">Planned</option>
+                    <option value="In Progress" selected="@(ViewBag.Status == "In Progress" ? "selected" : "")">In Progress</option>
+                    <option value="Completed" selected="@(ViewBag.Status == "Completed" ? "selected" : "")">Completed</option>
+                    <option value="Up for Taking" selected="@(ViewBag.Status == "Up for Taking" ? "selected" : "")">Up for Taking</option>
+                    <option value="All" selected="@(ViewBag.Status == "All" ? "selected" : "")">All Statuses</option>
+                </select>
+            </div>
+
+            <!-- Submit -->
+            <div class="col-12 col-md-1 d-grid align-self-end">
+                <button type="submit" class="btn btn-primary">Filter</button>
+            </div>
+        </div>
+    </form>
+</div>
+
+<!-- Optimizare Deliveries -->
+<div class="text-center mb-4">
     @if (User.IsInRole("Admin"))
     {
-        <a asp-action="OptimizeAll" class="btn btn-primary">Optimize All Deliveries</a>
+        <a asp-action="OptimizeAll" class="btn btn-primary me-2">Optimize All</a>
     }
     @if (User.IsInRole("Dispecer"))
     {
         <a asp-action="OptimizeRegion" class="btn btn-secondary">Optimize My Region</a>
     }
-</p>
+</div>
 
 <!-- Pt ecrane mari -->
 <div class="d-none d-md-block table-responsive">
@@ -30,6 +89,7 @@
                 <th id="light-blue-elements-background-id">Vehicle</th>
                 <th id="light-blue-elements-background-id">Region</th>
                 <th id="light-blue-elements-background-id">Planned Start</th>
+                <th id="light-blue-elements-background-id">Delivered Date</th>
                 <th id="light-blue-elements-background-id">Status</th>
                 <th id="light-blue-elements-background-id"></th>
             </tr>
@@ -44,6 +104,7 @@
                     <td id="light-blue-elements-background-id">@item.Vehicle?.Brand @item.Vehicle?.Model (@item.Vehicle?.RegistrationNumber)</td>
                     <td id="light-blue-elements-background-id">@(item.Orders.Any() ? item.Orders.First().Region?.County : "N/A")</td>
                     <td id="light-blue-elements-background-id">@item.PlannedStartDate.ToString("d")</td>
+                    <td id="light-blue-elements-background-id">@(item.ActualEndDate != null ? item.ActualEndDate.Value.ToString("d") : "N/A")</td>
                     <td id="light-blue-elements-background-id">@item.Status</td>
                     <td id="light-blue-elements-background-id">
                         <a asp-action="Show" asp-route-id="@item.Id" class="btn btn-info">Details</a>
@@ -73,6 +134,7 @@
                         <strong>Vehicle:</strong> @item.Vehicle?.Brand @item.Vehicle?.Model (@item.Vehicle?.RegistrationNumber) <br />
                         <strong>Region:</strong> @(item.Orders.Any() ? item.Orders.First().Region?.County : "N/A") <br />
                         <strong>Planned Start:</strong> @item.PlannedStartDate.ToString("d") <br />
+                        <strong>Delivered Date:</strong> @(item.ActualEndDate != null ? item.ActualEndDate.Value.ToString("d") : "N/A") <br />
                         <strong>Status:</strong> @item.Status
                     </p>
                     <a asp-action="Show" asp-route-id="@item.Id" class="btn btn-primary btn-sm">View Details</a>
@@ -81,3 +143,5 @@
         }
     }
 </div>
+
+<script src="~/js/delivery_optimizer.js"></script>

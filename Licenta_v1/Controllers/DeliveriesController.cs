@@ -4,6 +4,7 @@ using Licenta_v1.Models;
 using Licenta_v1.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.Rendering;
 using Microsoft.EntityFrameworkCore;
 
 namespace Licenta_v1.Controllers
@@ -20,22 +21,72 @@ namespace Licenta_v1.Controllers
 		}
 
 		[Authorize(Roles = "Admin,Dispecer")]
-		public IActionResult Index()
+		public async Task<IActionResult> Index(
+			string searchString,
+			DateTime? plannedStartDate,
+			DateTime? actualEndDate,
+			int? regionId,
+			string status)
 		{
-			var user = db.ApplicationUsers.FirstOrDefault(u => u.UserName == User.Identity.Name);
-
+			// Obtinem utilizatorul curent
+			var user = await db.ApplicationUsers.FirstOrDefaultAsync(u => u.UserName == User.Identity.Name);
 			if (user == null)
 			{
-				return Unauthorized(); // Trebuie sa fie un user autentificat
+				return Unauthorized(); // Utilizatorul trebuie sa fie autentificat
 			}
 
-			var deliveries = db.Deliveries     // Adminii vad toate deliveries.
-				.Include(d => d.Vehicle)       // Dispecerii vad doar deliveries din regiunea lor.
+			// Adminii vad toate livrarile; Dispecerii vad doar livrarile din regiunea lor
+			var deliveriesQuery = db.Deliveries
+				.Include(d => d.Vehicle)
 				.Include(d => d.Driver)
 				.Include(d => d.Orders)
 				.ThenInclude(o => o.Region)
 				.Where(d => User.IsInRole("Admin") || d.Vehicle.RegionId == user.RegionId)
-				.ToList();
+				.AsQueryable();
+
+			// Search (sofer, marca/model/nr inmatriculare masina)
+			if (!string.IsNullOrEmpty(searchString))
+			{
+				string lowerSearch = searchString.ToLower();
+				deliveriesQuery = deliveriesQuery.Where(d =>
+					(d.Driver != null && d.Driver.UserName.ToLower().Contains(lowerSearch)) ||
+					((d.Vehicle.Brand.ToLower() + " " + d.Vehicle.Model.ToLower()).Contains(lowerSearch)) ||
+					d.Vehicle.RegistrationNumber.ToLower().Contains(lowerSearch));
+			}
+
+			// Filtrare dupa PlannedStartDate
+			if (plannedStartDate.HasValue)
+			{
+				deliveriesQuery = deliveriesQuery.Where(d => d.PlannedStartDate.Date == plannedStartDate.Value.Date);
+			}
+
+			// Filtrare dupa ActualEndDate
+			if (actualEndDate.HasValue)
+			{
+				deliveriesQuery = deliveriesQuery.Where(d => d.ActualEndDate.HasValue && d.ActualEndDate.Value.Date == actualEndDate.Value.Date);
+			}
+
+			// Filtrare dupa Region
+			if (regionId.HasValue)
+			{
+				deliveriesQuery = deliveriesQuery.Where(d => d.Vehicle.RegionId == regionId.Value);
+			}
+
+			// Filtrare dupa Delivery Status
+			if (!string.IsNullOrEmpty(status) && status != "All")
+			{
+				string lowerStatus = status.ToLower();
+				deliveriesQuery = deliveriesQuery.Where(d => d.Status.ToLower() == lowerStatus);
+			}
+
+			ViewBag.Regions = new SelectList(db.Regions, "Id", "County");
+			ViewBag.RegionId = regionId;
+			ViewBag.SearchString = searchString;
+			ViewBag.PlannedStartDate = plannedStartDate?.ToString("yyyy-MM-dd");
+			ViewBag.ActualEndDate = actualEndDate?.ToString("yyyy-MM-dd");
+			ViewBag.Status = status;
+
+			var deliveries = await deliveriesQuery.OrderByDescending(d => d.PlannedStartDate).ToListAsync();
 
 			return View(deliveries);
 		}
@@ -70,24 +121,42 @@ namespace Licenta_v1.Controllers
 		}
 
 		[Authorize(Roles = "Admin")]
-		public IActionResult OptimizeAll()
+		public async Task<IActionResult> OptimizeAll()
 		{
-			opt.RunDailyOptimization(); // Adminii optimizează toate regiunile
+			DateTime now = DateTime.Now;
+			DateTime nextAllowedTime = now.Date.AddDays(1).AddHours(16); // urmatoarea zi la 16:00
+
+			if (now < nextAllowedTime) // Intentia e de a folosi serviciul la finalul programului
+			{
+				TempData["Error"] = "Optimizarea nu este permisa pana la ora 16:00 a zilei urmatoare.";
+				return RedirectToAction("Index");
+			}
+
+			await opt.RunDailyOptimization(); // Adminii optimizeaza toate regiunile
 			return RedirectToAction("Index");
 		}
 
 		[Authorize(Roles = "Dispecer")]
-		public IActionResult OptimizeRegion()
+		public async Task<IActionResult> OptimizeRegion()
 		{
+			DateTime now = DateTime.Now;
+			DateTime nextAllowedTime = now.Date.AddDays(1).AddHours(16); // urmatoarea zi la 16:00
+
+			if (now < nextAllowedTime) // Intentia e de a folosi serviciul la finalul programului
+			{
+				TempData["Error"] = "Optimizarea nu este permisa pana la ora 16:00 a zilei urmatoare.";
+				return RedirectToAction("Index");
+			}
+
 			var user = db.ApplicationUsers.FirstOrDefault(u => u.UserName == User.Identity.Name);
 
 			if (user?.RegionId == null)
 			{
-				TempData["Error"] = "Nu ai o regiune asignată!";
+				TempData["Error"] = "You don't have a region assigned to you!";
 				return RedirectToAction("Index");
 			}
 
-			opt.RunDailyOptimization(user.RegionId); // Dispecerii optimizează doar regiunea lor
+			await opt.RunDailyOptimization(user.RegionId); // Dispecerii optimizeaza regiunea lor
 			return RedirectToAction("Index");
 		}
 
@@ -323,7 +392,7 @@ namespace Licenta_v1.Controllers
 			}
 
 			// Calculez distanta intre locatia Soferului si Headquarter
-			double distance = GetDistance(headquarter.Latitude.Value, headquarter.Longitude.Value, lat.Value, lon.Value);
+			double distance = HaversineDistance(headquarter.Latitude.Value, headquarter.Longitude.Value, lat.Value, lon.Value);
 
 			if (distance > 1.0) // Soferul trebuie sa fie in raza de 1 km fata de Headquarter
 			{
@@ -341,7 +410,7 @@ namespace Licenta_v1.Controllers
 			return RedirectToAction("ShowDeliveriesOfDriver", new { id = user.Id });
 		}
 
-		private double GetDistance(double lat1, double lon1, double lat2, double lon2)
+		private double HaversineDistance(double lat1, double lon1, double lat2, double lon2)
 		{
 			double earthRadiusKm = 6371.0; // Raza medie a Pamantului in km
 

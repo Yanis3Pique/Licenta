@@ -15,9 +15,14 @@ Env.Load();
 var cheie_API_confirmare_email_Sendgrid = Env.GetString("Cheie_API_confirmare_email_SendGrid");
 var email_personal = Env.GetString("Email_personal");
 var nume_personal = Env.GetString("Nume_personal");
+var openRouteServiceApiKey = Env.GetString("OpenRouteServiceApiKey");
 
 // Add services to the container.
-builder.Services.AddScoped<OrderDeliveryOptimizer>();
+builder.Services.AddSingleton<OrderDeliveryOptimizer>(provider =>
+{
+	var scopeFactory = provider.GetRequiredService<IServiceScopeFactory>();
+	return new OrderDeliveryOptimizer(scopeFactory, openRouteServiceApiKey);
+});
 
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection") ??
 	throw new InvalidOperationException("Connection string 'DefaultConnection' not found.");

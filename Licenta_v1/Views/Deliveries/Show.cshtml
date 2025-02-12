@@ -111,3 +111,25 @@
         </div>
     </div>
 }
+else if (User.IsInRole("Admin") || User.IsInRole("Dispecer"))
+{
+    <div class="mt-4 p-4">
+        <ul class="list-group order-list">
+            @foreach (var order in Model.Orders)
+            {
+                <li class="list-group-item d-flex justify-content-between align-items-center order-item" id="light-blue-elements-background-id">
+                    <span>
+                        <strong>Order #@order.Id</strong> - @order.Address <br />
+                        <strong>Client:</strong> @order.Client?.FirstName @order.Client?.LastName <br />
+                        <strong>Phone:</strong> <a href="tel:@order.Client?.PhoneNumber">@order.Client?.PhoneNumber</a>
+                    </span>
+
+                    @if (order.Status == Licenta_v1.Services.OrderStatus.Delivered)
+                    {
+                        <span class="badge bg-success">✅ Delivered - @order.DeliveredDate</span>
+                    }
+                </li>
+            }
+        </ul>
+    </div>
+}

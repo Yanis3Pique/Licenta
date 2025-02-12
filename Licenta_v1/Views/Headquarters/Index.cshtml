@@ -31,11 +31,11 @@
 
             <!-- Sort -->
             <div class="col-12 col-md-2">
-                <select name="sortOrder" class="form-select">
-                    <option value="name" selected="@(ViewBag.CurrentSort == "name" ? "selected" : "")">Sort by Name (A-Z)</option>
-                    <option value="name_desc" selected="@(ViewBag.CurrentSort == "name_desc" ? "selected" : "")">Sort by Name (Z-A)</option>
-                    <option value="address" selected="@(ViewBag.CurrentSort == "address" ? "selected" : "")">Sort by Address (A-Z)</option>
+                <select name="sortOrder" class="form-select">                
                     <option value="address_desc" selected="@(ViewBag.CurrentSort == "address_desc" ? "selected" : "")">Sort by Address (Z-A)</option>
+                    <option value="address" selected="@(ViewBag.CurrentSort == "address" ? "selected" : "")">Sort by Address (A-Z)</option>
+                    <option value="name_desc" selected="@(ViewBag.CurrentSort == "name_desc" ? "selected" : "")">Sort by Name (Z-A)</option>
+                    <option value="name" selected="@(ViewBag.CurrentSort == "name" ? "selected" : "")">Sort by Name (A-Z)</option>
                 </select>
             </div>
 

@@ -21,6 +21,6 @@ namespace Licenta_v1.Models
 		public virtual ApplicationUser? Driver { get; set; }
 		public virtual Vehicle? Vehicle { get; set; }
 		public virtual ICollection<Order>? Orders { get; set; }
-		public virtual ICollection<RouteHistory>? RouteHistories { get; set; }
+		public virtual RouteHistory? RouteHistory { get; set; }
 	}
 }

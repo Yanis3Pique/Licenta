@@ -15,19 +15,19 @@ namespace Licenta_v1.Services
 {
 	public class OrderDeliveryOptimizer
 	{
-		private readonly IServiceScopeFactory _scopeFactory; // Ca sa creez mai multe instante de DbContext
+		private readonly IServiceScopeFactory scopeFactory; // Ca sa creez mai multe instante de DbContext
 		private readonly string OpenRouteServiceApiKey;
 
-		public OrderDeliveryOptimizer(IServiceScopeFactory scopeFactory, string apiKey)
+		public OrderDeliveryOptimizer(IServiceScopeFactory serviceScopeFactory, string apiKey)
 		{
-			_scopeFactory = scopeFactory;
+			scopeFactory = serviceScopeFactory;
 			OpenRouteServiceApiKey = apiKey;
 		}
 
 		// Metoda principala, apelata o data pe zi de catre Admin pt toate regiunile/Dispecer pt regiunea sa
 		public async Task RunDailyOptimization(int? userRegionId = null)
 		{
-			using var scope = _scopeFactory.CreateScope();
+			using var scope = scopeFactory.CreateScope();
 			var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
 
 			var orders = db.Orders
@@ -50,7 +50,7 @@ namespace Licenta_v1.Services
 		// Optimizez Deliveries pentru o regiune specifica
 		private async Task OptimizeRegionDeliveries(int regionId, List<Order> orders)
 		{
-			using var scope = _scopeFactory.CreateScope();
+			using var scope = scopeFactory.CreateScope();
 			var tomorrow = DateTime.Now.AddDays(1).Date;
 			var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
 
@@ -259,7 +259,7 @@ namespace Licenta_v1.Services
 		// si asignez un sofer pentru a crea un Delivery
 		private void AssignOrdersToDeliveries(List<Order> orders, List<Vehicle> vehicles, HashSet<int> usedVehicleIds)
 		{
-			using var scope = _scopeFactory.CreateScope();
+			using var scope = scopeFactory.CreateScope();
 			var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
 
 			if (!orders.Any())

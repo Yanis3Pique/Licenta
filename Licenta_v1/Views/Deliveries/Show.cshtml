@@ -19,6 +19,7 @@
 
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
 <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet-polylinedecorator/1.1.0/leaflet.polylineDecorator.min.js"></script>
 <script src="~/js/map_show_delivery.js"></script>
 
 <div class="container mt-5">
@@ -55,11 +56,32 @@
     </div>
 
     <input type="hidden" id="ordersData" value='@Html.Raw(Json.Serialize(Model.Orders.Select(o => new { o.Latitude, o.Longitude, o.Address, o.Id })))' />
+    <input type="hidden" id="deliveryId" value="@Model.Id" />
 
     <h4 class="text-center mt-4">Order Locations</h4>
     <div id="map-container" style="width: 100%; height: 400px;">
         <div id="map" style="width: 100%; height: 100%; border-radius: 10px;"></div>
     </div>
+
+    @if (User.IsInRole("Sofer") || User.IsInRole("Dispecer"))
+    {
+        <!-- Distanta si Timp pe segment(fiecare Order + drum de intoarcere) -->
+        <div id="routeDetails" class="mt-4">
+            <h4 class="text-center">Distance & Time Estimated</h4>
+            <table class="table table-bordered table-striped">
+                <thead>
+                    <tr>
+                        <th id="light-blue-elements-background-id">Segment</th>
+                        <th id="light-blue-elements-background-id">Distance</th>
+                        <th id="light-blue-elements-background-id">Time</th>
+                    </tr>
+                </thead>
+                <tbody id="routeSegments">
+                    <!-- Datele vor fi populate din JavaScript -->
+                </tbody>
+            </table>
+        </div>
+    }
 </div>
 
 @if (User.IsInRole("Sofer") && Model.DriverId?.ToString() == ViewBag.CurrentUserId?.ToString())
@@ -85,19 +107,20 @@
                     {
                         <form asp-action="MarkOrderDelivered" method="post" class="d-inline">
                             <input type="hidden" name="orderId" value="@order.Id" />
-                            <button type="submit" class="btn btn-outline-primary btn-sm">Mark as Delivered</button>
+                            <button id="markCompleteBtn" onclick="advanceRoute()" class="btn btn-outline-primary btn-sm action-btn">Mark as Delivered</button>
                         </form>
                     }
                 </li>
             }
         </ul>
 
+        <input type="hidden" id="deliveryStatus" value="@Model.Status">
         <div class="text-center mt-4">
             @if (Model.Status == "Planned")
             {
                 <a asp-action="StartDelivery" asp-route-id="@Model.Id"
                    class="btn btn-success btn-lg fw-bold action-btn">
-                    🚐 Start Delivery
+                    🚚 Start Delivery
                 </a>
             }
 

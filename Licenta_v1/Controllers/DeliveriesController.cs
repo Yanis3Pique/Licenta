@@ -13,11 +13,13 @@ namespace Licenta_v1.Controllers
 	{
 		private readonly ApplicationDbContext db;
 		private readonly OrderDeliveryOptimizer opt;
+		private readonly RoutePlannerService rps;
 
-		public DeliveriesController(ApplicationDbContext context, OrderDeliveryOptimizer optimizer)
+		public DeliveriesController(ApplicationDbContext context, OrderDeliveryOptimizer optimizer, RoutePlannerService routePlannerService)
 		{
 			db = context;
 			opt = optimizer;
+			rps = routePlannerService;
 		}
 
 		[Authorize(Roles = "Admin,Dispecer")]
@@ -120,6 +122,93 @@ namespace Licenta_v1.Controllers
 			return View(delivery);
 		}
 
+		[Authorize(Roles = "Sofer,Dispecer")]
+		public async Task<IActionResult> GetOptimalRoute(int id)
+		{
+			var user = await db.ApplicationUsers.FirstOrDefaultAsync(u => u.UserName == User.Identity.Name);
+			if (user == null)
+				return Unauthorized();
+
+			var deliveryQuery = db.Deliveries
+				.Include(d => d.Orders)
+				.Include(d => d.Vehicle)
+					.ThenInclude(v => v.Region)
+						.ThenInclude(r => r.Headquarters)
+				.Where(d => d.Id == id);
+
+			if (User.IsInRole("Sofer"))
+			{
+				deliveryQuery = deliveryQuery.Where(d => d.DriverId == user.Id);
+			}
+			else if (User.IsInRole("Dispecer"))
+			{
+				deliveryQuery = deliveryQuery.Where(d => d.Vehicle.RegionId == user.RegionId);
+			}
+
+			var delivery = await deliveryQuery.FirstOrDefaultAsync();
+			if (delivery == null)
+				return NotFound();
+
+			try
+			{
+				var route = await rps.CalculateOptimalRouteAsync(delivery);
+
+				// Iau locatiile de stop: Headquarter + Order locations + Inapoi la Headquarter
+				var stopLocations = new List<(double Latitude, double Longitude)>
+				{
+					(delivery.Vehicle.Region.Headquarters.Latitude ?? 0, delivery.Vehicle.Region.Headquarters.Longitude ?? 0) // Incepem la HQ
+				};
+
+				stopLocations.AddRange(delivery.Orders.Select(o => (o.Latitude ?? 0, o.Longitude ?? 0))); // Orders
+
+				stopLocations.Add((delivery.Vehicle.Region.Headquarters.Latitude ?? 0, delivery.Vehicle.Region.Headquarters.Longitude ?? 0));
+
+				// Iau indicii de stop pe baza coordonatelor rutei
+				List<int> stopIndices = new List<int>();
+
+				foreach (var stop in stopLocations)
+				{
+					int bestMatchIndex = -1;
+					double bestDistance = double.MaxValue;
+
+					for (int i = 0; i < route.Coordinates.Count; i++)
+					{
+						double distance = HaversineDistance(stop.Latitude, stop.Longitude, route.Coordinates[i].Latitude, route.Coordinates[i].Longitude);
+						if (distance < bestDistance)
+						{
+							bestDistance = distance;
+							bestMatchIndex = i;
+						}
+					}
+
+					if (bestMatchIndex != -1 && !stopIndices.Contains(bestMatchIndex))
+					{
+						stopIndices.Add(bestMatchIndex);
+					}
+				}
+
+				// Adaug si ultima oprire(inapoi la Headquarter)
+				if (!stopIndices.Contains(route.Coordinates.Count - 1))
+				{
+					stopIndices.Add(route.Coordinates.Count - 1);
+				}
+
+				stopIndices.Sort(); // Ma asigur ca opririle se fac in ordinea corecta
+
+				return Json(new
+				{
+					coordinates = route.Coordinates, // Coordonatele rutei
+					stopIndices = stopIndices,       // Indicii pentru vizualizarea pas cu pas a opririlor
+					segments = route.Segments,       // Distanta si Timp pe segment
+					orderIds = delivery.Orders.Select(o => o.Id).ToList()
+				});
+			}
+			catch (Exception ex)
+			{
+				return BadRequest(new { error = ex.Message });
+			}
+		}
+
 		[Authorize(Roles = "Admin")]
 		public async Task<IActionResult> OptimizeAll()
 		{
@@ -128,7 +217,7 @@ namespace Licenta_v1.Controllers
 
 			if (now < nextAllowedTime) // Intentia e de a folosi serviciul la finalul programului
 			{
-				TempData["Error"] = "Optimizarea nu este permisa pana la ora 16:00 a zilei urmatoare.";
+				TempData["Error"] = "Optimizing Deliveries can be done only once a day, after 16:00.";
 				return RedirectToAction("Index");
 			}
 

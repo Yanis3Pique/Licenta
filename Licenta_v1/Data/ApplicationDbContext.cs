@@ -102,11 +102,11 @@ namespace Licenta_v1.Data
 				.HasForeignKey(m => m.VehicleId)
 				.OnDelete(DeleteBehavior.Cascade);
 
-			// Relatie RouteHistory - Delivery (m-to-1)
+			// Relatie RouteHistory - Delivery (1-to-1)
 			modelBuilder.Entity<RouteHistory>()
 				.HasOne(rh => rh.Delivery)
-				.WithMany(d => d.RouteHistories)
-				.HasForeignKey(rh => rh.DeliveryId)
+				.WithOne(d => d.RouteHistory)
+				.HasForeignKey<RouteHistory>(rh => rh.DeliveryId)
 				.OnDelete(DeleteBehavior.Cascade);
 		}
 	}

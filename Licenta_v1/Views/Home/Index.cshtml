@@ -54,9 +54,19 @@
         </div>
         <br />
         <div class="col-md-6 text-center text-md-start fst-italic">
-            <h2 class="mb-3">What Our Users Say</h2>
-            <p>"EcoDelivery has revolutionized logistics with its fast, eco-friendly solutions. My business has become more efficient and sustainable!" - Daniel Florea</p>
-            <p>"Thanks to EcoDelivery, I can deliver my products quickly while contributing to a cleaner planet. Highly recommended!" - Sofia Ivașcu</p>
+            <h2 class="mb-3">What Do Our Users Say?</h2>
+
+            @if (ViewBag.Feedbacks != null && ViewBag.Feedbacks.Count > 0)
+            {
+                @foreach (var feedback in ViewBag.Feedbacks)
+                {
+                    <p>"@feedback.Comment" - @feedback.Client.UserName (@feedback.Rating ★)</p>
+                }
+            }
+            else
+            {
+                <p>No feedback available at this time.</p>
+            }
         </div>
     </div>
 </div>

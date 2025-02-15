@@ -18,6 +18,7 @@ var nume_personal = Env.GetString("Nume_personal");
 var openRouteServiceApiKey = Env.GetString("OpenRouteServiceApiKey");
 
 // Add services to the container.
+builder.Services.AddScoped<RoutePlannerService>();
 builder.Services.AddSingleton<OrderDeliveryOptimizer>(provider =>
 {
 	var scopeFactory = provider.GetRequiredService<IServiceScopeFactory>();
@@ -38,6 +39,8 @@ builder.Services.AddSingleton<ISendGridClient>(provider =>
 
 builder.Services.AddTransient<IEmailSender, EmailConfirmationSender>(provider =>
     new EmailConfirmationSender(cheie_API_confirmare_email_Sendgrid, email_personal, nume_personal));
+
+builder.Services.AddMemoryCache();
 
 var app = builder.Build();
 

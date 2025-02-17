@@ -5,6 +5,12 @@
 
 @{
     ViewBag.Title = "Delivery Details";
+    // Iau urmatoarea Order din Delivery ce trebuie livrata(cea cu DeliverySequence cel mai mic printre Orders nelivrate)
+    var nextOrderSequence = Model.Orders
+                              .Where(o => o.Status != Licenta_v1.Services.OrderStatus.Delivered)
+                              .OrderBy(o => o.DeliverySequence)
+                              .Select(o => o.DeliverySequence)
+                              .FirstOrDefault();
 }
 
 @if (TempData["Success"] != null)
@@ -50,6 +56,18 @@
                         <th id="light-blue-elements-background-id">Status</th>
                         <td id="light-blue-elements-background-id">@Model.Status</td>
                     </tr>
+                    <tr>
+                        <th id="light-blue-elements-background-id">Total Weight</th>
+                        <td id="light-blue-elements-background-id">
+                            &asymp; @(Math.Round(Model.Orders.Sum(o => o.Weight ?? 0) / (double)Model.Vehicle.MaxWeightCapacity, 4)) kg
+                        </td>
+                    </tr>
+                    <tr>
+                        <th id="light-blue-elements-background-id">Total Volume</th>
+                        <td id="light-blue-elements-background-id">
+                            &asymp; @(Math.Round(Model.Orders.Sum(o => o.Volume ?? 0) / (double)Model.Vehicle.MaxVolumeCapacity, 4)) m<sup>3</sup>
+                        </td>
+                    </tr>
                 </tbody>
             </table>
         </div>
@@ -90,24 +108,30 @@
         <h4 class="text-center mb-3">📦 Orders in this Delivery</h4>
 
         <ul class="list-group order-list">
-            @foreach (var order in Model.Orders)
+            @foreach (var order in Model.Orders.OrderBy(o => o.DeliverySequence))
             {
                 <li class="list-group-item d-flex justify-content-between align-items-center order-item" id="light-blue-elements-background-id">
                     <span>
                         <strong>Order #@order.Id</strong> - @order.Address <br />
                         <strong>Client:</strong> @order.Client?.FirstName @order.Client?.LastName <br />
-                        <strong>Phone:</strong> <a href="tel:@order.Client?.PhoneNumber">@order.Client?.PhoneNumber</a>
+                        <strong>Phone:</strong> <a href="tel:@order.Client?.PhoneNumber">@order.Client?.PhoneNumber</a> <br />
+                        <strong>Weight:</strong> &asymp; @order.Weight kg<br />
+                        <strong>Volume:</strong> &asymp; @order.Volume m<sup>3</sup>
                     </span>
 
                     @if (order.Status == Licenta_v1.Services.OrderStatus.Delivered)
                     {
                         <span class="badge bg-success">✅ Delivered</span>
                     }
-                    else if (Model.Status == "In Progress") // Doar daca Delivery e In Progress arat butoanele
+                    else if (Model.Status == "In Progress")
                     {
+                        // Butoanele pot fi apasate doar in ordinea livrarilor Orders
+                        bool isNextOrder = order.DeliverySequence == nextOrderSequence;
                         <form asp-action="MarkOrderDelivered" method="post" class="d-inline">
                             <input type="hidden" name="orderId" value="@order.Id" />
-                            <button id="markCompleteBtn" onclick="advanceRoute()" class="btn btn-outline-primary btn-sm action-btn">Mark as Delivered</button>
+                            <button type="submit" class="btn btn-outline-primary btn-sm action-btn" @(isNextOrder ? "" : "disabled")>
+                                Mark as Delivered
+                            </button>
                         </form>
                     }
                 </li>
@@ -123,7 +147,6 @@
                     🚚 Start Delivery
                 </a>
             }
-
             @if (Model.Status == "In Progress" && Model.Orders.All(o => o.Status == Licenta_v1.Services.OrderStatus.Delivered))
             {
                 <a asp-action="CompleteDelivery" asp-route-id="@Model.Id"
@@ -144,7 +167,9 @@ else if (User.IsInRole("Admin") || User.IsInRole("Dispecer"))
                     <span>
                         <strong>Order #@order.Id</strong> - @order.Address <br />
                         <strong>Client:</strong> @order.Client?.FirstName @order.Client?.LastName <br />
-                        <strong>Phone:</strong> <a href="tel:@order.Client?.PhoneNumber">@order.Client?.PhoneNumber</a>
+                        <strong>Phone:</strong> <a href="tel:@order.Client?.PhoneNumber">@order.Client?.PhoneNumber</a> <br />
+                        <strong>Weight:</strong> &asymp; @order.Weight kg<br />
+                        <strong>Volume:</strong> &asymp; @order.Volume m<sup>3</sup>
                     </span>
 
                     @if (order.Status == Licenta_v1.Services.OrderStatus.Delivered)

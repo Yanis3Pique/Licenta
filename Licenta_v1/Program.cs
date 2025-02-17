@@ -24,6 +24,11 @@ builder.Services.AddSingleton<OrderDeliveryOptimizer>(provider =>
 	var scopeFactory = provider.GetRequiredService<IServiceScopeFactory>();
 	return new OrderDeliveryOptimizer(scopeFactory, openRouteServiceApiKey);
 });
+builder.Services.AddSingleton<OrderDeliveryOptimizer2>(provider =>
+{
+	var scopeFactory = provider.GetRequiredService<IServiceScopeFactory>();
+	return new OrderDeliveryOptimizer2(scopeFactory, openRouteServiceApiKey);
+});
 
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection") ??
 	throw new InvalidOperationException("Connection string 'DefaultConnection' not found.");

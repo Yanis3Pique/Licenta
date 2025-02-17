@@ -177,15 +177,15 @@ function displayCurrentSegment() {
     // Desenez segmentul curent
     window.currentSegmentLayer = L.polyline(segmentCoords, {
         color: 'red',
-        weight: 6,
-        opacity: 0.6
+        weight: 5,
+        opacity: 0.3
     }).addTo(window.map);
 
     // Adaug sagetile directionale pe liniile segmentului
     window.currentDecorator = L.polylineDecorator(window.currentSegmentLayer, {
         patterns: [{
             offset: '0%',
-            repeat: '20px',
+            repeat: '50px',
             symbol: L.Symbol.arrowHead({
                 pixelSize: 10,
                 polygon: false,

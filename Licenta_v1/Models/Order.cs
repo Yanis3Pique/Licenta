@@ -15,8 +15,10 @@ namespace Licenta_v1.Models
 		[Required(ErrorMessage = "The priority is mandatory.")]
 		public OrderPriority? Priority { get; set; } // (Normal, High)
 		[Required(ErrorMessage = "The weight is mandatory.")]
+		[Range(0, int.MaxValue, ErrorMessage = "Only positive number allowed.")]
 		public double? Weight { get; set; }
 		[Required(ErrorMessage = "The volume is mandatory.")]
+		[Range(0, int.MaxValue, ErrorMessage = "Only positive number allowed.")]
 		public double? Volume { get; set; }
 		[Required(ErrorMessage = "The address is mandatory.")]
 		public string Address { get; set; } = string.Empty;
@@ -33,6 +35,7 @@ namespace Licenta_v1.Models
 		public DateTime? EstimatedDeliveryDate { get; set; }
 		public DateTime? DeliveredDate { get; set; }
 		public OrderStatus? LastNotifiedStatus { get; set; } // Folosit pentru mail-urile catre clienti
+		public int? DeliverySequence { get; set; } // Folosit pentru ordinea in Delivery
 
 		public virtual ApplicationUser? Client { get; set; }
 		public virtual Region? Region { get; set; }

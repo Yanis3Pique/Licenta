@@ -83,7 +83,7 @@
         </select>
         <span asp-validation-for="RegionId" class="text-danger"></span>
     </div>
-    <input type="hidden" id="region-hidden" name="RegionId" value="" />
+    <input type="hidden" asp-for="RegionId" id="region-hidden" />
 
     <div id="map" style="height: 400px; margin-bottom: 20px;"></div>
     <br />

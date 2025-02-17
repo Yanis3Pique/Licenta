@@ -12,10 +12,10 @@ namespace Licenta_v1.Controllers
 	public class DeliveriesController : Controller
 	{
 		private readonly ApplicationDbContext db;
-		private readonly OrderDeliveryOptimizer opt;
+		private readonly OrderDeliveryOptimizer2 opt;
 		private readonly RoutePlannerService rps;
 
-		public DeliveriesController(ApplicationDbContext context, OrderDeliveryOptimizer optimizer, RoutePlannerService routePlannerService)
+		public DeliveriesController(ApplicationDbContext context, OrderDeliveryOptimizer2 optimizer, RoutePlannerService routePlannerService)
 		{
 			db = context;
 			opt = optimizer;
@@ -200,7 +200,7 @@ namespace Licenta_v1.Controllers
 					coordinates = route.Coordinates, // Coordonatele rutei
 					stopIndices = stopIndices,       // Indicii pentru vizualizarea pas cu pas a opririlor
 					segments = route.Segments,       // Distanta si Timp pe segment
-					orderIds = delivery.Orders.Select(o => o.Id).ToList()
+					orderIds = delivery.Orders.OrderBy(o => o.DeliverySequence).Select(o => o.Id).ToList()
 				});
 			}
 			catch (Exception ex)
@@ -212,14 +212,15 @@ namespace Licenta_v1.Controllers
 		[Authorize(Roles = "Admin")]
 		public async Task<IActionResult> OptimizeAll()
 		{
-			DateTime now = DateTime.Now;
-			DateTime nextAllowedTime = now.Date.AddDays(1).AddHours(16); // urmatoarea zi la 16:00
+			//DateTime now = DateTime.Now;
+			//DateTime allowedStart = now.Date.AddHours(18); // Azi ora 18:00
+			//DateTime allowedEnd = now.Date.AddHours(22);   // Azi ora 22:00
 
-			if (now < nextAllowedTime) // Intentia e de a folosi serviciul la finalul programului
-			{
-				TempData["Error"] = "Optimizing Deliveries can be done only once a day, after 16:00.";
-				return RedirectToAction("Index");
-			}
+			//if (now < allowedStart || now > allowedEnd)
+			//{
+			//	TempData["Error"] = "Optimizing Deliveries can be done only once a day, between 18:00 and 22:00.";
+			//	return RedirectToAction("Index");
+			//}
 
 			await opt.RunDailyOptimization(); // Adminii optimizeaza toate regiunile
 			return RedirectToAction("Index");
@@ -228,14 +229,15 @@ namespace Licenta_v1.Controllers
 		[Authorize(Roles = "Dispecer")]
 		public async Task<IActionResult> OptimizeRegion()
 		{
-			DateTime now = DateTime.Now;
-			DateTime nextAllowedTime = now.Date.AddDays(1).AddHours(16); // urmatoarea zi la 16:00
+			//DateTime now = DateTime.Now;
+			//DateTime allowedStart = now.Date.AddHours(18); // Azi ora 18:00
+			//DateTime allowedEnd = now.Date.AddHours(22);   // Azi ora 22:00
 
-			if (now < nextAllowedTime) // Intentia e de a folosi serviciul la finalul programului
-			{
-				TempData["Error"] = "Optimizarea nu este permisa pana la ora 16:00 a zilei urmatoare.";
-				return RedirectToAction("Index");
-			}
+			//if (now < allowedStart || now > allowedEnd)
+			//{
+			//	TempData["Error"] = "Optimizing Deliveries can be done only once a day, between 18:00 and 22:00.";
+			//	return RedirectToAction("Index");
+			//}
 
 			var user = db.ApplicationUsers.FirstOrDefault(u => u.UserName == User.Identity.Name);
 

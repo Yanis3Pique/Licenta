@@ -150,7 +150,7 @@ namespace Licenta_v1.Controllers
 			ModelState.Remove("ClientId");
 			order.ClientId = client.Id;
 
-			// Ma asigur ca Modelul e valid(!AICI ZICE MEREU CA MODELSTATE.ISVALIS = FALSE pe debugger!) --> Am rezolvat?, scotand din ModelState Id si ClientId, pentru ca nu le primeste la POST
+			// Ma asigur ca Modelul e valid
 			if (!ModelState.IsValid)
 			{
 				var errors = ModelState.Values.SelectMany(v => v.Errors).Select(e => e.ErrorMessage).ToList();
@@ -177,6 +177,8 @@ namespace Licenta_v1.Controllers
 			{
 				db.Orders.Add(order);
 				await db.SaveChangesAsync();
+
+				TempData["Success"] = "Order " + order.Id + " created successfully.";
 
 				return RedirectToAction("Index");
 			}

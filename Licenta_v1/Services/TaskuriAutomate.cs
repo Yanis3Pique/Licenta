@@ -16,6 +16,7 @@ public class TaskuriAutomate : BackgroundService
 {
 	private readonly IServiceProvider _serviceProvider;
 	private readonly IEmailSender _emailSender;
+	private DateTime _lastDeliveryCleanup = DateTime.MinValue;
 
 	public TaskuriAutomate(IServiceProvider serviceProvider, IEmailSender emailSender)
 	{
@@ -43,6 +44,14 @@ public class TaskuriAutomate : BackgroundService
 					lastUserCheck = currentTime; // Actualizez timpul la care s-a rulat comanda
 				}
 
+				DateTime todayAt18 = currentTime.Date.AddHours(18);
+				// Rulez doar daca am trecut de ora 18:00 si inca nu s-a rulat deja codul pe ziua de astazi
+				if (currentTime >= todayAt18 && _lastDeliveryCleanup < todayAt18)
+				{
+					await DeletePlannedDeliveries(db);
+					_lastDeliveryCleanup = currentTime;
+				}
+
 				// Celelalte trei metode se ruleaza la fiecare minut
 				await CheckAndScheduleMaintenance(db);
 				await UpdateVehicles(db);
@@ -52,6 +61,47 @@ public class TaskuriAutomate : BackgroundService
 			// Astept un minut pana la urmatoarea iteratie a while-ului
 			await Task.Delay(TimeSpan.FromMinutes(1), stoppingToken);
 		}
+	}
+
+	private async Task DeletePlannedDeliveries(ApplicationDbContext dbContext)
+	{
+		DateTime today = DateTime.Today;
+
+		// Selectez toate Deliveries programate pentru azi cu status "Planned" sau "Up for Taking"
+		var deliveriesToDelete = await dbContext.Deliveries
+			.Include(d => d.Vehicle)
+			.Include(d => d.Driver)
+			.Where(d => d.PlannedStartDate.Date == today &&
+						(d.Status == "Planned" || d.Status == "Up for Taking"))
+			.ToListAsync();
+
+		foreach (var delivery in deliveriesToDelete)
+		{
+			// Resetez statusul vehiculului sa-l facem Available pt reprogramarea comenzilor de maine
+			if (delivery.Vehicle != null)
+			{
+				delivery.Vehicle.Status = VehicleStatus.Available;
+			}
+
+			// Resetez statusul soferului sa-l facem Available pt reprogramarea comenzilor de maine
+			if (delivery.Driver != null)
+			{
+				delivery.Driver.IsAvailable = true;
+			}
+
+			var orders = dbContext.Orders.Where(o => o.DeliveryId == delivery.Id).ToList();
+			foreach (var order in orders)
+			{
+				order.DeliveryId = null;
+				order.DeliverySequence = null; // Sterg DeliverySequence-ul curent(e expirat)
+				dbContext.Orders.Update(order);
+			}
+
+			// Sterg Delivery-ul din baza de date.
+			dbContext.Deliveries.Remove(delivery);
+		}
+
+		await dbContext.SaveChangesAsync();
 	}
 
 	private async Task CheckAndDeleteUsers(ApplicationDbContext dbContext)

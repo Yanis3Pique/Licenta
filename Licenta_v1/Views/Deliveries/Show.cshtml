@@ -2,6 +2,7 @@
     For more information on enabling MVC for empty projects, visit https://go.microsoft.com/fwlink/?LinkID=397860
 *@
 @model Licenta_v1.Models.Delivery
+@using Licenta_v1.Services
 
 @{
     ViewBag.Title = "Delivery Details";
@@ -46,7 +47,7 @@
                     </tr>
                     <tr>
                         <th id="light-blue-elements-background-id">Vehicle</th>
-                        <td id="light-blue-elements-background-id">@Model.Vehicle?.Brand @Model.Vehicle?.Model (@Model.Vehicle?.RegistrationNumber)</td>
+                        <td id="light-blue-elements-background-id">@Model.Vehicle?.Brand @Model.Vehicle?.Model (@Model.Vehicle?.RegistrationNumber) - @Model.Vehicle.FuelType</td>
                     </tr>
                     <tr>
                         <th id="light-blue-elements-background-id">Planned Start</th>
@@ -59,15 +60,110 @@
                     <tr>
                         <th id="light-blue-elements-background-id">Total Weight</th>
                         <td id="light-blue-elements-background-id">
-                            &asymp; @(Math.Round(Model.Orders.Sum(o => o.Weight ?? 0) / (double)Model.Vehicle.MaxWeightCapacity, 4)) kg
+                            &asymp; @(Math.Round(Model.Orders.Sum(o => o.Weight ?? 0), 2)) kg
+                            (@(Math.Round((Model.Orders.Sum(o => o.Weight ?? 0) / (double)Model.Vehicle.MaxWeightCapacity) * 100, 2))% of capacity)
                         </td>
                     </tr>
                     <tr>
                         <th id="light-blue-elements-background-id">Total Volume</th>
                         <td id="light-blue-elements-background-id">
-                            &asymp; @(Math.Round(Model.Orders.Sum(o => o.Volume ?? 0) / (double)Model.Vehicle.MaxVolumeCapacity, 4)) m<sup>3</sup>
+                            &asymp; @(Math.Round(Model.Orders.Sum(o => o.Volume ?? 0), 2)) m<sup>3</sup>
+                            (@(Math.Round((Model.Orders.Sum(o => o.Volume ?? 0) / (double)Model.Vehicle.MaxVolumeCapacity) * 100, 2))% of capacity)
                         </td>
                     </tr>
+                    @if (User.IsInRole("Admin") || User.IsInRole("Dispecer"))
+                    {
+                        <tr>
+                            <th id="light-blue-elements-background-id-green-text">Estimated Distance</th>
+                            <td id="light-blue-elements-background-id-green-text">
+                                @(Model.DistanceEstimated != null ? Model.DistanceEstimated.Value.ToString("F2") : "N/A") km
+                            </td>
+                        </tr>
+                        <tr>
+                            <th id="light-blue-elements-background-id-green-text">Estimated Emissions</th>
+                            <td id="light-blue-elements-background-id-green-text">
+                                @{
+                                    if (Model.Vehicle != null && Model.Vehicle.FuelType == FuelType.Electric)
+                                    {
+                                        @Html.Raw("0.00 kg CO<sub>2</sub>")
+                                        ;
+                                    }
+                                    else if (Model.Vehicle != null && Model.Vehicle.FuelType == FuelType.Hybrid)
+                                    {
+                                        var emissionVal = (Model.EmissionsEstimated != null
+                                        ? Model.EmissionsEstimated.Value.ToString("F2")
+                                        : "N/A");
+                                        @Html.Raw(emissionVal + " kg CO<sub>2</sub> (Hybrid)")
+                                        ;
+                                    }
+                                    else
+                                    {
+                                        var emissionVal = (Model.EmissionsEstimated != null
+                                        ? Model.EmissionsEstimated.Value.ToString("F2")
+                                        : "N/A");
+                                        @Html.Raw(emissionVal + " kg CO<sub>2</sub>")
+                                        ;
+                                    }
+                                }
+                            </td>
+                        </tr>
+                        <tr>
+                            <th id="light-blue-elements-background-id-green-text">Estimated Fuel Consumption</th>
+                            <td id="light-blue-elements-background-id-green-text">
+                                @{
+                                    if (Model.Vehicle != null && Model.Vehicle.FuelType == FuelType.Electric)
+                                    {
+                                        @Html.Raw("N/A")
+                                        ;
+                                    }
+                                    else if (Model.Vehicle != null && Model.Vehicle.FuelType == FuelType.Hybrid)
+                                    {
+                                        var consumptionVal = (Model.ConsumptionEstimated != null
+                                        ? Model.ConsumptionEstimated.Value.ToString("F2")
+                                        : "N/A");
+                                        @Html.Raw(consumptionVal + " L (Hybrid)")
+                                        ;
+                                    }
+                                    else
+                                    {
+                                        var consumptionVal = (Model.ConsumptionEstimated != null
+                                        ? Model.ConsumptionEstimated.Value.ToString("F2")
+                                        : "N/A");
+                                        @Html.Raw(consumptionVal + " L")
+                                        ;
+                                    }
+                                }
+                            </td>
+                        </tr>
+                        <tr>
+                            <th id="light-blue-elements-background-id-green-text">Estimated Time</th>
+                            <td id="light-blue-elements-background-id-green-text">
+                                @{
+                                    if (Model.TimeTakenForDelivery != null)
+                                    {
+                                        var totalHours = Model.TimeTakenForDelivery.Value;
+                                        var hours = Math.Floor(totalHours);
+                                        var minutes = Math.Round((totalHours - hours) * 60);
+                                        string hoursText = hours + " hour" + (hours == 1 ? "" : "s");
+                                        string minutesText = minutes + " minute" + (minutes == 1 ? "" : "s");
+
+                                        if (hours == 0)
+                                        {
+                                            @: @minutesText
+                                        }
+                                        else
+                                        {
+                                            @: @hoursText @minutesText
+                                        }
+                                    }
+                                    else
+                                    {
+                                        @:N/A
+                                    }
+                                }
+                            </td>
+                        </tr>
+                    }
                 </tbody>
             </table>
         </div>

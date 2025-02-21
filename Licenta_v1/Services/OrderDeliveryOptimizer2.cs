@@ -9,6 +9,7 @@ using Microsoft.EntityFrameworkCore;
 using Newtonsoft.Json;
 using System.Text;
 using System.Diagnostics;
+using Google.OrTools.ConstraintSolver;
 
 namespace Licenta_v1.Services
 {
@@ -23,18 +24,19 @@ namespace Licenta_v1.Services
 			OpenRouteServiceApiKey = apiKey;
 		}
 
-		// Metoda principala, apelata o data pe zi de catre Admin pt toate regiunile/Dispecer pt regiunea sa
+		// Metoda principala, apelata o data pe zi de catre Admin pentru toate regiunile/Dispecer pentru regiunea sa
 		public async Task RunDailyOptimization(int? userRegionId = null)
 		{
 			using var scope = scopeFactory.CreateScope();
 			var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
 
+			// Sorteaza comenzile: mai intai dupa data plasarii (crescator), iar pentru comenzile din aceeasi zi High inainte de Normal
 			var orders = db.Orders
 				.Where(o => o.Status == OrderStatus.Placed &&
 							o.DeliveryId == null &&  // Exclud comenzile deja asignate la un Delivery
 							(!userRegionId.HasValue || o.RegionId == userRegionId.Value))
-				.OrderBy(o => o.Priority == OrderPriority.High ? 0 : 1)
-				.ThenBy(o => o.PlacedDate)
+				.OrderBy(o => o.PlacedDate)
+				.ThenBy(o => o.Priority == OrderPriority.High ? 0 : 1)
 				.ToList();
 
 			// Grupez comenzile dupa regiune
@@ -53,7 +55,12 @@ namespace Licenta_v1.Services
 			var tomorrow = DateTime.Now.AddDays(1).Date;
 			var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
 
-			orders = orders.Where(o => o.DeliveryId == null).ToList();
+			// Re-sorteaza comenzile conform criteriului: data plasarii ascendent si prioritate High inainte de Normal
+			orders = orders.Where(o => o.DeliveryId == null)
+						   .OrderBy(o => o.PlacedDate)
+						   .ThenBy(o => o.Priority == OrderPriority.High ? 0 : 1)
+						   .ToList();
+
 			if (orders.Count == 0)
 			{
 				Debug.WriteLine($"Skipping Region {regionId} - No orders found/All orders assigned.");
@@ -74,18 +81,28 @@ namespace Licenta_v1.Services
 				Longitude = headquarter.Longitude ?? 0
 			};
 
-			// Folosesc Isochrone clustering(adica gruparea in clustere in functie de timp) pentru Orders
+			// Aplic Isochrone clustering pentru Orders
 			var clusters = await IsochroneClusterOrders(orders, depot);
 			if (clusters.Count == 0)
 				clusters.Add(orders);
+
+			// Re-sorteaza fiecare cluster conform criteriului
+			for (int i = 0; i < clusters.Count; i++)
+			{
+				clusters[i] = clusters[i]
+					.OrderBy(o => o.PlacedDate)
+					.ThenBy(o => o.Priority == OrderPriority.High ? 0 : 1)
+					.ToList();
+			}
 
 			// Iau vehiculele disponibile in regiune
 			var vehicles = db.Vehicles
 				.Where(v => v.RegionId == regionId &&
 							v.Status == VehicleStatus.Available &&
 							!db.Maintenances.Any(m => m.VehicleId == v.Id && m.ScheduledDate.Date == tomorrow))
-				.OrderBy(v => v.MaxWeightCapacity / v.ConsumptionRate)
-				.ThenByDescending(v => v.YearOfManufacture)
+				.OrderBy(v => v.MaxWeightCapacity)
+				.ThenBy(v => v.MaxVolumeCapacity)
+				.ThenBy(v => v.FuelType == FuelType.Electric ? 0 : 1)
 				.ToList();
 
 			if (vehicles.Count == 0)
@@ -100,21 +117,52 @@ namespace Licenta_v1.Services
 			// Procesez fiecare cluster separat
 			foreach (var cluster in clusters)
 			{
-				// Apelez metoda pentru mai mult de 3 vehicule(restrictie ORS), impartindu-le in subseturi
-				var optimizationRoutes = await OptimizeRoutesWithORSForCluster(cluster, vehicles, depot);
-				if (optimizationRoutes.Count == 0)
-				{
-					Debug.WriteLine("No valid routes generated for one cluster.");
-					continue;
-				}
-				// Pt fiecare ruta gasita de ORS creez un Delivery
+				// Apelez metoda pentru mai mult de 3 vehicule (restrictie ORS), impartindu-le in subseturi
+				var availableForOptimization = vehicles.Where(v => !usedVehicleIds.Contains(v.Id)).ToList();
+				var optimizationRoutes = await OptimizeRoutesWithORSForCluster(cluster, availableForOptimization, depot);
+
+				// Pentru fiecare ruta din optimizationRoutes, verific fezabilitatea
+				List<RouteResult> clusterFeasibleRoutes = new List<RouteResult>();
+
 				foreach (var route in optimizationRoutes)
 				{
-					AssignOrdersToDeliveries(route.Orders, vehicles, usedVehicleIds);
+					if (!IsRouteFeasible(route.Orders, vehicles) && route.Orders.Count > 1)
+					{
+						// Daca ruta nu este fezabila, se face partitionare spatiala a comenzilor
+						var partitions = SpatialPartitionOrders(route.Orders);
+						var subRoutes1 = await OptimizeRoutesWithORSForCluster(partitions.subcluster1, availableForOptimization, depot);
+						var subRoutes2 = await OptimizeRoutesWithORSForCluster(partitions.subcluster2, availableForOptimization, depot);
+						var subFeasible = subRoutes1.Concat(subRoutes2)
+													.Where(r => IsRouteFeasible(r.Orders, vehicles))
+													.ToList();
+						clusterFeasibleRoutes.AddRange(subFeasible);
+					}
+					else if (IsRouteFeasible(route.Orders, vehicles))
+					{
+						clusterFeasibleRoutes.Add(route);
+					}
 				}
+
+				if (clusterFeasibleRoutes.Count == 0)
+				{
+					Debug.WriteLine("No valid routes generated for cluster or its subclusters.");
+					continue;
+				}
+
+				// Pentru fiecare ruta fezabila gasita de ORS, creez un Delivery
+				foreach (var route in clusterFeasibleRoutes)
+				{
+					await AssignOrdersToDeliveriesAsync(route.Orders, vehicles, usedVehicleIds, depot, route.VehicleId);
+				}
+
 			}
 		}
 
+		// Helper care verifica daca exista cel putin un vehicul care poate acoperi comenzile date
+		private bool IsRouteFeasible(List<Order> orders, List<Vehicle> vehicles)
+		{
+			return vehicles.Any(v => CanFitOrders(v, orders));
+		}
 
 		// Metoda imparte vehiculele disponibile in submultimi (de cel mult 3 vehicule)
 		// si trimite iterativ cereri de optimizare pentru comenzile ramase
@@ -122,10 +170,21 @@ namespace Licenta_v1.Services
 		{
 			List<RouteResult> combinedResults = new List<RouteResult>();
 
-			// Sortez vehiculele descrescator dupa greutate maxima si volum maxim admis
-			var sortedVehicles = vehicles.OrderByDescending(v => v.MaxWeightCapacity)
-										 .ThenByDescending(v => v.MaxVolumeCapacity)
-										 .ToList();
+			//// Sortez vehiculele descrescator dupa greutate maxima si volum maxim admis
+			//var sortedVehicles = vehicles.OrderByDescending(v => v.MaxWeightCapacity)
+			//							 .ThenByDescending(v => v.MaxVolumeCapacity)
+			//							 .ToList();
+
+			//// Sortez vehiculele crescator dupa greutate maxima si volum maxim admis
+			//var sortedVehicles = vehicles.OrderBy(v => v.MaxWeightCapacity)
+			//							 .ThenBy(v => v.MaxVolumeCapacity)
+			//							 .ToList();
+
+			// Sortez vehiculele descrescator dupa greutate maxima / volum maxim admis
+			var sortedVehicles = vehicles.OrderByDescending(v => v.MaxWeightCapacity / v.MaxVolumeCapacity).ToList();
+
+			//// Sortez vehiculele crescator dupa greutate maxima / volum maxim admis
+			//var sortedVehicles = vehicles.OrderBy(v => v.MaxWeightCapacity / v.MaxVolumeCapacity).ToList();
 
 			// Fac o copie a comenzilor ca sa stiu ce comenzi raman neasignate
 			List<Order> remainingOrders = new List<Order>(orders);
@@ -208,8 +267,8 @@ namespace Licenta_v1.Services
 						var assignedOrderIds = combinedResults.SelectMany(r => r.Orders.Select(o => o.Id)).Distinct().ToList();
 						remainingOrders.RemoveAll(o => assignedOrderIds.Contains(o.Id));
 						// Sterg vehiculele care au fost deja folosite din sortedVehicles
-						var usedVehicleIds = combinedResults.Select(r => r.VehicleId).Distinct().ToList();
-						sortedVehicles.RemoveAll(v => usedVehicleIds.Contains(v.Id));
+						var usedVehIds = combinedResults.Select(r => r.VehicleId).Distinct().ToList();
+						sortedVehicles.RemoveAll(v => usedVehIds.Contains(v.Id));
 					}
 					else
 					{
@@ -224,6 +283,50 @@ namespace Licenta_v1.Services
 				}
 			}
 			return combinedResults;
+		}
+
+		// Metoda de partitionare spatiala: impart un cluster in doua subclustere pe baza dispersiei spatiale
+		private (List<Order> subcluster1, List<Order> subcluster2) SpatialPartitionOrders(List<Order> cluster)
+		{
+			// Calculez media latitudinii si longitudinii
+			double avgLat = cluster.Average(o => o.Latitude ?? 0);
+			double avgLon = cluster.Average(o => o.Longitude ?? 0);
+
+			// Calculez varianta pentru latitudine si longitudine
+			double varLat = cluster.Average(o => Math.Pow((o.Latitude ?? 0) - avgLat, 2));
+			double varLon = cluster.Average(o => Math.Pow((o.Longitude ?? 0) - avgLon, 2));
+
+			List<Order> subcluster1;
+			List<Order> subcluster2;
+
+			if (varLon >= varLat)
+			{
+				// Impart dupa longitudine
+				var medianLon = cluster.Select(o => o.Longitude ?? 0)
+									   .OrderBy(lon => lon)
+									   .ElementAt(cluster.Count / 2);
+				subcluster1 = cluster.Where(o => (o.Longitude ?? 0) <= medianLon).ToList();
+				subcluster2 = cluster.Where(o => (o.Longitude ?? 0) > medianLon).ToList();
+			}
+			else
+			{
+				// Impart dupa latitudine
+				var medianLat = cluster.Select(o => o.Latitude ?? 0)
+									   .OrderBy(lat => lat)
+									   .ElementAt(cluster.Count / 2);
+				subcluster1 = cluster.Where(o => (o.Latitude ?? 0) <= medianLat).ToList();
+				subcluster2 = cluster.Where(o => (o.Latitude ?? 0) > medianLat).ToList();
+			}
+
+			// Daca oricare dintre subclustere e gol, repartitionez egal pe baza indexului
+			if (!subcluster1.Any() || !subcluster2.Any())
+			{
+				int mid = cluster.Count / 2;
+				subcluster1 = cluster.Take(mid).ToList();
+				subcluster2 = cluster.Skip(mid).ToList();
+			}
+
+			return (subcluster1, subcluster2);
 		}
 
 		// Data Transfer Objects pt raspunsul de la optimizarea cu ORS
@@ -251,7 +354,7 @@ namespace Licenta_v1.Services
 			public int? Job { get; set; }
 		}
 
-		// Obiect pt ruta ca sa legam vehiculele de lista ordonata de comenzi
+		// Obiect pt ruta: leaga vehiculele de lista ordonata de comenzi
 		public class RouteResult
 		{
 			public int VehicleId { get; set; }
@@ -291,7 +394,7 @@ namespace Licenta_v1.Services
 					var isochroneResponse = JsonConvert.DeserializeObject<IsochroneResponse>(responseString);
 					if (isochroneResponse?.Features != null)
 					{
-						// Sortez feature-urile in functie de timpul de calatorie
+						// Sortez feature-urile dupa timpul de calatorie
 						features = isochroneResponse.Features.OrderBy(f => f.Properties.Value).ToList();
 					}
 				}
@@ -301,15 +404,15 @@ namespace Licenta_v1.Services
 				}
 			}
 
-			// Acum, pentru fiecare comanda, determin in care "poligon" de timp se incadreaza
-			// Daca o comanda se incadreaza in mai multe poligoane, o asigneaz la cel cu cel mai mic timp de calatorie
+			// Pentru fiecare comanda, determin in care "poligon" de timp se incadreaza
+			// Daca o comanda se incadreaza in mai multe poligoane, o asignez la cel cu cel mai mic timp de calatorie
 			var clustersDict = new Dictionary<double, List<Order>>();
 			// Initializez clustere pentru fiecare valoare a poligonului
 			foreach (var feature in features)
 			{
 				clustersDict[feature.Properties.Value] = new List<Order>();
 			}
-			// Fac si un cluster default pentru comenzile care nu intra in niciun poligon
+			// Cluster default pentru comenzile care nu intra in niciun poligon
 			const double defaultKey = -1;
 			clustersDict[defaultKey] = new List<Order>();
 
@@ -337,12 +440,19 @@ namespace Licenta_v1.Services
 				}
 			}
 
-			// Clusterele returnate nu trebuie sa fie goale
-			return clustersDict.Values.Where(c => c.Any()).ToList();
+			// Inainte de returnare, re-sortez fiecare cluster dupa PlacedDate, apoi dupa prioritate
+			var sortedClusters = clustersDict.Values
+				.Where(c => c.Any())
+				.Select(c => c.OrderBy(o => o.PlacedDate)
+							   .ThenBy(o => o.Priority == OrderPriority.High ? 0 : 1)
+							   .ToList())
+				.ToList();
+
+			return sortedClusters;
 		}
 
-		// Verific daca un punct(Order) se gaseste in vreun poligon in functie de coordonate(latitudine, longitudine)
-		// Poligonul e o lista de puncte cu coordonate(latitudine, longitudine)
+		// Verifica daca un punct (Order) se gaseste in vreun poligon, pe baza coordonatelor (latitudine, longitudine)
+		// Poligonul este o lista de puncte cu coordonate (latitudine, longitudine)
 		private bool IsPointInPolygon(double lat, double lon, List<List<double>> polygon)
 		{
 			bool inside = false;
@@ -360,7 +470,7 @@ namespace Licenta_v1.Services
 			return inside;
 		}
 
-		// DTOs pentru raspunsul de la Isochrone
+		// DTO-uri pentru raspunsul de la Isochrone
 		public class IsochroneResponse
 		{
 			[JsonProperty("features")]
@@ -393,9 +503,14 @@ namespace Licenta_v1.Services
 			public List<List<List<double>>> Coordinates { get; set; }
 		}
 
-		// Pentru o ruta anume(cluster de comenzi), alegem un vehicul disponibil care poate sa transporte comenzile
+		// Pentru o ruta anume (cluster de comenzi), alegem un vehicul disponibil care poate sa transporte comenzile
 		// si un sofer disponibil pentru a crea obiectul de Delivery
-		private void AssignOrdersToDeliveries(List<Order> orderedOrders, List<Vehicle> vehicles, HashSet<int> usedVehicleIds)
+		private async Task AssignOrdersToDeliveriesAsync(
+			List<Order> orderedOrders,
+			List<Vehicle> vehicles,
+			HashSet<int> usedVehicleIds,
+			Depot2 depot,
+			int? assignedVehicleId = null)
 		{
 			using var scope = scopeFactory.CreateScope();
 			var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
@@ -404,23 +519,31 @@ namespace Licenta_v1.Services
 				return;
 
 			var plannedDate = DateTime.Now.AddDays(1).Date;
-			// Calculez incarcatura totala pe masina
-			double totalWeight = orderedOrders.Sum(o => o.Weight ?? 0);
-			double totalVolume = orderedOrders.Sum(o => o.Volume ?? 0);
 
-			// Aleg cel mai bun vehicul disponibil in care incap comenzile
-			var candidateVehicle = vehicles
-				.Where(v => !usedVehicleIds.Contains(v.Id) && CanFitOrders(v, orderedOrders))
-				.OrderBy(v => (v.MaxWeightCapacity - totalWeight) + (v.MaxVolumeCapacity - totalVolume))
-				.FirstOrDefault();
+			Vehicle candidateVehicle = null;
+			if (assignedVehicleId.HasValue && !usedVehicleIds.Contains(assignedVehicleId.Value))
+			{
+				candidateVehicle = vehicles.FirstOrDefault(v =>
+					v.Id == assignedVehicleId.Value &&
+					CanFitOrders(v, orderedOrders));
+			}
+			//if (candidateVehicle == null)
+			//{
+			//	candidateVehicle = vehicles
+			//		.Where(v => !usedVehicleIds.Contains(v.Id) && CanFitOrders(v, orderedOrders))
+			//		.OrderBy(v => v.MaxWeightCapacity)
+			//		.ThenBy(v => v.MaxVolumeCapacity)
+			//		.ThenBy(v => v.FuelType == FuelType.Electric ? 0 : 1)
+			//		.FirstOrDefault();
+			//}
 
 			if (candidateVehicle == null)
 				return;
 
-			// Marchez ca am folosit vehiculul ca sa nu-l mai iau data viitoare
+			// Marchez vehiculul ales ca fiind deja folosit de un Delivery
 			usedVehicleIds.Add(candidateVehicle.Id);
 
-			// Iau un sofer disponibil, mai intai cei cu rating mai bun sunt luati primii
+			// Iau un sofer disponibil(descrescator dupa Ratig = performanta)
 			var driverId = (from user in db.Users
 							join userRole in db.UserRoles on user.Id equals userRole.UserId
 							join role in db.Roles on userRole.RoleId equals role.Id
@@ -451,10 +574,10 @@ namespace Licenta_v1.Services
 			db.Deliveries.Add(delivery);
 			db.SaveChanges();
 
-			// Actualizez tabela Orders ca sa am DeliveryId si DeliverySequene
+			// Actualizez Orders
 			for (int i = 0; i < orderedOrders.Count; i++)
 			{
-				orderedOrders[i].DeliverySequence = i; // Numar mai mic = mai la inceput in livrare
+				orderedOrders[i].DeliverySequence = i; // Numar mai mic inseamna ca se va livra mai repede(primele opriri)
 				orderedOrders[i].DeliveryId = delivery.Id;
 				db.Orders.Update(orderedOrders[i]);
 			}
@@ -462,7 +585,8 @@ namespace Licenta_v1.Services
 			candidateVehicle.Status = VehicleStatus.Busy;
 			db.Vehicles.Update(candidateVehicle);
 
-			db.SaveChanges();
+			await CalculateRouteMetrics(db, delivery, orderedOrders, candidateVehicle, depot);
+			await db.SaveChangesAsync();
 		}
 
 		// Verific daca un vehicul are capacitate suficienta pentru comenzi
@@ -472,9 +596,91 @@ namespace Licenta_v1.Services
 			double totalVolume = orders.Sum(o => o.Volume ?? 0);
 			return totalWeight <= vehicle.MaxWeightCapacity && totalVolume <= vehicle.MaxVolumeCapacity;
 		}
+
+		// Metoda care calculeaza datele de ruta, distanta estimata si emisiile estimate pentru un Delivery
+		private async Task CalculateRouteMetrics(ApplicationDbContext db, Delivery delivery, List<Order> orders, Vehicle vehicle, Depot2 depot)
+		{
+			// Lista de coordonate: Headquarter, Orders in ordinea DeliverySequence, Headquarter
+			var sortedOrders = orders.OrderBy(o => o.DeliverySequence).ToList();
+			var locations = new List<double[]>();
+			locations.Add(new double[] { depot.Longitude, depot.Latitude });
+			foreach (var order in sortedOrders)
+			{
+				locations.Add(new double[] { order.Longitude ?? 0, order.Latitude ?? 0 });
+			}
+			locations.Add(new double[] { depot.Longitude, depot.Latitude });
+
+			// Construiesc cererea pentru ORS Directions API
+			var directionsRequest = new
+			{
+				coordinates = locations,
+			};
+
+			string requestUrl = "https://api.openrouteservice.org/v2/directions/driving-car";
+			string jsonBody = JsonConvert.SerializeObject(directionsRequest);
+
+			using (var client = new HttpClient())
+			{
+				client.DefaultRequestHeaders.Add("Authorization", OpenRouteServiceApiKey);
+				var content = new StringContent(jsonBody, Encoding.UTF8, "application/json");
+				var response = await client.PostAsync(requestUrl, content);
+				if (response.IsSuccessStatusCode)
+				{
+					var responseJson = await response.Content.ReadAsStringAsync();
+					// Deserializam raspunsul
+					var directionsResponse = JsonConvert.DeserializeObject<ORSRouteResponse>(responseJson);
+					if (directionsResponse?.routes?.Any() == true)
+					{
+						var summary = directionsResponse.routes[0].summary;
+						double distance = summary.distance; // metri
+						double duration = summary.duration; // secunde
+
+						// Calcularea consumului de combustibil:
+						double distanceKm = distance / 1000.0;
+						double fuelConsumed = (double)((vehicle.ConsumptionRate * distanceKm) / 100.0); // in litri
+
+						// Factorul de emisie e calculat cu metoda de mai jos
+						double emissionFactor = GetEmissionFactor((FuelType)vehicle.FuelType);
+						double emissions = fuelConsumed * emissionFactor; // in g CO2
+
+						// Actualizez Delivery
+						delivery.DistanceEstimated = distanceKm; // kilometri
+						delivery.EmissionsEstimated = emissions / 1000; // kilograme
+						delivery.ConsumptionEstimated = fuelConsumed; // litri
+						delivery.TimeTakenForDelivery = duration / 3600; // ore
+						delivery.RouteData = responseJson; // salvez raspunsul complet ca JSON
+
+						// Marchez entitatea ca modificata
+						db.Deliveries.Update(delivery);
+					}
+				}
+				else
+				{
+					Debug.WriteLine($"Directions API error: {response.StatusCode}");
+				}
+			}
+		}
+
+		// Metoda helper pentru factorul de emisie
+		private double GetEmissionFactor(FuelType fuelType)
+		{
+			switch (fuelType)
+			{
+				case FuelType.Petrol:
+					return 2392; // 2392 g CO2/litru
+				case FuelType.Diesel:
+					return 2640; // 2640 g CO2/litru
+				case FuelType.Electric:
+					return 0;
+				case FuelType.Hybrid:
+					return 1250; // medie/2
+				default:
+					return 2500; // medie
+			}
+		}
 	}
 
-	// Clasa pentru Depozit(basically Headquarter)
+	// Clasa pentru Depozit (Headquarter)
 	public class Depot2
 	{
 		public double Latitude { get; set; }

@@ -251,6 +251,50 @@ namespace Licenta_v1.Controllers
 			return RedirectToAction("Index");
 		}
 
+		[HttpPost]
+		[Authorize(Roles = "Admin")]
+		public async Task<IActionResult> CleanupDeliveries() // Doar pentru stadiul de development   !!!!!!!!!!
+		{
+			DateTime today = DateTime.Today;
+
+			// Selectez toate Deliveries programate oricand cu statusul "Planned" sau "Up for Taking"
+			var deliveriesToDelete = await db.Deliveries
+				.Include(d => d.Vehicle)
+				.Include(d => d.Driver)
+				.Where(d => (d.Status == "Planned" || d.Status == "Up for Taking"))
+				.ToListAsync();
+
+			foreach (var delivery in deliveriesToDelete)
+			{
+				// Resetez statusul Vehiculului sa-l facem Available pentru reprogramarea comenzilor
+				if (delivery.Vehicle != null)
+				{
+					delivery.Vehicle.Status = VehicleStatus.Available;
+				}
+
+				// Resetez statusul Soferului pt reprogramarea comenzilor
+				if (delivery.Driver != null)
+				{
+					delivery.Driver.IsAvailable = true;
+				}
+
+				// Resetez DeliveryId-ul si DeliverySequence-ul pt Orders asociate
+				var orders = db.Orders.Where(o => o.DeliveryId == delivery.Id).ToList();
+				foreach (var order in orders)
+				{
+					order.DeliveryId = null;
+					order.DeliverySequence = null;
+					db.Orders.Update(order);
+				}
+
+				db.Deliveries.Remove(delivery);
+			}
+
+			await db.SaveChangesAsync();
+			TempData["Success"] = "Cleanup completed successfully!";
+			return RedirectToAction("Index");
+		}
+
 		[Authorize(Roles = "Admin,Dispecer,Sofer")]
 		public async Task<IActionResult> ShowDeliveriesOfDriver(
 			string id,

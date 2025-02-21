@@ -67,11 +67,11 @@ public class TaskuriAutomate : BackgroundService
 	{
 		DateTime today = DateTime.Today;
 
-		// Selectez toate Deliveries programate pentru azi cu status "Planned" sau "Up for Taking"
+		// Selectez toate Deliveries programate pentru azi sau in trecut cu statusul "Planned" sau "Up for Taking"
 		var deliveriesToDelete = await dbContext.Deliveries
 			.Include(d => d.Vehicle)
 			.Include(d => d.Driver)
-			.Where(d => d.PlannedStartDate.Date == today &&
+			.Where(d => d.PlannedStartDate.Date <= today &&
 						(d.Status == "Planned" || d.Status == "Up for Taking"))
 			.ToListAsync();
 

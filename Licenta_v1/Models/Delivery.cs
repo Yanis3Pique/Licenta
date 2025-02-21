@@ -15,8 +15,10 @@ namespace Licenta_v1.Models
 		[Required(ErrorMessage = "The status is mandatory.")]
 		public string Status { get; set; } = "Planned"; // (Planned, In Progress, Completed)
 		public string? RouteData { get; set; } // JSON Route
-		public double? EmissionsEstimated { get; set; }
 		public double? DistanceEstimated { get; set; }
+		public double? ConsumptionEstimated { get; set; }
+		public double? EmissionsEstimated { get; set; }
+		public double? TimeTakenForDelivery { get; set; }
 
 		public virtual ApplicationUser? Driver { get; set; }
 		public virtual Vehicle? Vehicle { get; set; }

@@ -72,7 +72,14 @@
 <div class="text-center mb-4">
     @if (User.IsInRole("Admin"))
     {
-        <a asp-action="OptimizeAll" class="btn btn-primary me-2">Optimize All</a>
+        <a asp-action="OptimizeAll" class="btn btn-primary me-2">
+            Optimize All
+        </a>
+        <form asp-action="CleanupDeliveries" method="post" style="display:inline;" onsubmit="return confirm('Are you sure you want to delete the Deliveries?');">
+            <button type="submit" class="btn btn-danger">
+                Delete All Deliveries
+            </button>
+        </form>
     }
     @if (User.IsInRole("Dispecer"))
     {

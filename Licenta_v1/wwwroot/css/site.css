@@ -63,6 +63,11 @@ body {
     background-color:#f1f9ff;
 }
 
+#light-blue-elements-background-id-green-text {
+    background-color: #f1f9ff;
+    color: seagreen;
+}
+
 /* Wrapper pt meniu */
 .dropdown-wrapper {
     position: relative;

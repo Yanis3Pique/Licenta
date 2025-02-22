@@ -11,11 +11,13 @@ namespace Licenta_v1.Services
 	{
 		private readonly IServiceScopeFactory scopeFactory;
 		private readonly string OpenRouteServiceApiKey;
+		private readonly string GoogleMapsApiKey;
 
 		public RoutePlannerService(IServiceScopeFactory serviceScopeFactory, IConfiguration configuration)
 		{
 			scopeFactory = serviceScopeFactory;
 			OpenRouteServiceApiKey = Env.GetString("OpenRouteServiceApiKey");
+			GoogleMapsApiKey = Env.GetString("Cheie_API_Google_Maps");
 		}
 
 		// Calculeaza ruta optima in functie de Delivery.

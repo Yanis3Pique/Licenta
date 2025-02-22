@@ -172,6 +172,19 @@ namespace Licenta_v1.Controllers
 			{
 				return NotFound();
 			}
+
+			// Daca am Orders planificate in viitor in aceeasi regiune, nu putem modifica sediul
+			bool hasPlannedDelivery = db.Deliveries.Any(d =>
+				d.Vehicle.RegionId == headquarter.RegionId &&
+				d.Status == "Planned" &&
+				d.PlannedStartDate > DateTime.Now);
+
+			if (hasPlannedDelivery)
+			{
+				TempData["Error"] = "Headquarter editing is not allowed when there is a planned delivery in this region.";
+				return RedirectToAction("Index");
+			}
+
 			PopulateRegions(headquarter.RegionId);
 			ViewBag.Latitude = headquarter.Latitude;
 			ViewBag.Longitude = headquarter.Longitude;

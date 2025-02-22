@@ -37,7 +37,8 @@ namespace Licenta_v1.Controllers
 			int pageNumber,
 			int pageSize,
 			string userRole,
-			string userId)
+			string userId,
+			string statusFilter) // Adaug parametru pentru filtrare dupa status
 		{
 			var orders = db.Orders.Include(o => o.Client).Include(o => o.Delivery).Include(o => o.Feedback).AsQueryable();
 
@@ -45,6 +46,15 @@ namespace Licenta_v1.Controllers
 			if (userRole == "Client")
 			{
 				orders = orders.Where(o => o.ClientId == userId); // Clientul poate vedea doar comenzile sale
+			}
+			// Verific daca utilizatorul este dispecer si filtrez comenzile dupa regiunea asignata
+			if (userRole == "Dispecer")
+			{
+				var dispecer = await db.ApplicationUsers.FirstOrDefaultAsync(u => u.Id == userId); // verific daca dispecerul are regiunea asignata si filtrez comenzile dupa regiune
+				if (dispecer != null && dispecer.RegionId.HasValue)
+				{
+					orders = orders.Where(o => o.RegionId == dispecer.RegionId);
+				}
 			}
 
 			// Caut comenzi dupa numele clientului, prioritate, greutate, volum, adresa, status, data plasarii
@@ -64,6 +74,27 @@ namespace Licenta_v1.Controllers
 			if (regionId.HasValue)
 			{
 				orders = orders.Where(o => o.RegionId == regionId);
+			}
+
+			// Filtrare dupa status
+			if (!string.IsNullOrEmpty(statusFilter))
+			{
+				// Filtrare dupa status: Placed, Assigned to Delivery sau Delivered
+				if (statusFilter == "Placed")
+				{
+					// Placed = Order.Status este Placed si Order.Delivery este null
+					orders = orders.Where(o => o.Status == Services.OrderStatus.Placed && o.Delivery == null);
+				}
+				else if (statusFilter == "Assigned")
+				{
+					// Assigned to Delivery = Order.Status este Placed, dar Order.Delivery nu este null
+					orders = orders.Where(o => o.Status == Services.OrderStatus.Placed && o.Delivery != null);
+				}
+				else if (statusFilter == "Delivered")
+				{
+					// Delivered = Order.Status este Delivered
+					orders = orders.Where(o => o.Status == Services.OrderStatus.Delivered);
+				}
 			}
 
 			// Sortarea propriu-zisa dupa numele clientului, prioritate, greutate, volum, adresa, status, data plasarii
@@ -93,8 +124,13 @@ namespace Licenta_v1.Controllers
 		}
 
 		// Get - Orders/Index
-		[Authorize(Roles = "Admin, Client")]
-		public async Task<IActionResult> Index(string searchString, int? regionId, string sortOrder, int pageNumber = 1)
+		[Authorize(Roles = "Admin, Client, Dispecer")]
+		public async Task<IActionResult> Index(
+			string searchString, 
+			int? regionId, 
+			string sortOrder, 
+			string statusFilter, 
+			int pageNumber = 1)
 		{
 			int pageSize = 6;
 
@@ -114,12 +150,12 @@ namespace Licenta_v1.Controllers
 			// Iau id-ul utilizatorului curent si rolul acestuia
 			var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
 			var userRoles = await _userManager.GetRolesAsync(await _userManager.FindByIdAsync(userId));
-			var userRole = userRoles.Contains("Admin") ? "Admin" : "Client";
+			var userRole = userRoles.Contains("Admin") ? "Admin" : (userRoles.Contains("Dispecer") ? "Dispecer" : "Client");
 
 			ViewBag.CurrentUserId = userId; // Imi trebuie pt feedback in View
 
 			// Iau comenzile filtrate si numarul total de comenzi pt paginare
-			var (pagedOrders, count) = await GetFilteredOrders(searchString, regionId, sortOrder, pageNumber, pageSize, userRole, userId);
+			var (pagedOrders, count) = await GetFilteredOrders(searchString, regionId, sortOrder, pageNumber, pageSize, userRole, userId, statusFilter);
 
 			ViewBag.PageNumber = pageNumber;
 			ViewBag.TotalPages = (int)Math.Ceiling(count / (double)pageSize);
@@ -194,7 +230,7 @@ namespace Licenta_v1.Controllers
 		}
 
 		// Get - Orders/Show/id
-		[Authorize(Roles = "Admin,Client")]
+		[Authorize(Roles = "Admin,Client,Dispecer")]
 		public async Task<IActionResult> Show(int? id)
 		{
 			if (id == null)
@@ -205,8 +241,7 @@ namespace Licenta_v1.Controllers
 			var order = await db.Orders
 				.Include(o => o.Client)
 				.Include(o => o.Region)
-				.FirstOrDefaultAsync(o => o.Id == id); ;
-
+				.FirstOrDefaultAsync(o => o.Id == id);
 			if (order == null)
 			{
 				return NotFound();
@@ -214,12 +249,20 @@ namespace Licenta_v1.Controllers
 
 			// Ma asigur ca doar clientul care a plasat comanda poate sa o vada
 			var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
-			var userRole = await _userManager.GetRolesAsync(await _userManager.FindByIdAsync(userId));
-			if (userRole.Contains("Client") && order.ClientId != userId)
+			var userRoles = await _userManager.GetRolesAsync(await _userManager.FindByIdAsync(userId));
+			if (userRoles.Contains("Client") && order.ClientId != userId)
 			{
 				return Unauthorized();
 			}
-
+			// Verific daca utilizatorul este Dispecer(nu poate vedea comenzi din alta regiune)
+			if (userRoles.Contains("Dispecer"))
+			{
+				var dispecer = await db.ApplicationUsers.FirstOrDefaultAsync(u => u.Id == userId);
+				if (dispecer != null && dispecer.RegionId.HasValue && order.RegionId != dispecer.RegionId)
+				{
+					return Unauthorized();
+				}
+			}
 			return View(order);
 		}
 

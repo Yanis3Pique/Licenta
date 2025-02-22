@@ -95,57 +95,6 @@
             bounds.extend(hqMarker.getLatLng()); // Fac harta mai mare ca sa intre si Headquarter-ul
 
             displayCurrentSegment(); // Afisez segmentul curent din livrare
-
-            // Populez tabelul cu informatii despre fiecare comanda din livrare
-            if (data.segments && data.segments.length > 0) {
-                var tbody = document.getElementById("routeSegments");
-                tbody.innerHTML = "";
-
-                let cumulativeDistance = 0;
-                let cumulativeDuration = 0;
-
-                data.segments.forEach(function (segment, index) {
-                    var tr = document.createElement("tr");
-                    var tdLabel = document.createElement("td");
-                    tdLabel.setAttribute("id", "light-blue-elements-background-id");
-
-                    console.log("index: ", index, " - data.segments.length: ", data.segments.length - 1);
-
-                    // Valori cumulative pt tabel
-                    cumulativeDistance += segment.distance;
-                    cumulativeDuration += segment.duration;
-
-                    if (index === data.segments.length - 1) {
-                        tdLabel.textContent = "Return to Headquarter";
-                    } else {
-                        tdLabel.textContent = "Order " + data.orderIds[index];
-                    }
-
-                    var tdDistance = document.createElement("td");
-                    tdDistance.setAttribute("id", "light-blue-elements-background-id");
-                    tdDistance.textContent = cumulativeDistance < 1000
-                        ? cumulativeDistance.toFixed(0) + " m"
-                        : (cumulativeDistance / 1000).toFixed(1) + " km";
-
-                    var tdTime = document.createElement("td");
-                    tdTime.setAttribute("id", "light-blue-elements-background-id");
-
-                    if (cumulativeDuration < 60) {
-                        tdTime.textContent = cumulativeDuration.toFixed(0) + " sec";
-                    } else if (cumulativeDuration < 3600) {
-                        tdTime.textContent = (cumulativeDuration / 60).toFixed(0) + " min";
-                    } else {
-                        var hours = Math.floor(cumulativeDuration / 3600);
-                        var minutes = Math.floor((cumulativeDuration % 3600) / 60);
-                        tdTime.textContent = hours + " h " + (minutes > 0 ? minutes + " min" : "");
-                    }
-
-                    tr.appendChild(tdLabel);
-                    tr.appendChild(tdDistance);
-                    tr.appendChild(tdTime);
-                    tbody.appendChild(tr);
-                });
-            }
         })
         .catch(function (error) {
             console.error("Error fetching route:", error);

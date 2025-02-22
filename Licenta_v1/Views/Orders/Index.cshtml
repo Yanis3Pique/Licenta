@@ -4,6 +4,7 @@
 @model IEnumerable<Licenta_v1.Models.Order>
 @{
     ViewBag.Title = "Orders";
+    bool showColored = User.IsInRole("Admin") || User.IsInRole("Dispecer"); // Doar Adminii si Dispecerii vad diferit Orders
 }
 
 @if (TempData["Success"] != null)
@@ -33,30 +34,48 @@
             <select class="form-select" name="sortOrder">
                 <option value="client" selected="@(ViewBag.CurrentSort == "client" ? "selected" : "")">Client Userame (Ascending)</option>
                 <option value="client_desc" selected="@(ViewBag.CurrentSort == "client_desc" ? "selected" : "")">Client Userame (Descending)</option>
-				<option value="priority" selected="@(ViewBag.CurrentSort == "priority" ? "selected" : "")">Priority (Ascending)</option>
-				<option value="priority_desc" selected="@(ViewBag.CurrentSort == "priority_desc" ? "selected" : "")">Priority (Descending)</option>
-				<option value="weight" selected="@(ViewBag.CurrentSort == "weight" ? "selected" : "")">Weight (Ascending)</option>
-				<option value="weight_desc" selected="@(ViewBag.CurrentSort == "weight_desc" ? "selected" : "")">Weight (Descending)</option>
-				<option value="volume" selected="@(ViewBag.CurrentSort == "volume" ? "selected" : "")">Volume (Ascending)</option>
-				<option value="volume_desc" selected="@(ViewBag.CurrentSort == "volume_desc" ? "selected" : "")">Volume (Descending)</option>
-				<option value="address" selected="@(ViewBag.CurrentSort == "address" ? "selected" : "")">Address (Ascending)</option>
-				<option value="address_desc" selected="@(ViewBag.CurrentSort == "address_desc" ? "selected" : "")">Address (Descending)</option>
-				<option value="status" selected="@(ViewBag.CurrentSort == "status" ? "selected" : "")">Status (Ascending)</option>
-				<option value="status_desc" selected="@(ViewBag.CurrentSort == "status_desc" ? "selected" : "")">Status (Descending)</option>
+                <option value="priority" selected="@(ViewBag.CurrentSort == "priority" ? "selected" : "")">Priority (Ascending)</option>
+                <option value="priority_desc" selected="@(ViewBag.CurrentSort == "priority_desc" ? "selected" : "")">Priority (Descending)</option>
+                <option value="weight" selected="@(ViewBag.CurrentSort == "weight" ? "selected" : "")">Weight (Ascending)</option>
+                <option value="weight_desc" selected="@(ViewBag.CurrentSort == "weight_desc" ? "selected" : "")">Weight (Descending)</option>
+                <option value="volume" selected="@(ViewBag.CurrentSort == "volume" ? "selected" : "")">Volume (Ascending)</option>
+                <option value="volume_desc" selected="@(ViewBag.CurrentSort == "volume_desc" ? "selected" : "")">Volume (Descending)</option>
+                <option value="address" selected="@(ViewBag.CurrentSort == "address" ? "selected" : "")">Address (Ascending)</option>
+                <option value="address_desc" selected="@(ViewBag.CurrentSort == "address_desc" ? "selected" : "")">Address (Descending)</option>
+                <option value="status" selected="@(ViewBag.CurrentSort == "status" ? "selected" : "")">Status (Ascending)</option>
+                <option value="status_desc" selected="@(ViewBag.CurrentSort == "status_desc" ? "selected" : "")">Status (Descending)</option>
                 <option value="placedDate" selected="@(ViewBag.CurrentSort == "placedDate" ? "selected" : "")">Placement Date (Ascending)</option>
                 <option value="placedDate_desc" selected="@(ViewBag.CurrentSort == "placedDate_desc" ? "selected" : "")">Placement Date (Descending)</option>
             </select>
         </div>
 
-        <!-- Dropdown cu regiuni -->
-        <div class="col-md-3 col-sm-6">
-            @Html.DropDownList("regionId",
-                     ViewBag.Regions as SelectList,
-                     "All Regions",
-                     new { @class = "form-select" })
-        </div>
+        <!-- Dropdown pentru filtrare dupa status, afisat doar pentru Admin si Dispecer -->
+        @if(User.IsInRole("Admin") || User.IsInRole("Dispecer"))
+        {
+            <!-- Filtrez dupa status: Placed, Assigned to Delivery sau Delivered -->
+            <div class="col-md-3 col-sm-6">
+                <select class="form-select" name="statusFilter">
+                    <option value="Placed" selected="@(ViewBag.StatusFilter == "Placed" ? "selected" : "")">Placed</option>
+                    <option value="Assigned" selected="@(ViewBag.StatusFilter == "Assigned" ? "selected" : "")">Assigned to Delivery</option>
+                    <option value="Delivered" selected="@(ViewBag.StatusFilter == "Delivered" ? "selected" : "")">Delivered</option>
+                    <option value="">All Statuses</option>
+                </select>
+            </div>
+        }
 
-        <!-- Filtrare dupa regiuni -->
+        <!-- Dropdown cu regiuni - afisat doar daca utilizatorul nu este Dispecer -->
+        @if(!User.IsInRole("Dispecer"))
+        {
+            <!-- Comentariu: afisez dropdown-ul cu regiuni doar pentru Admin si Client -->
+            <div class="col-md-3 col-sm-6">
+                @Html.DropDownList("regionId",
+                         ViewBag.Regions as SelectList,
+                         "All Regions",
+                         new { @class = "form-select" })
+            </div>
+        }
+
+        <!-- Butonul de filtrare -->
         <div class="col-12 col-md-auto">
             <button type="submit" class="btn btn-primary w-100">Filter</button>
         </div>
@@ -65,49 +84,110 @@
 
 <!-- Carduri pt comenzi -->
 <div class="row row-cols-1 row-cols-md-3 g-4">
-    @foreach (var order in Model)
+    @if (showColored)
     {
-        <div class="col">
-            <div class="card h-100 text-center" style="min-height: 350px;" id="light-blue-elements-background-id">
-                <div class="card-body">
-                    <h5 class="card-title">Order ID: @order.Id</h5>
-                    <p class="card-text">
-                        <strong>Client:</strong> @order.Client?.UserName<br />
-                        <strong>Address:</strong> @order.Address<br />
-                        <strong>Priority:</strong>
-                        <span style="color: @(order.Priority.ToString() == "High" ? "red" : "grey")">
-                            @order.Priority.ToString()
-                        </span><br />
-                        <strong>Weight:</strong> @order.Weight kg<br />
-                        <strong>Volume:</strong> @order.Volume m³<br />
-                        <strong>Status:</strong>
-                        <span style="color: @(order.Status.ToString() == "Placed" ? "blue" : order.Status.ToString() == "InProgress" ? "orange" : "#006400")">
-                            @(order.Status.ToString() == "InProgress" ? "In Progress" : order.Status.ToString())
-                        </span><br />
-                        <strong>Date Placed:</strong> @order.PlacedDate.ToString("d MMM yyyy")
-                    </p>
-                </div>
+        @foreach (var order in Model)
+        {
+            // Determine CSS class based on order status/delivery.
+            string cardClass = "";
+            if (order.Status.ToString() == "Delivered")
+            {
+                cardClass = "delivered-order"; // Green
+            }
+            else if (order.Delivery != null)
+            {
+                cardClass = "programmed-order"; // Blue
+            }
+            else
+            {
+                cardClass = "unassigned-order"; // Red
+            }
 
-                <div class="card-footer">
-                    <div class="d-flex justify-content-center">
-                        <a asp-action="Show" asp-route-id="@order.Id" class="btn btn-primary btn-sm mb-2 mx-2">View</a>
-
-                        @if (order.Status == Licenta_v1.Services.OrderStatus.Delivered &&
-                             order.Delivery?.DriverId != null &&
-                             order.ClientId == ViewBag.CurrentUserId &&
-                             order.Feedback == null)
-                        {
-                            <a asp-action="GiveFeedback" asp-controller="Feedbacks"
-                               asp-route-driverId="@order.Delivery.DriverId"
-                               asp-route-orderId="@order.Id"
-                               class="btn btn-primary btn-sm mb-2 mx-2">
-                                ⭐ Rate Driver
-                            </a>
-                        }
+            <div class="col">
+                <div class="card h-100 text-center @cardClass" style="min-height: 350px;">
+                    <div class="card-body">
+                        <h5 class="card-title">Order ID: @order.Id</h5>
+                        <p class="card-text">
+                            <strong>Client:</strong> @order.Client?.UserName<br />
+                            <strong>Address:</strong> @order.Address<br />
+                            <strong>Priority:</strong>
+                            <span style="color: @(order.Priority.ToString() == "High" ? "red" : "grey")">
+                                @order.Priority.ToString()
+                            </span><br />
+                            <strong>Weight:</strong> @order.Weight kg<br />
+                            <strong>Volume:</strong> @order.Volume m³<br />
+                            <strong>Status:</strong>
+                            <span style="color: @(order.Status.ToString() == "Placed" ? "blue" : order.Status.ToString() == "InProgress" ? "orange" : "#006400")">
+                                @(order.Status.ToString() == "InProgress" ? "In Progress" : order.Status.ToString())
+                            </span><br />
+                            <strong>Date Placed:</strong> @order.PlacedDate.ToString("d MMM yyyy")
+                        </p>
+                    </div>
+                    <div class="card-footer">
+                        <div class="d-flex justify-content-center">
+                            <a asp-action="Show" asp-route-id="@order.Id" class="btn btn-primary btn-sm mb-2 mx-2">View</a>
+                            @if (order.Status == Licenta_v1.Services.OrderStatus.Delivered &&
+                                order.Delivery?.DriverId != null &&
+                                order.ClientId == ViewBag.CurrentUserId &&
+                                order.Feedback == null)
+                            {
+                                <a asp-action="GiveFeedback" asp-controller="Feedbacks"
+                                   asp-route-driverId="@order.Delivery.DriverId"
+                                   asp-route-orderId="@order.Id"
+                                   class="btn btn-primary btn-sm mb-2 mx-2">
+                                    ⭐ Rate Driver
+                                </a>
+                            }
+                        </div>
                     </div>
                 </div>
             </div>
-        </div>
+        }
+    }
+    else
+    {
+        @foreach (var order in Model)
+        {
+            <div class="col">
+                <div class="card h-100 text-center" style="min-height: 350px;" id="light-blue-elements-background-id">
+                    <div class="card-body">
+                        <h5 class="card-title">Order ID: @order.Id</h5>
+                        <p class="card-text">
+                            <strong>Client:</strong> @order.Client?.UserName<br />
+                            <strong>Address:</strong> @order.Address<br />
+                            <strong>Priority:</strong>
+                            <span style="color: @(order.Priority.ToString() == "High" ? "red" : "grey")">
+                                @order.Priority.ToString()
+                            </span><br />
+                            <strong>Weight:</strong> @order.Weight kg<br />
+                            <strong>Volume:</strong> @order.Volume m³<br />
+                            <strong>Status:</strong>
+                            <span style="color: @(order.Status.ToString() == "Placed" ? "blue" : order.Status.ToString() == "InProgress" ? "orange" : "#006400")">
+                                @(order.Status.ToString() == "InProgress" ? "In Progress" : order.Status.ToString())
+                            </span><br />
+                            <strong>Date Placed:</strong> @order.PlacedDate.ToString("d MMM yyyy")
+                        </p>
+                    </div>
+                    <div class="card-footer">
+                        <div class="d-flex justify-content-center">
+                            <a asp-action="Show" asp-route-id="@order.Id" class="btn btn-primary btn-sm mb-2 mx-2">View</a>
+                            @if (order.Status == Licenta_v1.Services.OrderStatus.Delivered &&
+                                order.Delivery?.DriverId != null &&
+                                order.ClientId == ViewBag.CurrentUserId &&
+                                order.Feedback == null)
+                            {
+                                <a asp-action="GiveFeedback" asp-controller="Feedbacks"
+                                   asp-route-driverId="@order.Delivery.DriverId"
+                                   asp-route-orderId="@order.Id"
+                                   class="btn btn-primary btn-sm mb-2 mx-2">
+                                    ⭐ Rate Driver
+                                </a>
+                            }
+                        </div>
+                    </div>
+                </div>
+            </div>
+        }
     }
 </div>
 <br />
@@ -118,7 +198,7 @@
         @{
             int totalPages = ViewBag.TotalPages;
             int pageNumber = ViewBag.PageNumber;
-            string query = $"&searchString={ViewBag.SearchString}&regionId={ViewBag.RegionId}&sortOrder={ViewBag.CurrentSort}";
+            string query = $"&searchString={ViewBag.SearchString}&regionId={ViewBag.RegionId}&sortOrder={ViewBag.CurrentSort}&statusFilter={ViewBag.StatusFilter}";
 
             // Afisez o pagina la inceput, una la final si una la stanga si/sau dreapta celei curente
             int range = 1;

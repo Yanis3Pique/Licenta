@@ -65,27 +65,36 @@
                         @if (User.IsInRole("Dispecer"))
                         {
                             var dispatcherId = UserManager.GetUserId(User);
-                            <li class="nav-item">
-                                <a class="nav-link text-light" asp-area="" asp-controller="Users" asp-action="ShowDriversOfDispatcher" asp-route-id="@dispatcherId">
-                                    My Drivers
-                                </a>
-                            </li>
-                            <li class="nav-item">
-                                <a class="nav-link text-light" asp-area="" asp-controller="Users" asp-action="ShowVehiclesOfDispatcher" asp-route-id="@dispatcherId">
-                                    My Vehicles
-                                </a>
-                            </li>
+                            <div class="dropdown-wrapper">
+                                <button class="dropdown-toggle-btn">My Fleet</button>
+                                <ul class="dropdown-menu">
+                                    <li>
+                                        <a href="@Url.Action("ShowDriversOfDispatcher", "Users", new { id = dispatcherId })">
+                                            My Drivers
+                                        </a>
+                                    </li>
+                                    <li>
+                                        <a href="@Url.Action("ShowVehiclesOfDispatcher", "Users", new { id = dispatcherId })">
+                                            My Vehicles
+                                        </a>
+                                    </li>
+                                    <li>
+                                        <a href="@Url.Action("Index", "Feedbacks")">
+                                            Driver Feedbacks
+                                        </a>
+                                    </li>
+                                </ul>
+                            </div>
                             <li class="nav-item">
                                 <a class="nav-link text-light" asp-area="" asp-controller="Deliveries" asp-action="Index">
                                     Deliveries
                                 </a>
                             </li>
                             <li class="nav-item">
-                                <a class="nav-link text-light" asp-area="" asp-controller="Feedbacks" asp-action="Index">
-                                    Driver Feedbacks
+                                <a class="nav-link text-light" asp-area="" asp-controller="Orders" asp-action="Index">
+                                    Orders
                                 </a>
                             </li>
-
                         }
 						@if (User.IsInRole("Sofer"))
 						{

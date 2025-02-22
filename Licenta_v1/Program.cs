@@ -19,6 +19,8 @@ var openRouteServiceApiKey = Env.GetString("OpenRouteServiceApiKey");
 
 // Add services to the container.
 builder.Services.AddScoped<RoutePlannerService>();
+builder.Services.AddScoped<RoutePlannerService2>();
+
 builder.Services.AddSingleton<OrderDeliveryOptimizer>(provider =>
 {
 	var scopeFactory = provider.GetRequiredService<IServiceScopeFactory>();

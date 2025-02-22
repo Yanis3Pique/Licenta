@@ -65,7 +65,22 @@ body {
 
 #light-blue-elements-background-id-green-text {
     background-color: #f1f9ff;
-    color: seagreen;
+    color: steelblue;
+}
+
+.delivered-order {
+    background-color: #d4edda; /* Orders livrate deja */
+    border: 1px solid #28a745;
+}
+
+.programmed-order {
+    background-color: #f1f9ff; /* Orders programate pentru livrare */
+    border: 1px solid #007bff;
+}
+
+.unassigned-order {
+    background-color: #f8d7da; /* Orders NEprogramate pentru livrare */
+    border: 1px solid #dc3545;
 }
 
 /* Wrapper pt meniu */
@@ -170,13 +185,13 @@ body {
 }
 
 .stars-container {
-    white-space: nowrap; /* Prevent wrapping */
+    white-space: nowrap;
     display: flex;
-    justify-content: center; /* Center align */
+    justify-content: center;
     align-items: center;
-    gap: 2px; /* Small gap between stars */
+    gap: 2px;
 }
 
 .stars-container i {
-    font-size: 1.2rem; /* Adjust size if necessary */
+    font-size: 1.2rem;
 }

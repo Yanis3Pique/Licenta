@@ -123,7 +123,7 @@ namespace Licenta_v1.Controllers
 		}
 
 		[Authorize(Roles = "Sofer,Dispecer")]
-		public async Task<IActionResult> GetOptimalRoute(int id)
+		public async Task<IActionResult> GetOptimalRoute(int deliveryId)
 		{
 			var user = await db.ApplicationUsers.FirstOrDefaultAsync(u => u.UserName == User.Identity.Name);
 			if (user == null)
@@ -134,7 +134,7 @@ namespace Licenta_v1.Controllers
 				.Include(d => d.Vehicle)
 					.ThenInclude(v => v.Region)
 						.ThenInclude(r => r.Headquarters)
-				.Where(d => d.Id == id);
+				.Where(d => d.Id == deliveryId);
 
 			if (User.IsInRole("Sofer"))
 			{
@@ -151,6 +151,7 @@ namespace Licenta_v1.Controllers
 
 			try
 			{
+				// Se calculeaza ruta optima folosind serviciul de route planning cu OSRM + OR-Tools
 				var route = await rps.CalculateOptimalRouteAsync(delivery);
 
 				// Iau locatiile de stop: Headquarter + Order locations + Inapoi la Headquarter
@@ -187,7 +188,7 @@ namespace Licenta_v1.Controllers
 					}
 				}
 
-				// Adaug si ultima oprire(inapoi la Headquarter)
+				// Adaug si ultima oprire (inapoi la Headquarter) daca nu este deja inclusa
 				if (!stopIndices.Contains(route.Coordinates.Count - 1))
 				{
 					stopIndices.Add(route.Coordinates.Count - 1);
@@ -200,7 +201,7 @@ namespace Licenta_v1.Controllers
 					coordinates = route.Coordinates, // Coordonatele rutei
 					stopIndices = stopIndices,       // Indicii pentru vizualizarea pas cu pas a opririlor
 					segments = route.Segments,       // Distanta si Timp pe segment
-					orderIds = delivery.Orders.OrderBy(o => o.DeliverySequence).Select(o => o.Id).ToList()
+					orderIds = route.OrderIds         // Order IDs in ordinea optimizata
 				});
 			}
 			catch (Exception ex)

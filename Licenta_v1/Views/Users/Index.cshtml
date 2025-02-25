@@ -93,14 +93,14 @@
                             }
                             if (userRoles.Contains("Sofer"))
                             {
-                                <a href="@Url.Action("ShowFeedbacksOfDriver", "Feedbacks", new { driverId = user.Id })" class="btn btn-primary btn-sm mb-2 mx-2">
+                                <a href="@Url.Action("ShowFeedbacksOfDriver", "Feedbacks", new { id = user.Id })" class="btn btn-primary btn-sm mb-2 mx-2">
                                     Driver Feedbacks
                                 </a>
                             }
 
                             if (userRoles.Contains("Client"))
                             {
-                                <a href="@Url.Action("ShowFeedbacksGivenByClient", "Feedbacks", new { clientId = user.Id })" class="btn btn-primary btn-sm mb-2 mx-2">
+                                <a href="@Url.Action("ShowFeedbacksGivenByClient", "Feedbacks", new { id = user.Id })" class="btn btn-primary btn-sm mb-2 mx-2">
                                     Client Feedbacks
                                 </a>
                             }

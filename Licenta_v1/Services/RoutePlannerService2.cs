@@ -4,225 +4,192 @@ using Microsoft.Extensions.Configuration;
 using Newtonsoft.Json;
 using System.Text;
 using System.Diagnostics;
+using Google.OrTools.ConstraintSolver;
 
 namespace Licenta_v1.Services
 {
 	public class RoutePlannerService2
 	{
 		private readonly IServiceScopeFactory scopeFactory;
-		private readonly string GoogleMapsApiKey;
 
 		public RoutePlannerService2(IServiceScopeFactory serviceScopeFactory, IConfiguration configuration)
 		{
 			scopeFactory = serviceScopeFactory;
-			GoogleMapsApiKey = Env.GetString("Cheie_API_Google_Maps");
 		}
 
-		// Calculez ruta optima pentru o livrare folosind API-ul Google Directions
-		// Ruta incepe si se incheie la sediu si viziteaza toate comenzile ca puncte intermediare
-		// Folosesc "optimize:true" pentru a permite Google sa reordoneze opririle
-		public async Task<RouteResult> CalculateOptimalRouteAsync(Delivery delivery)
+		/// <summary>
+		/// Calculates the optimal route by first getting the distance matrix from OSRM,
+		/// then solving the TSP with OR-Tools. The route starts and ends at the headquarters.
+		/// </summary>
+		public async Task<RouteResult2> CalculateOptimalRouteAsync(Delivery delivery)
 		{
-			// Preiau comenzile cu locatii valide
+			// Get orders with valid coordinates.
 			var orders = delivery.Orders?.Where(o => o.Latitude.HasValue && o.Longitude.HasValue).ToList();
 			if (orders == null || orders.Count == 0)
-				throw new Exception("Nu s-au gasit comenzi valide pentru planificarea rutei.");
+				throw new Exception("No valid orders found for route planning.");
 
-			// Folosc coordonatele sediului ca origine si destinatie
-			Coordinate start = new Coordinate
+			// Use the headquarters as the start/end point.
+			Coordinate2 headquarters = new Coordinate2
 			{
 				Latitude = delivery.Vehicle.Region.Headquarters.Latitude.Value,
 				Longitude = delivery.Vehicle.Region.Headquarters.Longitude.Value
 			};
 
-			string origin = $"{start.Latitude},{start.Longitude}";
-			string destination = origin;
-
-			// Construiesc sirul de waypoints folosind "optimize:true" pentru ca Google sa le reordoneze
-			// Daca exista o singura comanda se poate omite flag-ul optimize
-			string waypoints = "";
-			if (orders.Any())
+			// Build a list of points: headquarters is at index 0, then the orders.
+			List<Coordinate2> points = new List<Coordinate2> { headquarters };
+			points.AddRange(orders.Select(o => new Coordinate2
 			{
-				var waypointList = orders.Select(o => $"{o.Latitude.Value},{o.Longitude.Value}").ToList();
-				waypoints = "optimize:true|" + string.Join("|", waypointList);
-			}
+				Latitude = o.Latitude.Value,
+				Longitude = o.Longitude.Value
+			}));
 
-			// Construiesc URL-ul cererii
-			// Mai tarziu voi adauga parametri ca &departure_time=now ca sa tin cont de traficul actual
-			string url = $"https://maps.googleapis.com/maps/api/directions/json?origin={origin}&destination={destination}&mode=driving";
-			if (!string.IsNullOrEmpty(waypoints))
-			{
-				url += $"&waypoints={Uri.EscapeDataString(waypoints)}";
-			}
-			url += $"&key={GoogleMapsApiKey}";
-
-			Debug.WriteLine("URL API Google Directions: " + url);
+			// Build the OSRM Table API URL.
+			// OSRM expects coordinates in "longitude,latitude" order.
+			string baseUrl = "http://router.project-osrm.org/table/v1/driving/";
+			string coordinatesStr = string.Join(";", points.Select(p =>
+				$"{p.Longitude.ToString(System.Globalization.CultureInfo.InvariantCulture)},{p.Latitude.ToString(System.Globalization.CultureInfo.InvariantCulture)}"));
+			string url = $"{baseUrl}{coordinatesStr}?annotations=distance";
 
 			using var client = new HttpClient();
 			var response = await client.GetAsync(url);
-			var responseJson = await response.Content.ReadAsStringAsync();
-			Debug.WriteLine("Raspuns JSON API Google Directions: " + responseJson);
-
 			if (!response.IsSuccessStatusCode)
+				throw new Exception($"OSRM API request failed: {response.StatusCode}");
+
+			var jsonResponse = await response.Content.ReadAsStringAsync();
+			var osrmResponse = JsonConvert.DeserializeObject<OsrmTableResponse>(jsonResponse);
+			if (osrmResponse == null || osrmResponse.Code != "Ok" || osrmResponse.Distances == null)
+				throw new Exception("Invalid response from OSRM API.");
+
+			int numPoints = points.Count;
+			int[,] distanceMatrix = new int[numPoints, numPoints];
+			// Convert OSRM distances (in meters) to an integer matrix.
+			for (int i = 0; i < numPoints; i++)
 			{
-				throw new Exception($"Nu s-a putut prelua ruta: {response.StatusCode} - {responseJson}");
-			}
-
-			// Deserializez raspunsul de la Google
-			var googleResponse = JsonConvert.DeserializeObject<GoogleDirectionsResponse>(responseJson);
-			if (googleResponse == null || googleResponse.routes == null || !googleResponse.routes.Any())
-				throw new Exception("Nu s-a gasit nicio ruta de la API-ul Google Directions.");
-
-			var route = googleResponse.routes.First();
-
-			// Adun distanta totala si durata totala din toate segmentele
-			double totalDistance = 0;
-			double totalDuration = 0;
-			var segmentResults = new List<SegmentResult>();
-			foreach (var leg in route.legs)
-			{
-				totalDistance += leg.distance.value;   // in metri
-				totalDuration += leg.duration.value;   // in secunde
-				segmentResults.Add(new SegmentResult
+				for (int j = 0; j < numPoints; j++)
 				{
-					Distance = leg.distance.value,
-					Duration = leg.duration.value
-				});
+					distanceMatrix[i, j] = (int)Math.Round(osrmResponse.Distances[i][j]);
+				}
 			}
 
-			// Decodez overview_polyline intr-o lista de coordonate
-			var decodedCoordinates = DecodePolyline(route.overview_polyline.points);
+			// Solve the TSP using OR-Tools.
+			List<int> routeOrder = SolveTSP(distanceMatrix);
+			if (routeOrder == null || routeOrder.Count == 0)
+				throw new Exception("TSP solver did not find a route.");
 
-			// Ordinea optimizata o returnez ca un array de indici corespunzatori punctelor noastre intermediare
-			List<int> orderIds;
-			if (route.waypoint_order != null && route.waypoint_order.Any())
+			// Calculate the total distance for the computed route.
+			int totalDistance = 0;
+			for (int i = 0; i < routeOrder.Count - 1; i++)
 			{
-				// Reordonez comenzile pe baza ordinii optimizate de Google
-				orderIds = route.waypoint_order.Select(index => orders[index].Id).ToList();
-			}
-			else
-			{
-				orderIds = orders.Select(o => o.Id).ToList();
+				totalDistance += distanceMatrix[routeOrder[i], routeOrder[i + 1]];
 			}
 
-			// Construiesc si returnez rezultatul final al rutei
-			var routeResult = new RouteResult
+			// Build the route coordinates from the computed indices.
+			List<Coordinate2> routeCoordinates = routeOrder.Select(index => points[index]).ToList();
+
+			// Map the computed indices back to order IDs (skipping index 0 which is the headquarters).
+			List<int> orderIds = new List<int>();
+			foreach (var index in routeOrder)
 			{
-				Coordinates = decodedCoordinates,
+				if (index > 0)
+				{
+					// Since orders were added after headquarters, subtract 1 from the index.
+					orderIds.Add(orders[index - 1].Id);
+				}
+			}
+
+			var routeResult = new RouteResult2
+			{
+				Coordinates = routeCoordinates,
 				Distance = totalDistance,
-				Duration = totalDuration,
-				Segments = segmentResults,
+				Duration = 0, // You can compute durations if you wish to use another OSRM API endpoint.
+				Segments = new List<SegmentResult2>(), // Optionally, build detailed segments.
 				OrderIds = orderIds
 			};
 
 			return routeResult;
 		}
 
-		// Calculeaza distanta (in metri) folosind formula Haversine
-		private double HaversineDistance(double lat1, double lon1, double lat2, double lon2)
+		/// <summary>
+		/// Uses OR-Tools to solve the TSP for the given distance matrix.
+		/// </summary>
+		private List<int> SolveTSP(int[,] distanceMatrix)
 		{
-			const double R = 6371000; // Raza medie a Pamantului in metri
-			double dLat = (lat2 - lat1) * Math.PI / 180;
-			double dLon = (lon2 - lon1) * Math.PI / 180;
-			double a = Math.Sin(dLat / 2) * Math.Sin(dLat / 2) +
-					   Math.Cos(lat1 * Math.PI / 180) * Math.Cos(lat2 * Math.PI / 180) *
-					   Math.Sin(dLon / 2) * Math.Sin(dLon / 2);
-			double c = 2 * Math.Atan2(Math.Sqrt(a), Math.Sqrt(1 - a));
-			return R * c;
-		}
+			int size = distanceMatrix.GetLength(0);
+			// Create the routing index manager.
+			RoutingIndexManager manager = new RoutingIndexManager(size, 1, 0);
+			// Create Routing Model.
+			RoutingModel routing = new RoutingModel(manager);
 
-		// Decodez un sir de polyline codificat intr-o lista de coordonate
-		private List<Coordinate> DecodePolyline(string polyline)
-		{
-			var poly = new List<Coordinate>();
-			int index = 0, len = polyline.Length;
-			int lat = 0, lng = 0;
-
-			while (index < len)
+			// Register a transit callback.
+			int transitCallbackIndex = routing.RegisterTransitCallback((long fromIndex, long toIndex) =>
 			{
-				int b, shift = 0, result = 0;
-				do
-				{
-					b = polyline[index++] - 63;
-					result |= (b & 0x1f) << shift;
-					shift += 5;
-				} while (b >= 0x20);
-				int dlat = ((result & 1) != 0 ? ~(result >> 1) : (result >> 1));
-				lat += dlat;
+				int fromNode = manager.IndexToNode(fromIndex);
+				int toNode = manager.IndexToNode(toIndex);
+				return distanceMatrix[fromNode, toNode];
+			});
+			routing.SetArcCostEvaluatorOfAllVehicles(transitCallbackIndex);
 
-				shift = 0;
-				result = 0;
-				do
-				{
-					b = polyline[index++] - 63;
-					result |= (b & 0x1f) << shift;
-					shift += 5;
-				} while (b >= 0x20);
-				int dlng = ((result & 1) != 0 ? ~(result >> 1) : (result >> 1));
-				lng += dlng;
+			// Set search parameters (using PathCheapestArc heuristic for the first solution).
+			RoutingSearchParameters searchParameters = operations_research_constraint_solver.DefaultRoutingSearchParameters();
+			searchParameters.FirstSolutionStrategy = FirstSolutionStrategy.Types.Value.PathCheapestArc;
 
-				poly.Add(new Coordinate { Latitude = lat / 1E5, Longitude = lng / 1E5 });
+			// Solve the problem.
+			Assignment solution = routing.SolveWithParameters(searchParameters);
+			if (solution == null)
+				return null;
+
+			// Extract the route from the solution.
+			List<int> route = new List<int>();
+			long index = routing.Start(0);
+			while (!routing.IsEnd(index))
+			{
+				int node = manager.IndexToNode(index);
+				route.Add(node);
+				index = solution.Value(routing.NextVar(index));
 			}
-			return poly;
+			// Add the final node to complete the loop.
+			route.Add(manager.IndexToNode(index));
+
+			return route;
 		}
 	}
 
-	// DTO pentru rezultatul rutei transmis catre view
+	/// <summary>
+	/// DTO for parsing the OSRM Table API response.
+	/// </summary>
+	public class OsrmTableResponse
+	{
+		[JsonProperty("code")]
+		public string Code { get; set; }
+
+		[JsonProperty("distances")]
+		public double[][] Distances { get; set; }
+	}
+
+	/// <summary>
+	/// DTO for the final route result.
+	/// </summary>
 	public class RouteResult2
 	{
-		public List<Coordinate> Coordinates { get; set; }
-		public double Distance { get; set; }
-		public double Duration { get; set; }
-		public List<SegmentResult> Segments { get; set; }
+		public List<Coordinate2> Coordinates { get; set; }
+		public int Distance { get; set; }
+		public int Duration { get; set; }
+		public List<SegmentResult2> Segments { get; set; }
 		public List<int> OrderIds { get; set; }
 	}
 
 	public class SegmentResult2
 	{
-		public double Distance { get; set; }
-		public double Duration { get; set; }
+		public int Distance { get; set; }
+		public int Duration { get; set; }
 	}
 
+	/// <summary>
+	/// DTO representing a geographic coordinate.
+	/// </summary>
 	public class Coordinate2
 	{
 		public double Latitude { get; set; }
 		public double Longitude { get; set; }
-	}
-
-	// DTOs pentru parsarea raspunsului de la API-ul Google Directions
-	public class GoogleDirectionsResponse
-	{
-		public List<GoogleRoute> routes { get; set; }
-		public string status { get; set; }
-	}
-
-	public class GoogleRoute
-	{
-		public GoogleLeg[] legs { get; set; }
-		public GooglePolyline overview_polyline { get; set; }
-		public int[] waypoint_order { get; set; }
-	}
-
-	public class GoogleLeg
-	{
-		public GoogleDistance distance { get; set; }
-		public GoogleDuration duration { get; set; }
-	}
-
-	public class GoogleDistance
-	{
-		public string text { get; set; }
-		public double value { get; set; }
-	}
-
-	public class GoogleDuration
-	{
-		public string text { get; set; }
-		public double value { get; set; }
-	}
-
-	public class GooglePolyline
-	{
-		public string points { get; set; }
 	}
 }

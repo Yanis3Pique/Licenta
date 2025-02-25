@@ -83,7 +83,13 @@
                         </td>
                         <td id="light-blue-elements-background-id">@GetMaintenanceDisplayName(maintenance.MaintenanceType)</td>
                         <td id="light-blue-elements-background-id">@maintenance.ScheduledDate.ToShortDateString()</td>
-                        <td id="light-blue-elements-background-id">@maintenance.Status</td>
+                        <td id="light-blue-elements-background-id">
+                            <span style="color:@(maintenance.Status == "Scheduled" ? "orange" :
+                                                 maintenance.Status == "In Progress" ? "red" :
+                                                 maintenance.Status == "Completed" ? "green" :
+                                                 "#006400")">@maintenance.Status
+                            </span>
+                        </td>
                         <td id="light-blue-elements-background-id">
                             @if ((maintenance.Status == "Scheduled" || maintenance.Status == "In Progress") && User.IsInRole("Admin"))
                             {
@@ -96,24 +102,6 @@
         </tbody>
     </table>
 </div>
-
-<script>
-    document.getElementById('search-bar').addEventListener('input', function () {
-        const searchValue = this.value.toLowerCase();
-        const tableRows = document.querySelectorAll('#maintenance-table tr');
-
-        tableRows.forEach(row => {
-            const cells = Array.from(row.getElementsByTagName('td'));
-            const rowText = cells.map(cell => cell.textContent.toLowerCase()).join(' ');
-
-            if (rowText.includes(searchValue)) {
-                row.style.display = '';
-            } else {
-                row.style.display = 'none';
-            }
-        });
-    });
-</script>
 
 <!-- Pt ecrane mici -->
 <div class="d-block d-md-none">
@@ -131,7 +119,10 @@
                     <p class="card-text">
                         <strong>Type:</strong> @GetMaintenanceDisplayName(maintenance.MaintenanceType)<br />
                         <strong>Scheduled Date:</strong> @maintenance.ScheduledDate.ToShortDateString()<br />
-                        <strong>Status:</strong> @maintenance.Status
+                        <strong>Status:</strong> <span style="color:@(maintenance.Status == "Scheduled" ? "orange" :
+                                                                      maintenance.Status == "In Progress" ? "red" : 
+                                                                      maintenance.Status == "Completed" ? "green" :
+                                                                      "#006400")">@maintenance.Status</span>
                     </p>
                     @if ((maintenance.Status == "Scheduled" || maintenance.Status == "In Progress") && User.IsInRole("Admin"))
                     {

@@ -55,7 +55,7 @@ namespace Licenta_v1.Services
 			var tomorrow = DateTime.Now.AddDays(1).Date;
 			var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
 
-			// Re-sorteaza comenzile conform criteriului: data plasarii ascendent si prioritate High inainte de Normal
+			// Re-sortez comenzile: data plasarii ascendent si prioritate High inainte de Normal
 			orders = orders.Where(o => o.DeliveryId == null)
 						   .OrderBy(o => o.PlacedDate)
 						   .ThenBy(o => o.Priority == OrderPriority.High ? 0 : 1)
@@ -86,7 +86,7 @@ namespace Licenta_v1.Services
 			if (clusters.Count == 0)
 				clusters.Add(orders);
 
-			// Re-sorteaza fiecare cluster conform criteriului
+			// Re-sortez fiecare cluster conform criteriului
 			for (int i = 0; i < clusters.Count; i++)
 			{
 				clusters[i] = clusters[i]

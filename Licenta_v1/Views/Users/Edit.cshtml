@@ -24,7 +24,7 @@
 
 <div class="container mt-5">
     <div class="row">
-        <div class="col-md-6 offset-3">
+        <div class="col-lg-6 col-md-8 col-sm-10 col-12 mx-auto">
             @using (Html.BeginForm(actionName: "Edit", controllerName: "Users", method: FormMethod.Post, routeValues: new { id = Model.Id }))
             {
                 @Html.AntiForgeryToken()

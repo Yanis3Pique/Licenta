@@ -102,18 +102,21 @@
             });
             var userMarker; // Marker-ul pentru pozitia curenta a userului
 
-            // Functie care incearca sa obtina pozitia userului
-            function getUserPosition() {
-                navigator.geolocation.getCurrentPosition(function (position) {
+            // Functie care incearca sa obtina pozitia userului continuu
+            function watchUserPosition() {
+                navigator.geolocation.watchPosition(function (position) {
+                    console.log("Pozitia - ", position);
                     var lat = position.coords.latitude;
                     var lng = position.coords.longitude;
                     var latlng = [lat, lng];
                     if (!userMarker) {
-                        userMarker = L.marker(latlng, { icon: carIcon }).addTo(window.map)
+                        userMarker = L.marker(latlng, { icon: carIcon, rotationAngle: 0 }).addTo(window.map)
                             .bindPopup("My current position");
                     } else {
                         userMarker.setLatLng(latlng);
                     }
+                    // Centreaza harta pe pozitia userului
+                    window.map.panTo(latlng, { animate: true });
                 }, function (error) {
                     if (error.code === error.PERMISSION_DENIED) {
                         alert("Please accept GPS tracking in order to see your location on the map.");
@@ -125,7 +128,7 @@
 
             // Daca geolocatia este suportata, incerc sa obtin pozitia userului
             if ("geolocation" in navigator) {
-                getUserPosition();
+                watchUserPosition();
             } else {
                 console.error("Geolocation not supported on this browser.");
             }
@@ -169,21 +172,26 @@
             }
             L.control.fullscreen().addTo(window.map);
 
-            // ***************** - DE VERIFICAT
-            if (window.DeviceOrientationEvent) {
-                window.addEventListener("deviceorientation", function (event) {
-                    var heading = event.alpha; // Grade
-                    if (userMarker) {
-                        var markerElem = userMarker.getElement();
-                        if (markerElem) {
-                            markerElem.style.transform = "rotate(" + heading + "deg)";
+            // Pentru telefoane(rotatia/giroscopul)
+            if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+                DeviceOrientationEvent.requestPermission()
+                    .then(function (response) {
+                        if (response === 'granted') {
+                            window.addEventListener('deviceorientation', handleOrientation);
                         }
-                    }
-                });
+                    })
+                    .catch(console.error);
             } else {
-                console.error("Device orientation is not supported on this device.");
+                window.addEventListener('deviceorientation', handleOrientation);
             }
-            // *****************
+
+            function handleOrientation(event) {
+                // event.alpha ne returneaza heading-ul compasului telefonului (intre 0-360 de grade)
+                var heading = event.alpha;
+                if (userMarker && userMarker.setRotationAngle) {
+                    userMarker.setRotationAngle(heading);
+                }
+            }
         })
         .catch(function (error) {
             console.error("Error fetching route:", error);

@@ -98,24 +98,50 @@
             var carIcon = L.icon({
                 iconUrl: '/Images/car.png', // URL iconita masina
                 iconSize: [32, 32],
-                iconAnchor: [16, 16]
+                iconAnchor: [16, 16],
             });
             var userMarker; // Marker-ul pentru pozitia curenta a userului
 
-            // Functie care incearca sa obtina pozitia userului continuu
+
+            // ************************************************** - DE VERIFICAT
+
+            // Functie sa calculez bearing-ul intre doua coordonate
+            function calculateBearing(lat1, lng1, lat2, lng2) {
+                const lat1Rad = lat1 * Math.PI / 180;
+                const lat2Rad = lat2 * Math.PI / 180;
+                const lngDifRad = (lng2 - lng1) * Math.PI / 180;
+                const y = Math.sin(lngDifRad) * Math.cos(lat2Rad);
+                const x = Math.cos(lat1Rad) * Math.sin(lat2Rad) - Math.sin(lat1Rad) * Math.cos(lat2Rad) * Math.cos(lngDifRad);
+                const result = Math.atan2(y, x);
+                return (result * 180 / Math.PI + 360) % 360;
+            }
+
+            // salvez si eu ultima pozitie ca sa fac bearing-ul dupa(sa arat incotro merge userul cu iconita)
+            let lastPosition = null;
+
             function watchUserPosition() {
                 navigator.geolocation.watchPosition(function (position) {
-                    console.log("Pozitia - ", position);
-                    var lat = position.coords.latitude;
-                    var lng = position.coords.longitude;
-                    var latlng = [lat, lng];
+                    console.log("Pozitia:", position);
+                    const lat = position.coords.latitude;
+                    const lng = position.coords.longitude;
+                    const latlng = [lat, lng];
+
+                    // Calculez bearing-ul doar dacă există o poziție anterioară
+                    let bearing = 0;
+                    if (lastPosition) {
+                        bearing = calculateBearing(lastPosition[0], lastPosition[1], lat, lng);
+                    }
+                    lastPosition = latlng; // actualizează ultima poziție
+
+                    // Daca markerul nu exista, il fac eu, altfel doar actualizez pozitia + rotatia
                     if (!userMarker) {
-                        userMarker = L.marker(latlng, { icon: carIcon, rotationAngle: 0 }).addTo(window.map)
+                        userMarker = L.marker(latlng, { icon: carIcon, rotationAngle: bearing }).addTo(window.map)
                             .bindPopup("My current position");
                     } else {
                         userMarker.setLatLng(latlng);
+                        userMarker.setRotationAngle(bearing);
                     }
-                    // Centreaza harta pe pozitia userului
+                    // Centrez harta pe pozitia actuala
                     window.map.panTo(latlng, { animate: true });
                 }, function (error) {
                     if (error.code === error.PERMISSION_DENIED) {
@@ -132,6 +158,8 @@
             } else {
                 console.error("Geolocation not supported on this browser.");
             }
+
+            // ************************************************** - DE VERIFICAT
 
             displayCurrentSegment(); // Afisez segmentul curent din livrare
 

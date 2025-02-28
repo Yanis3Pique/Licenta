@@ -214,3 +214,11 @@ body {
         height: 300px;
     }
 }
+
+/*.flipped-car-icon {*/ /* Icon-ul masinii tre sa fie invers */
+    /*width: 32px;
+    height: 32px;
+    transform: scaleY(-1);
+    -webkit-transform: scaleY(-1);
+    -ms-transform: scaleY(-1);
+}*/

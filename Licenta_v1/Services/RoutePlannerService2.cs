@@ -17,25 +17,23 @@ namespace Licenta_v1.Services
 			scopeFactory = serviceScopeFactory;
 		}
 
-		/// <summary>
-		/// Calculates the optimal route by first getting the distance matrix from OSRM,
-		/// then solving the TSP with OR-Tools. The route starts and ends at the headquarters.
-		/// </summary>
-		public async Task<RouteResult2> CalculateOptimalRouteAsync(Delivery delivery)
+		// Calculez ruta optima cu distance-matrix de la OSRM si apoi rezolv TSP cu OR-Tools
+		// Ruta incepe si se termina la Headquarter
+		public async Task<RouteResult2> CalculateOptimalRouteAsync2(Delivery delivery)
 		{
-			// Get orders with valid coordinates.
+			// Iau doar comenzile cu coordonate valide
 			var orders = delivery.Orders?.Where(o => o.Latitude.HasValue && o.Longitude.HasValue).ToList();
 			if (orders == null || orders.Count == 0)
 				throw new Exception("No valid orders found for route planning.");
 
-			// Use the headquarters as the start/end point.
+			// Folosesc coordonatele Headquarter-ului ca punct de start/sfarsit
 			Coordinate2 headquarters = new Coordinate2
 			{
 				Latitude = delivery.Vehicle.Region.Headquarters.Latitude.Value,
 				Longitude = delivery.Vehicle.Region.Headquarters.Longitude.Value
 			};
 
-			// Build a list of points: headquarters is at index 0, then the orders.
+			// Fac o lista de puncte: headquarters e la index 0, apoi comenzile
 			List<Coordinate2> points = new List<Coordinate2> { headquarters };
 			points.AddRange(orders.Select(o => new Coordinate2
 			{
@@ -43,8 +41,8 @@ namespace Licenta_v1.Services
 				Longitude = o.Longitude.Value
 			}));
 
-			// Build the OSRM Table API URL.
-			// OSRM expects coordinates in "longitude,latitude" order.
+			// Consturiesc URL-ul pentru OSRM Table API
+			// OSRM se aspteapta la coordonatele in ordinea "longitude,latitude"
 			string baseUrl = "http://router.project-osrm.org/table/v1/driving/";
 			string coordinatesStr = string.Join(";", points.Select(p =>
 				$"{p.Longitude.ToString(System.Globalization.CultureInfo.InvariantCulture)},{p.Latitude.ToString(System.Globalization.CultureInfo.InvariantCulture)}"));
@@ -62,7 +60,7 @@ namespace Licenta_v1.Services
 
 			int numPoints = points.Count;
 			int[,] distanceMatrix = new int[numPoints, numPoints];
-			// Convert OSRM distances (in meters) to an integer matrix.
+			// Convertesc distantele OSRM (in metri) intr-o matrice de intregi.
 			for (int i = 0; i < numPoints; i++)
 			{
 				for (int j = 0; j < numPoints; j++)
@@ -71,28 +69,28 @@ namespace Licenta_v1.Services
 				}
 			}
 
-			// Solve the TSP using OR-Tools.
+			// Rezolv TSP folosind OR-Tools
 			List<int> routeOrder = SolveTSP(distanceMatrix);
 			if (routeOrder == null || routeOrder.Count == 0)
 				throw new Exception("TSP solver did not find a route.");
 
-			// Calculate the total distance for the computed route.
+			// Calculez distanta totala pentru ruta calculata
 			int totalDistance = 0;
 			for (int i = 0; i < routeOrder.Count - 1; i++)
 			{
 				totalDistance += distanceMatrix[routeOrder[i], routeOrder[i + 1]];
 			}
 
-			// Build the route coordinates from the computed indices.
+			// Construiesc lista de coordonate pentru ruta
 			List<Coordinate2> routeCoordinates = routeOrder.Select(index => points[index]).ToList();
 
-			// Map the computed indices back to order IDs (skipping index 0 which is the headquarters).
+			// Pun id-urile comenzilor in ordinea rutei calculate
 			List<int> orderIds = new List<int>();
 			foreach (var index in routeOrder)
 			{
 				if (index > 0)
 				{
-					// Since orders were added after headquarters, subtract 1 from the index.
+					// Comenzile au fost adaugate dupa headquarters, deci scad 1 din index.
 					orderIds.Add(orders[index - 1].Id);
 				}
 			}
@@ -101,26 +99,24 @@ namespace Licenta_v1.Services
 			{
 				Coordinates = routeCoordinates,
 				Distance = totalDistance,
-				Duration = 0, // You can compute durations if you wish to use another OSRM API endpoint.
-				Segments = new List<SegmentResult2>(), // Optionally, build detailed segments.
+				Duration = 0,
+				Segments = new List<SegmentResult2>(),
 				OrderIds = orderIds
 			};
 
 			return routeResult;
 		}
 
-		/// <summary>
-		/// Uses OR-Tools to solve the TSP for the given distance matrix.
-		/// </summary>
+		// Aici folosesc defapt OR-Tools pentru a rezolva TSP pentru matricea de distante
 		private List<int> SolveTSP(int[,] distanceMatrix)
 		{
 			int size = distanceMatrix.GetLength(0);
-			// Create the routing index manager.
+			// Creez un manager pentru a face conversia intre index si noduri
 			RoutingIndexManager manager = new RoutingIndexManager(size, 1, 0);
-			// Create Routing Model.
+			// Creez un model de rutare
 			RoutingModel routing = new RoutingModel(manager);
 
-			// Register a transit callback.
+			// Acesta va returna distanta dintre doua noduri
 			int transitCallbackIndex = routing.RegisterTransitCallback((long fromIndex, long toIndex) =>
 			{
 				int fromNode = manager.IndexToNode(fromIndex);
@@ -129,16 +125,16 @@ namespace Licenta_v1.Services
 			});
 			routing.SetArcCostEvaluatorOfAllVehicles(transitCallbackIndex);
 
-			// Set search parameters (using PathCheapestArc heuristic for the first solution).
+			// Setez parametrii de cautare (folosind euristica PathCheapestArc pentru prima solutie)
 			RoutingSearchParameters searchParameters = operations_research_constraint_solver.DefaultRoutingSearchParameters();
 			searchParameters.FirstSolutionStrategy = FirstSolutionStrategy.Types.Value.PathCheapestArc;
 
-			// Solve the problem.
+			// Rezolv problema
 			Assignment solution = routing.SolveWithParameters(searchParameters);
 			if (solution == null)
 				return null;
 
-			// Extract the route from the solution.
+			// Extrag ruta din solutie
 			List<int> route = new List<int>();
 			long index = routing.Start(0);
 			while (!routing.IsEnd(index))
@@ -147,16 +143,14 @@ namespace Licenta_v1.Services
 				route.Add(node);
 				index = solution.Value(routing.NextVar(index));
 			}
-			// Add the final node to complete the loop.
+			// Adaug ultimul nod pentru a completa ruta
 			route.Add(manager.IndexToNode(index));
 
 			return route;
 		}
 	}
 
-	/// <summary>
-	/// DTO for parsing the OSRM Table API response.
-	/// </summary>
+	// DTO pentru parsarea raspunsului de la OSRM Table API
 	public class OsrmTableResponse
 	{
 		[JsonProperty("code")]
@@ -166,9 +160,7 @@ namespace Licenta_v1.Services
 		public double[][] Distances { get; set; }
 	}
 
-	/// <summary>
-	/// DTO for the final route result.
-	/// </summary>
+	// DTO pentru rezultatul final al rutei
 	public class RouteResult2
 	{
 		public List<Coordinate2> Coordinates { get; set; }
@@ -184,9 +176,7 @@ namespace Licenta_v1.Services
 		public int Duration { get; set; }
 	}
 
-	/// <summary>
-	/// DTO representing a geographic coordinate.
-	/// </summary>
+	// DTO pt a reprezenta coordonatele geografica
 	public class Coordinate2
 	{
 		public double Latitude { get; set; }

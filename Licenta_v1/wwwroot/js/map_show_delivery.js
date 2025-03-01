@@ -102,23 +102,9 @@
             });
             var userMarker; // Marker-ul pentru pozitia curenta a userului
 
-
             // ************************************************** - DE VERIFICAT
 
-            // Functie sa calculez bearing-ul intre doua coordonate
-            function calculateBearing(lat1, lng1, lat2, lng2) {
-                const lat1Rad = lat1 * Math.PI / 180;
-                const lat2Rad = lat2 * Math.PI / 180;
-                const lngDifRad = (lng2 - lng1) * Math.PI / 180;
-                const y = Math.sin(lngDifRad) * Math.cos(lat2Rad);
-                const x = Math.cos(lat1Rad) * Math.sin(lat2Rad) - Math.sin(lat1Rad) * Math.cos(lat2Rad) * Math.cos(lngDifRad);
-                const result = Math.atan2(y, x);
-                return (result * 180 / Math.PI + 360) % 360;
-            }
-
-            // salvez si eu ultima pozitie ca sa fac bearing-ul dupa(sa arat incotro merge userul cu iconita)
-            let lastPosition = null;
-
+            // Functie pentru actualizarea pozitiei userului
             function watchUserPosition() {
                 navigator.geolocation.watchPosition(function (position) {
                     console.log("Pozitia:", position);
@@ -126,22 +112,14 @@
                     const lng = position.coords.longitude;
                     const latlng = [lat, lng];
 
-                    // Calculez bearing-ul doar dacă există o poziție anterioară
-                    let bearing = 0;
-                    if (lastPosition) {
-                        bearing = calculateBearing(lastPosition[0], lastPosition[1], lat, lng);
-                    }
-                    lastPosition = latlng; // actualizează ultima poziție
-
-                    // Daca markerul nu exista, il fac eu, altfel doar actualizez pozitia + rotatia
+                    // Actualizam pozitia marker-ului
                     if (!userMarker) {
-                        userMarker = L.marker(latlng, { icon: carIcon, rotationAngle: bearing }).addTo(window.map)
+                        userMarker = L.marker(latlng, { icon: carIcon }).addTo(window.map)
                             .bindPopup("My current position");
                     } else {
                         userMarker.setLatLng(latlng);
-                        userMarker.setRotationAngle(bearing);
                     }
-                    // Centrez harta pe pozitia actuala
+                    // Centram harta pe pozitia actuala
                     window.map.panTo(latlng, { animate: true });
                 }, function (error) {
                     if (error.code === error.PERMISSION_DENIED) {
@@ -200,26 +178,6 @@
             }
             L.control.fullscreen().addTo(window.map);
 
-            // Pentru telefoane(rotatia/giroscopul)
-            if (typeof DeviceOrientationEvent.requestPermission === 'function') {
-                DeviceOrientationEvent.requestPermission()
-                    .then(function (response) {
-                        if (response === 'granted') {
-                            window.addEventListener('deviceorientation', handleOrientation);
-                        }
-                    })
-                    .catch(console.error);
-            } else {
-                window.addEventListener('deviceorientation', handleOrientation);
-            }
-
-            function handleOrientation(event) {
-                // event.alpha ne returneaza heading-ul compasului telefonului (intre 0-360 de grade)
-                var heading = event.alpha;
-                if (userMarker && userMarker.setRotationAngle) {
-                    userMarker.setRotationAngle(heading);
-                }
-            }
         })
         .catch(function (error) {
             console.error("Error fetching route:", error);
@@ -297,11 +255,11 @@ document.addEventListener("DOMContentLoaded", function () {
         button.addEventListener("click", function (e) {
             e.preventDefault(); // Previne trimiterea standard a formularului
 
-            // Obține formularul în care se află butonul
+            // Obtine formularul in care se afla butonul
             var form = this.closest("form");
             var formData = new FormData(form);
 
-            // Trimite formularul către controller folosind fetch (AJAX)
+            // Trimite formularul catre controller folosind fetch (AJAX)
             fetch(form.action, {
                 method: form.method,
                 body: formData

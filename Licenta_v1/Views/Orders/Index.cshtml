@@ -24,6 +24,7 @@
     <form method="get" class="row g-3 align-items-center">
         <!-- Bara de cautare -->
         <div class="col-12 col-md">
+            <label for="searchString" class="form-label">Search</label>
             <input type="text" name="searchString" value="@ViewBag.SearchString"
                    class="form-control"
                    placeholder="Search Orders" />
@@ -31,6 +32,7 @@
 
         <!-- Sortare dupa dupa numele clientului, prioritate, greutate, volum, adresa, status, data plasarii -->
         <div class="col-md-3 col-sm-6">
+            <label for="sortOrder" class="form-label">Sort by</label>
             <select class="form-select" name="sortOrder">
                 <option value="client" selected="@(ViewBag.CurrentSort == "client" ? "selected" : "")">Client Userame (Ascending)</option>
                 <option value="client_desc" selected="@(ViewBag.CurrentSort == "client_desc" ? "selected" : "")">Client Userame (Descending)</option>
@@ -54,6 +56,7 @@
         {
             <!-- Filtrez dupa status: Placed, Assigned to Delivery sau Delivered -->
             <div class="col-md-3 col-sm-6">
+                <label for="statusFilter" class="form-label">Status</label>
                 <select class="form-select" name="statusFilter">
                     <option value="Placed" selected="@(ViewBag.StatusFilter == "Placed" ? "selected" : "")">Placed</option>
                     <option value="Assigned" selected="@(ViewBag.StatusFilter == "Assigned" ? "selected" : "")">Assigned to Delivery</option>
@@ -66,8 +69,9 @@
         <!-- Dropdown cu regiuni - afisat doar daca utilizatorul nu este Dispecer -->
         @if(!User.IsInRole("Dispecer"))
         {
-            <!-- Comentariu: afisez dropdown-ul cu regiuni doar pentru Admin si Client -->
+            <!-- Afisez dropdown-ul cu regiuni doar pentru Admin si Client -->
             <div class="col-md-3 col-sm-6">
+                <label for="regionSelector" class="form-label">Region</label>
                 @Html.DropDownList("regionId",
                          ViewBag.Regions as SelectList,
                          "All Regions",

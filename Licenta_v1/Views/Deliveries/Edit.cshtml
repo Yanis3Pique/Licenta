@@ -1,0 +1,108 @@
+﻿@*
+    For more information on enabling MVC for empty projects, visit https://go.microsoft.com/fwlink/?LinkID=397860
+*@
+@{
+    ViewBag.Title = "Edit Delivery";
+    var availableOrders = ViewBag.AvailableOrders as List<Licenta_v1.Models.Order>;
+}
+
+@if (TempData["Success"] != null)
+{
+    <div class="alert alert-success">@TempData["Success"]</div>
+}
+@if (TempData["Error"] != null)
+{
+    <div class="alert alert-danger">@TempData["Error"]</div>
+}
+
+<h2 class="text-center mb-4">@ViewBag.Title @Model.Id</h2>
+
+<!-- Container pentru progresul de capacitate -->
+<div id="capacity-progress"
+     data-total-weight="@Model.Vehicle.MaxWeightCapacity"
+     data-total-volume="@Model.Vehicle.MaxVolumeCapacity">
+    <!-- Progress bar pentru greutate -->
+    <div class="mb-3">
+        <label class="form-label">Weight Usage</label>
+        <div class="progress" style="height: 25px;">
+            <div id="weightProgress" class="progress-bar bg-primary" role="progressbar" style="width: 0%;"
+                 aria-valuenow="0" aria-valuemin="0" aria-valuemax="@Model.Vehicle.MaxWeightCapacity"></div>
+        </div>
+        <div id="weightValue" class="mt-1">0 / @Model.Vehicle.MaxWeightCapacity kg</div>
+    </div>
+    <!-- Progress bar pentru volum -->
+    <div class="mb-3">
+        <label class="form-label">Volume Usage</label>
+        <div class="progress" style="height: 25px;">
+            <div id="volumeProgress" class="progress-bar bg-info" role="progressbar" style="width: 0%;"
+                 aria-valuenow="0" aria-valuemin="0" aria-valuemax="@Model.Vehicle.MaxVolumeCapacity"></div>
+        </div>
+        <div id="volumeValue" class="mt-1">0 / @Model.Vehicle.MaxVolumeCapacity m³</div>
+    </div>
+</div>
+
+<form asp-action="EditDelivery" method="post">
+    <input type="hidden" name="id" value="@Model.Id" />
+
+    <!-- Comenzi asignate momentan la livrare (bifate implicit) -->
+    <div class="card mb-4">
+        <div class="card-header">
+            <h5>Current Orders</h5>
+            <small class="text-muted">Uncheck the Orders that you want to erase from the Delivery.</small>
+        </div>
+        <div class="card-body">
+            @foreach (var order in Model.Orders)
+            {
+                <div class="form-check">
+                    <input class="form-check-input"
+                           type="checkbox"
+                           name="keepOrderIds"
+                           value="@order.Id"
+                           id="currentOrder_@order.Id"
+                           checked="checked"
+                           data-weight="@order.Weight"
+                           data-volume="@order.Volume" />
+                    <label class="form-check-label" for="currentOrder_@order.Id">
+                        #@order.Id - @order.Address (Placed: @order.PlacedDate.ToString("d"))
+                    </label>
+                </div>
+            }
+        </div>
+    </div>
+
+    <!-- Comenzi neasignate -->
+    <div class="card mb-4">
+        <div class="card-header">
+            <h5>Add Orders</h5>
+            <small class="text-muted">Select the Orders that you want to add to the Delivery.</small>
+        </div>
+        <div class="card-body">
+            @if (availableOrders != null && availableOrders.Any())
+            {
+                @foreach (var order in availableOrders)
+                {
+                    <div class="form-check">
+                        <input class="form-check-input"
+                               type="checkbox"
+                               name="addOrderIds"
+                               value="@order.Id"
+                               id="availableOrder_@order.Id"
+                               data-weight="@order.Weight"
+                               data-volume="@order.Volume" />
+                        <label class="form-check-label" for="availableOrder_@order.Id">
+                            #@order.Id - @order.Address (Placed: @order.PlacedDate.ToString("d"))
+                        </label>
+                    </div>
+                }
+            }
+            else
+            {
+                <p class="text-muted">Nu exista comenzi disponibile de adaugat.</p>
+            }
+        </div>
+    </div>
+
+    <button id="updateDeliveryButton" type="submit" class="btn btn-primary">Update Delivery</button>
+</form>
+
+<script src="~/js/capacity.js"></script>

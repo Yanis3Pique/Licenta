@@ -661,6 +661,107 @@ namespace Licenta_v1.Services
 			}
 		}
 
+		public async Task RecalculateDeliveryMetrics(ApplicationDbContext db, Delivery delivery)
+		{
+			// Actualizez DeliverySequence pentru fiecare Order in Delivery
+			await RecalculateDeliverySequence(db, delivery);
+
+			// Recalculez estimarile de ruta pentru Delivery
+			var headquarter = db.Headquarters.FirstOrDefault(hq => hq.RegionId == delivery.Vehicle.RegionId);
+			if (headquarter == null)
+			{
+				Debug.WriteLine("No headquarter found for the delivery's region.");
+				return;
+			}
+			var depot = new Depot2
+			{
+				Latitude = headquarter.Latitude ?? 0,
+				Longitude = headquarter.Longitude ?? 0
+			};
+
+			await CalculateRouteMetrics(db, delivery, delivery.Orders.ToList(), delivery.Vehicle, depot);
+		}
+
+		private async Task RecalculateDeliverySequence(ApplicationDbContext db, Delivery delivery)
+		{
+			var headquarter = db.Headquarters.FirstOrDefault(hq => hq.RegionId == delivery.Vehicle.RegionId);
+			if (headquarter == null)
+			{
+				Debug.WriteLine("No headquarter found for the delivery's region.");
+				return;
+			}
+			var depot = new Depot2
+			{
+				Latitude = headquarter.Latitude ?? 0,
+				Longitude = headquarter.Longitude ?? 0
+			};
+
+			// Fac iar cererea de optimizare pentru a obtine o noua secventa de livrare
+			// Folosesc un vehicul dummy(oricum, daca am ajuns aici, e clar ca toate comenzile au loc in masina)
+			var jobs = delivery.Orders.Select(o => new {
+				id = o.Id,
+				location = new[] { o.Longitude ?? 0.0, o.Latitude ?? 0.0 }
+			}).ToList();
+
+			var vehicleRequest = new
+			{
+				id = 1,
+				profile = "driving-car",
+				start = new[] { depot.Longitude, depot.Latitude },
+				capacity = new[] { int.MaxValue, int.MaxValue }
+			};
+
+			var optimizationRequest = new
+			{
+				jobs = jobs,
+				vehicles = new[] { vehicleRequest }
+			};
+
+			string requestUrl = "https://api.openrouteservice.org/optimization";
+			string jsonBody = JsonConvert.SerializeObject(optimizationRequest);
+
+			using (var client = new HttpClient())
+			{
+				client.DefaultRequestHeaders.Add("Authorization", OpenRouteServiceApiKey);
+				var content = new StringContent(jsonBody, Encoding.UTF8, "application/json");
+				var response = await client.PostAsync(requestUrl, content);
+				if (response.IsSuccessStatusCode)
+				{
+					var responseString = await response.Content.ReadAsStringAsync();
+					var optimizationResponse = JsonConvert.DeserializeObject<ORSOptimizationResponse>(responseString);
+					if (optimizationResponse?.Routes != null && optimizationResponse.Routes.Any())
+					{
+						// Iau id-urile comenzilor din secventa optimizata
+						var route = optimizationResponse.Routes.First();
+						var optimizedOrderIds = new List<int>();
+						foreach (var step in route.Steps)
+						{
+							if (step.Type == "job" && step.Job.HasValue)
+							{
+								optimizedOrderIds.Add(step.Job.Value);
+							}
+						}
+						// Actualizez fiecare Order cu DeliverySequence-ul sau in functie de pozitia in lista optimizata
+						var optimizedOrders = delivery.Orders
+							.OrderBy(o => optimizedOrderIds.IndexOf(o.Id))
+							.ToList();
+						for (int i = 0; i < optimizedOrders.Count; i++)
+						{
+							optimizedOrders[i].DeliverySequence = i;
+						}
+					}
+					else
+					{
+						Debug.WriteLine("No route found in the optimization response.");
+					}
+				}
+				else
+				{
+					Debug.WriteLine($"Optimization API error: {response.StatusCode}");
+				}
+			}
+		}
+
 		// Metoda helper pentru factorul de emisie
 		private double GetEmissionFactor(FuelType fuelType)
 		{

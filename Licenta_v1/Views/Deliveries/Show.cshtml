@@ -85,7 +85,6 @@
                                 if (Model.Vehicle != null && Model.Vehicle.FuelType == FuelType.Electric)
                                 {
                                     @Html.Raw("0.00 kg CO<sub>2</sub>")
-                                    ;
                                 }
                                 else if (Model.Vehicle != null && Model.Vehicle.FuelType == FuelType.Hybrid)
                                 {
@@ -93,7 +92,6 @@
                                     ? Model.EmissionsEstimated.Value.ToString("F2")
                                     : "N/A");
                                     @Html.Raw(emissionVal + " kg CO<sub>2</sub> (Hybrid)")
-                                    ;
                                 }
                                 else
                                 {
@@ -101,7 +99,6 @@
                                     ? Model.EmissionsEstimated.Value.ToString("F2")
                                     : "N/A");
                                     @Html.Raw(emissionVal + " kg CO<sub>2</sub>")
-                                    ;
                                 }
                             }
                         </td>
@@ -113,7 +110,6 @@
                                 if (Model.Vehicle != null && Model.Vehicle.FuelType == FuelType.Electric)
                                 {
                                     @Html.Raw("N/A")
-                                    ;
                                 }
                                 else if (Model.Vehicle != null && Model.Vehicle.FuelType == FuelType.Hybrid)
                                 {
@@ -121,7 +117,6 @@
                                     ? Model.ConsumptionEstimated.Value.ToString("F2")
                                     : "N/A");
                                     @Html.Raw(consumptionVal + " L (Hybrid)")
-                                    ;
                                 }
                                 else
                                 {
@@ -129,7 +124,6 @@
                                     ? Model.ConsumptionEstimated.Value.ToString("F2")
                                     : "N/A");
                                     @Html.Raw(consumptionVal + " L")
-                                    ;
                                 }
                             }
                         </td>
@@ -165,6 +159,14 @@
                 </tbody>
             </table>
         </div>
+    </div>
+    <div class="text-center">
+        @if (User.IsInRole("Dispecer") && Model.Status == "Planned")
+        {
+            <a asp-action="Edit" asp-route-id="@Model.Id" class="btn btn-primary mt-4">
+                Edit Delivery
+            </a>
+        }
     </div>
 
     <input type="hidden" id="ordersData" value='@Html.Raw(Json.Serialize(Model.Orders.Select(o => new { o.Latitude, o.Longitude, o.Address, o.Id })))' />
@@ -220,14 +222,14 @@
             @if (Model.Status == "Planned")
             {
                 <a asp-action="StartDelivery" asp-route-id="@Model.Id"
-                   class="btn btn-success btn-lg fw-bold action-btn">
+                class="btn btn-success btn-lg fw-bold action-btn">
                     🚚 Start Delivery
                 </a>
             }
             @if (Model.Status == "In Progress" && Model.Orders.All(o => o.Status == Licenta_v1.Services.OrderStatus.Delivered))
             {
                 <a asp-action="CompleteDelivery" asp-route-id="@Model.Id"
-                   class="btn btn-primary btn-lg fw-bold action-btn">
+                class="btn btn-primary btn-lg fw-bold action-btn">
                     ✅ Complete Delivery
                 </a>
             }

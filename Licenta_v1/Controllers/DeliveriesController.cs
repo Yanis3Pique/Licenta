@@ -210,6 +210,95 @@ namespace Licenta_v1.Controllers
 			}
 		}
 
+		[Authorize(Roles = "Dispecer")]
+		public IActionResult Edit(int id)
+		{
+			// Iau Dispecerul(userul curent)
+			var user = db.ApplicationUsers.FirstOrDefault(u => u.UserName == User.Identity.Name);
+			if (user == null)
+				return Unauthorized();
+
+			// Incarc Delivery-ul daca exista si e in aceeasi regiune cu Dispecerul
+			var delivery = db.Deliveries
+				.Include(d => d.Vehicle)
+				.ThenInclude(v => v.Region)
+						.ThenInclude(r => r.Headquarters)
+				.Include(d => d.Driver)
+				.Include(d => d.Orders.Where(o => o.RegionId == user.RegionId))
+					.ThenInclude(o => o.Client)
+				.FirstOrDefault(d => d.Id == id && d.Vehicle.RegionId == user.RegionId);
+
+			if (delivery == null)
+				return NotFound();
+			
+			// Daca Delivery-ul are alt status decat Planned, nu am voie sa o editez
+			if (delivery.Status != "Planned")
+			{
+				TempData["Error"] = "You cannot edit this Delivery.";
+				return RedirectToAction("Show", new { id });
+			}
+
+			// Fac o lista de Orders plasate si neasignate niciunui Delivery
+			ViewBag.AvailableOrders = db.Orders
+				.Where(o => o.Status == OrderStatus.Placed && o.DeliveryId == null && o.RegionId == user.RegionId)
+				.ToList();
+
+			return View(delivery);
+		}
+
+		[HttpPost]
+		[Authorize(Roles = "Dispecer")]
+		public async Task<IActionResult> EditDelivery(int id, int[] keepOrderIds, int[] addOrderIds)
+		{
+			var delivery = db.Deliveries
+				.Include(d => d.Vehicle)
+					.ThenInclude(v => v.Region)
+						.ThenInclude(r => r.Headquarters)
+				.Include(d => d.Driver)
+				.Include(d => d.Orders)
+					.ThenInclude(o => o.Client)
+				.FirstOrDefault(d => d.Id == id);
+			if (delivery == null)
+				return NotFound();
+
+			// Sterg comenzile carora le-am dat uncheck
+			var ordersToRemove = delivery.Orders.Where(o => !keepOrderIds.Contains(o.Id)).ToList();
+			foreach (var order in ordersToRemove)
+			{
+				order.DeliveryId = null;
+				order.DeliverySequence = null;
+				order.Status = OrderStatus.Placed;
+				db.Orders.Update(order);
+			}
+
+			// Adaug noile comenzi(alea de le-am dat check)
+			foreach (var orderId in addOrderIds)
+			{
+				var order = db.Orders.FirstOrDefault(o => o.Id == orderId && o.DeliveryId == null);
+				if (order != null)
+				{
+					order.DeliveryId = delivery.Id;
+					delivery.Orders.Add(order);
+					db.Orders.Update(order);
+				}
+			}
+
+			if (!CanFitOrders(delivery.Vehicle, delivery.Orders.ToList()))
+			{
+				TempData["Error"] = "The modified orders exceed the vehicle's capacity.";
+				return RedirectToAction("Edit", new { id });
+			}
+
+			// Recalculatez DeliverySequence-ul si estimarile
+			await opt.RecalculateDeliveryMetrics(db, delivery);
+
+			db.Deliveries.Update(delivery);
+			await db.SaveChangesAsync();
+
+			TempData["Success"] = "Delivery updated successfully!";
+			return RedirectToAction("Show", new { id });
+		}
+
 		[Authorize(Roles = "Admin")]
 		public async Task<IActionResult> OptimizeAll()
 		{
@@ -559,6 +648,13 @@ namespace Licenta_v1.Controllers
 
 			double c = 2 * Math.Atan2(Math.Sqrt(a), Math.Sqrt(1 - a));
 			return earthRadiusKm * c;
+		}
+
+		private bool CanFitOrders(Vehicle vehicle, List<Order> orders)
+		{
+			double totalWeight = orders.Sum(o => o.Weight ?? 0);
+			double totalVolume = orders.Sum(o => o.Volume ?? 0);
+			return totalWeight <= vehicle.MaxWeightCapacity && totalVolume <= vehicle.MaxVolumeCapacity;
 		}
 	}
 }

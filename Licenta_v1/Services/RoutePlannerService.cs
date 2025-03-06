@@ -20,7 +20,7 @@ namespace Licenta_v1.Services
 			GoogleMapsApiKey = Env.GetString("Cheie_API_Google_Maps");
 		}
 
-		// Calculeaza ruta optima in functie de Delivery.
+		// Calculeaza ruta optima in functie de Delivery
 		// Ma folosesc de API-ul celor de la OpenRouteService Directions
 		public async Task<RouteResult> CalculateOptimalRouteAsync(Delivery delivery)
 		{
@@ -29,31 +29,19 @@ namespace Licenta_v1.Services
 			if (orders == null || orders.Count == 0)
 				throw new Exception("No valid orders found for route planning.");
 
-			// Coordonata de start este Headquarter-ul
+			// Coordonata de start este Headquarter-ul regiunii vehiculului
 			Coordinate start = new Coordinate
 			{
 				Latitude = delivery.Vehicle.Region.Headquarters.Latitude.Value,
 				Longitude = delivery.Vehicle.Region.Headquarters.Longitude.Value
 			};
 
-			// Ordonez comenzile cat mai eficient pentru Delivery
-			var orderedStops = new List<Order>();
-			var remaining = new List<Order>(orders);
-			var current = start;
-			while (remaining.Any())
-			{
-				// Selectez comanda cea mai apropiata de pozitia curenta
-				var nextOrder = remaining.OrderBy(o => HaversineDistance(current.Latitude, current.Longitude, o.Latitude.Value, o.Longitude.Value)).First();
-				orderedStops.Add(nextOrder);
-				// Actualizez pozitia curenta cu coordonatele comenzii selectate
-				current = new Coordinate { Latitude = nextOrder.Latitude.Value, Longitude = nextOrder.Longitude.Value };
-				remaining.Remove(nextOrder);
-			}
-			// Creez lista de OrderIds in ordinea in care vor fi parcurse comenzile
+			// Sortez comenzile conform proprietatii DeliverySequence
+			var orderedStops = delivery.Orders.OrderBy(o => o.DeliverySequence).ToList();
 			var orderIds = orderedStops.Select(o => o.Id).ToList();
 
-			// Construiesc vectorul de coordonate pentru API (in format [longitude, latitude])
-			// Incep cu HQ, apoi adaug coordonatele comenzilor in ordinea stabilita, apoi ma intorc la HQ
+			// Construiesc vectorul de coordonate pentru API (formatul [longitude, latitude])
+			// Incep cu HQ, apoi adaug comenzile in ordinea stabilita (DeliverySequence), apoi intorc la HQ
 			var coordinates = new List<double[]>();
 			coordinates.Add(new double[] { start.Longitude, start.Latitude });
 			foreach (var order in orderedStops)
@@ -68,7 +56,7 @@ namespace Licenta_v1.Services
 				Debug.WriteLine($"[{coord[0]}, {coord[1]}]");
 			}
 
-			// Construiesc request-ul (includ "instructions = true" pentru a primi segmente)
+			// Construiesc request-ul pentru API-ul ORS Directions
 			var requestBody = new { coordinates = coordinates, instructions = true };
 			var jsonBody = JsonConvert.SerializeObject(requestBody);
 			var content = new StringContent(jsonBody, Encoding.UTF8, "application/json");
@@ -87,53 +75,30 @@ namespace Licenta_v1.Services
 				throw new Exception($"Failed to retrieve route: {response.StatusCode} - {responseJson}");
 			}
 
-			// Deserializez raspuns (ORS returneaza un traseu encodat si segmente)
+			// Deserializez raspunsul primit de la ORS
 			var orsResponse = JsonConvert.DeserializeObject<ORSRouteResponse>(responseJson);
 			if (orsResponse == null || orsResponse.routes == null || !orsResponse.routes.Any())
 				throw new Exception("No route found from OpenRouteService.");
 
 			var route = orsResponse.routes.First();
-			// Decodific polyline-ul pentru a obtine coordonatele traseului
+			// Decodez polyline-ul pentru a obtine coordonatele traseului
 			var decodedCoordinates = DecodePolyline(route.geometry);
 
-			// Creez lista de segmente
-			var segmentResults = new List<SegmentResult>();
-			if (route.segments != null)
-			{
-				foreach (var seg in route.segments)
-				{
-					segmentResults.Add(new SegmentResult
-					{
-						Distance = seg.distance,
-						Duration = seg.duration
-					});
-				}
-			}
-
-			// Construiesc rezultatul final, inclusiv OrderIds
+			// Construiesc rezultatul final
 			var routeResult = new RouteResult
 			{
 				Coordinates = decodedCoordinates,
 				Distance = route.summary.distance,
 				Duration = route.summary.duration,
-				Segments = segmentResults,
-				OrderIds = orderIds // order.Ids in ordinea Orders
+				Segments = route.segments?.Select(seg => new SegmentResult
+				{
+					Distance = seg.distance,
+					Duration = seg.duration
+				}).ToList(),
+				OrderIds = orderIds // ordine conform DeliverySequence
 			};
 
 			return routeResult;
-		}
-
-		// Calculez distanta (in metri) intre doua puncte folosind formula Haversine
-		private double HaversineDistance(double lat1, double lon1, double lat2, double lon2)
-		{
-			const double R = 6371000; // Raza medie a Pamantului in m
-			double dLat = (lat2 - lat1) * Math.PI / 180;
-			double dLon = (lon2 - lon1) * Math.PI / 180;
-			double a = Math.Sin(dLat / 2) * Math.Sin(dLat / 2) +
-					   Math.Cos(lat1 * Math.PI / 180) * Math.Cos(lat2 * Math.PI / 180) *
-					   Math.Sin(dLon / 2) * Math.Sin(dLon / 2);
-			double c = 2 * Math.Atan2(Math.Sqrt(a), Math.Sqrt(1 - a));
-			return R * c;
 		}
 
 		// Decodez un traseu(linie) intr-o lista de coordonate

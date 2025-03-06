@@ -243,6 +243,23 @@ public class TaskuriAutomate : BackgroundService
 
 	private string GenerateOrderStatusEmail(Order order)
 	{
+		string displayStatus = "";
+		switch (order.Status)
+		{
+			case OrderStatus.Placed:
+				displayStatus = "Placed";
+				break;
+			case OrderStatus.InProgress:
+				displayStatus = "In Progress";
+				break;
+			case OrderStatus.Delivered:
+				displayStatus = "Delivered";
+				break;
+			default:
+				displayStatus = order.Status.ToString();
+				break;
+		}
+
 		string statusMessage = order.Status switch
 		{
 			OrderStatus.Placed => "Your order has been successfully placed. We will notify you once it's out for delivery.",
@@ -258,7 +275,7 @@ public class TaskuriAutomate : BackgroundService
                 <h2 style='color: #333;'>EcoDelivery - Order Update</h2>
             </div>
             <div style='padding: 20px; background-color: #ffffff;'>
-                <h3 style='color: #555;'>Order #{order.Id} - {order.Status}</h3>
+                <h3 style='color: #555;'>Order #{order.Id} - {displayStatus}</h3>
                 <p style='color: #666;'>{statusMessage}</p>
                 <p><strong>Address:</strong> {order.Address}</p>
                 <p><strong>Estimated Delivery Date:</strong> {order.EstimatedDeliveryDate?.ToString("dd/MM/yyyy") ?? "N/A"}</p>

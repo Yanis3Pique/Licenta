@@ -81,6 +81,7 @@ namespace Licenta_v1.Areas.Identity.Pages.Account
 			[Required(ErrorMessage = "The home address is mandatory.")]
 			[MaxLength(200, ErrorMessage = "The home address must be maximum 200 characters in length.")]
 			[MinLength(5, ErrorMessage = "The home address must be minimum 5 characters in length.")]
+			[Display(Name = "Home Address")]
 			public string HomeAddress { get; set; }
 
 			[Required(ErrorMessage = "The latitude is mandatory.")]

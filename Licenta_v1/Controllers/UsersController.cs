@@ -387,19 +387,18 @@ namespace Licenta_v1.Controllers
 
 			ViewBag.IsCurrentUserLoggedIn = loggedInUserId == id;
 
-			if (userToView.AverageRating.HasValue)
+			var feedbacks = userToView.FeedbacksReceived;
+			if (feedbacks != null && feedbacks.Any())
 			{
-				double rating = userToView.AverageRating.Value;
-				int fullStars = (int)Math.Floor(rating);
-				bool halfStar = rating - fullStars >= 0.5;
-				int emptyStars = 5 - fullStars - (halfStar ? 1 : 0);
+				var averageRating = feedbacks.Average(f => f.Rating);
 
-				ViewBag.FullStars = fullStars;
-				ViewBag.HalfStar = halfStar;
-				ViewBag.EmptyStars = emptyStars;
+				ViewBag.FullStars = (int)Math.Floor(averageRating);
+				ViewBag.HalfStar = (averageRating - ViewBag.FullStars >= 0.5);
+				ViewBag.EmptyStars = 5 - (ViewBag.FullStars + (ViewBag.HalfStar ? 1 : 0));
 			}
 			else
 			{
+				// Valori default pentru rating
 				ViewBag.FullStars = 0;
 				ViewBag.HalfStar = false;
 				ViewBag.EmptyStars = 5;

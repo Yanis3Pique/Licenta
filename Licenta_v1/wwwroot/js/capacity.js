@@ -24,7 +24,7 @@
             }
         });
 
-        // Calculez procentajul de utilizare; daca depaseste 100, afisez 100%
+        // Calculez procentajul de utilizare; daca depaseste 100 las 100
         var weightPercentage = (usedWeight / totalWeight) * 100;
         var volumePercentage = (usedVolume / totalVolume) * 100;
         var weightDisplay = Math.min(weightPercentage, 100);

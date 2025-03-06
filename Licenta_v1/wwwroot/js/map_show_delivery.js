@@ -1,41 +1,34 @@
-﻿document.addEventListener("DOMContentLoaded", function () {
+﻿// Preia valoarea isDriver din input-ul hidden
+var isDriver = document.getElementById("isDriver").value === "true";
+
+// Functia initApp se apeleaza la incarcarea paginii
+document.addEventListener("DOMContentLoaded", function () {
     initApp();
 });
 
+// Daca userul este sofer, configurez functiile de localizare si traseu; altfel, initializez harta doar cu headquarter.
 function initApp() {
-    // Iau comenzile din input-ul hidden(ala din Show)
-    var ordersData = loadOrders();
-    if (!ordersData) return;
+    if (isDriver) {
+        // Pentru sofer, se folosesc tot fluxul
+        var ordersData = loadOrders();
+        if (!ordersData) return;
 
-    // Filtrez comenzile care au coordonate valide
-    var validOrders = filterOrders(ordersData);
-    if (validOrders.length === 0) {
-        console.error("Nu exista comenzi valide cu date de locatie.");
-        return;
+        var validOrders = filterOrders(ordersData);
+        if (validOrders.length === 0) {
+            console.error("Nu exista comenzi valide cu date de locatie.");
+            return;
+        }
+
+        initMap(validOrders);
+        var deliveryId = getDeliveryId();
+        if (!deliveryId) return;
+        window.currentSegment = parseInt(localStorage.getItem("currentSegment_" + deliveryId)) || 0;
+        setupFollowMode();
+        fetchRouteAndSetup(deliveryId);
+    } else {
+        // Pentru non-sofer, pun pe harta doar marker-ul pt Headquarter
+        initMapForNonDriver();
     }
-
-    // Initializez harta si setez vizualizarea initiala
-    initMap(validOrders);
-
-    // Preiau deliveryId-ul din input-ul hidden
-    var deliveryId = getDeliveryId();
-    if (!deliveryId) return;
-    window.currentSegment = parseInt(localStorage.getItem("currentSegment_" + deliveryId)) || 0;
-
-    // Setez modul de follow (urmare automata) si evenimentele
-    setupFollowMode();
-
-    // Preiau ruta optima si configurez marker-ele pt Headquarter si modul fullscreen
-    fetchRouteAndSetup(deliveryId);
-
-    // Setez listener pentru butoanele de zoom(+/-)
-    setupZoomControlListeners();
-
-    // Setez listener pentru butoanele "Mark as Delivered"
-    setupMarkDeliveredButtons();
-
-    // Verific statusul livrarii dupa 500ms
-    setTimeout(checkDeliveryStatus, 500);
 }
 
 function loadOrders() {
@@ -84,6 +77,47 @@ function initMap(validOrders) {
     }
 }
 
+function initMapForNonDriver() {
+    // Iau coordonatele headquarter din input-urile hidden
+    var hqLat = parseFloat(document.getElementById("headquarterLat").value);
+    var hqLng = parseFloat(document.getElementById("headquarterLng").value);
+    var hqLatLng = [hqLat, hqLng];
+
+    // Initializez harta cu centrul pe headquarter
+    window.map = L.map('map', { zoomControl: true });
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap contributors'
+    }).addTo(window.map);
+    window.map.setView(hqLatLng, 14);
+
+    // Adaug marker pentru Headquarter
+    L.marker(hqLatLng, {
+        icon: L.icon({
+            iconUrl: 'https://cdn-icons-png.flaticon.com/512/684/684908.png',
+            iconSize: [32, 32],
+            iconAnchor: [16, 32],
+            popupAnchor: [0, -32]
+        })
+    }).addTo(window.map).bindPopup("<b>Headquarter</b>");
+
+    // Incarc si adaug marker-ele pentru comenzi
+    var ordersData = loadOrders();
+    if (ordersData) {
+        var validOrders = filterOrders(ordersData);
+        // Adaug fiecare marker pentru comanda
+        validOrders.forEach(function (order) {
+            L.marker([order.latitude, order.longitude]).addTo(window.map)
+                .bindPopup("<b>Order " + order.id + "</b><br>" + order.address);
+        });
+        // Extind zona vizibila (bounds) pentru a include atat headquarter-ul, cat si marker-ele pentru comenzi
+        var bounds = L.latLngBounds([hqLatLng]);
+        validOrders.forEach(function (order) {
+            bounds.extend([order.latitude, order.longitude]);
+        });
+        window.map.fitBounds(bounds, { padding: [50, 50] });
+    }
+}
+
 function getDeliveryId() {
     var deliveryIdElement = document.getElementById("deliveryId");
     if (!deliveryIdElement) {
@@ -96,10 +130,9 @@ function getDeliveryId() {
 function setupFollowMode() {
     window.followMode = true;
     window.userMarker = null;
-    window.ignoreNextMovestart = false; // 
+    window.ignoreNextMovestart = false;
     window.refocusButton = document.getElementById("refocusButton");
 
-    // Functie de actualizare a stilului butonului de refocus
     function updateRefocusButtonStyle(follow) {
         if (window.refocusButton) {
             if (follow) {
@@ -116,7 +149,6 @@ function setupFollowMode() {
     window.updateRefocusButtonStyle = updateRefocusButtonStyle;
     updateRefocusButtonStyle(window.followMode);
 
-    // Daca userul misca manual harta, dezactivez follow mode
     window.map.on('movestart', function () {
         if (window.ignoreNextMovestart) {
             window.ignoreNextMovestart = false;
@@ -126,7 +158,6 @@ function setupFollowMode() {
         }
     });
 
-    // Reactivez follow mode si centrez harta pe marker daca se apasa butonul "Refocus"
     if (window.refocusButton) {
         window.refocusButton.addEventListener("click", function () {
             window.followMode = true;
@@ -138,11 +169,12 @@ function setupFollowMode() {
         });
     }
 
-    // Urmaresc pozitia userului(masinuta)
+    // Apelez functia watchUserPosition numai daca userul este sofer
     watchUserPosition();
 }
 
 function watchUserPosition() {
+    if (!isDriver) return; // Nu cer locatie daca nu este sofer
     var carIcon = L.icon({
         iconUrl: '/Images/car.png',
         iconSize: [32, 32],
@@ -156,7 +188,7 @@ function watchUserPosition() {
         if (!window.userMarker) {
             window.userMarker = L.marker(latlng, { icon: carIcon, rotationAngle: 0 })
                 .addTo(window.map)
-                .bindPopup("My current position");
+                .bindPopup("Pozitia curenta");
         } else {
             window.userMarker.setLatLng(latlng);
         }
@@ -170,7 +202,7 @@ function watchUserPosition() {
         }
     }, function (error) {
         if (error.code === error.PERMISSION_DENIED) {
-            alert("Please accept GPS tracking in order to see your location on the map.");
+            alert("Acceptati monitorizarea GPS pentru a vedea pozitia pe harta.");
         } else {
             console.error("Eroare la obtinerea locatiei GPS:", error);
         }
@@ -187,18 +219,15 @@ function fetchRouteAndSetup(deliveryId) {
                 alert("Error: " + data.error);
                 return;
             }
-            // Convertesc coordonatele rutei pentru Leaflet
             window.routeCoords = data.coordinates.map(function (coord) {
                 return [coord.latitude, coord.longitude];
             });
-            // Salvez indicii de stop si orderIds pentru referinta
             window.stopIndices = data.stopIndices;
             window.orderIds = data.orderIds;
             console.log("Data ruta:", data);
             console.log("stopIndices:", window.stopIndices);
             console.log("orderIds:", window.orderIds);
 
-            // Adaug marker pentru Headquarter (prima coordonata)
             var headquarterLatLng = window.routeCoords[0];
             var hqMarker = L.marker(headquarterLatLng, {
                 icon: L.icon({
@@ -209,10 +238,7 @@ function fetchRouteAndSetup(deliveryId) {
                 })
             }).addTo(window.map).bindPopup("<b>Headquarter</b>");
 
-            // Adaug controlul fullscreen
             setupFullscreenControl();
-
-            // Afisez segmentul curent din livrare
             displayCurrentSegment();
         })
         .catch(function (error) {

@@ -106,8 +106,10 @@ namespace Licenta_v1.Areas.Identity.Pages.Account
 			[Display(Name = "Region")]
 			public int? RegionId { get; set; }
 
-			[Required(ErrorMessage = "The password is manatory!")]
+			[Required(ErrorMessage = "The password is mandatory!")]
 			[StringLength(50, ErrorMessage = "The {0} must be at least {2} and at max {1} characters long!", MinimumLength = 6)]
+			[RegularExpression(@"^(?=.*[A-Za-z])(?=.*\d)(?=.*[^a-zA-Z\d]).+$",
+				ErrorMessage = "The password must be alphanumeric and contain at least one non-alphanumeric character (e.g. symbols)!")]
 			[DataType(DataType.Password)]
 			[Display(Name = "Password")]
 			public string Password { get; set; }
@@ -117,6 +119,7 @@ namespace Licenta_v1.Areas.Identity.Pages.Account
 			[Display(Name = "Confirm password")]
 			[Compare("Password", ErrorMessage = "The password and confirmation password do not match!")]
 			public string ConfirmPassword { get; set; }
+
 		}
 
 		public async Task OnGetAsync(string returnUrl = null)

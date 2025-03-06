@@ -106,6 +106,7 @@ namespace Licenta_v1.Controllers
 			var delivery = db.Deliveries       // Adminii vad detaliile tuturor deliveries. Soferii vad doar Deliveries asignate lor.
 				.Include(d => d.Vehicle)       // Dispecerii vad doar detaliile deliveries din regiunea lor.
 				.ThenInclude(v => v.Region)    // Ca sa avem acces si la regiune prin Vehicle.
+				.ThenInclude(r => r.Headquarters)
 				.Include(d => d.Driver)
 				.Include(d => d.Orders)
 				.ThenInclude(o => o.Client)
@@ -261,7 +262,7 @@ namespace Licenta_v1.Controllers
 			if (delivery == null)
 				return NotFound();
 
-			// Sterg comenzile carora le-am dat uncheck
+			// Sterg comenzile la care s-a dat uncheck
 			var ordersToRemove = delivery.Orders.Where(o => !keepOrderIds.Contains(o.Id)).ToList();
 			foreach (var order in ordersToRemove)
 			{
@@ -271,7 +272,7 @@ namespace Licenta_v1.Controllers
 				db.Orders.Update(order);
 			}
 
-			// Adaug noile comenzi(alea de le-am dat check)
+			// Adaug noile comenzi selectate
 			foreach (var orderId in addOrderIds)
 			{
 				var order = db.Orders.FirstOrDefault(o => o.Id == orderId && o.DeliveryId == null);
@@ -283,13 +284,34 @@ namespace Licenta_v1.Controllers
 				}
 			}
 
+			// Verific daca comenzile modificate se incadreaza in capacitate
 			if (!CanFitOrders(delivery.Vehicle, delivery.Orders.ToList()))
 			{
 				TempData["Error"] = "The modified orders exceed the vehicle's capacity.";
 				return RedirectToAction("Edit", new { id });
 			}
 
-			// Recalculatez DeliverySequence-ul si estimarile
+			// Daca, dupa modificare, Delivery-ul nu mai contine nici o comanda,
+			// stergem Delivery-ul si actualizam Vehicle-ul si User-ul la available
+			if (delivery.Orders == null || delivery.Orders.Count - ordersToRemove.Count == 0)
+			{
+				if (delivery.Vehicle != null)
+				{
+					delivery.Vehicle.Status = VehicleStatus.Available;
+					db.Vehicles.Update(delivery.Vehicle);
+				}
+				if (delivery.Driver != null)
+				{
+					delivery.Driver.IsAvailable = true;
+					db.ApplicationUsers.Update(delivery.Driver);
+				}
+				db.Deliveries.Remove(delivery);
+				await db.SaveChangesAsync();
+				TempData["Success"] = "Delivery removed successfully!";
+				return RedirectToAction("Index");
+			}
+
+			// Daca Delivery-ul contine comenzi, recalculez estimarile si DeliverySequence-ul
 			await opt.RecalculateDeliveryMetrics(db, delivery);
 
 			db.Deliveries.Update(delivery);

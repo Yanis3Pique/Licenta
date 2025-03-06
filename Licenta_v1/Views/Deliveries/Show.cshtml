@@ -1,18 +1,24 @@
-﻿@*
-    For more information on enabling MVC for empty projects, visit https://go.microsoft.com/fwlink/?LinkID=397860
-*@
-@model Licenta_v1.Models.Delivery
+﻿@model Licenta_v1.Models.Delivery
 @using Licenta_v1.Services
 
 @{
     ViewBag.Title = "Delivery Details";
-    // Iau urmatoarea Order din Delivery ce trebuie livrata(cea cu DeliverySequence cel mai mic printre Orders nelivrate)
+    // Iau urmatoarea Order din Delivery ce trebuie livrata (cea cu DeliverySequence cel mai mic printre Orders nelivrate)
     var nextOrderSequence = Model.Orders
                               .Where(o => o.Status != Licenta_v1.Services.OrderStatus.Delivered)
                               .OrderBy(o => o.DeliverySequence)
                               .Select(o => o.DeliverySequence)
                               .FirstOrDefault();
+    // Variabila booleana - daca userul este Sofer sau nu
+    var isDriver = User.IsInRole("Sofer");
 }
+
+<!-- Input hidden pentru isDriver in JavaScript -->
+<input type="hidden" id="isDriver" value="@isDriver.ToString().ToLower()" />
+
+<!-- Input-uri hidden pentru coordonatele headquarter -->
+<input type="hidden" id="headquarterLat" value="@Model.Vehicle.Region.Headquarters.Latitude" />
+<input type="hidden" id="headquarterLng" value="@Model.Vehicle.Region.Headquarters.Longitude" />
 
 @if (TempData["Success"] != null)
 {
@@ -175,9 +181,13 @@
     <h4 class="text-center mt-4">Order Locations</h4>
     <div id="map-container" style="position: relative; width: 100%; height: 600px;">
         <div id="map" style="width: 100%; height: 100%; border-radius: 10px;"></div>
-        <button id="refocusButton" style="position: absolute; bottom: 25px; right: 10px; z-index: 1000; padding: 10px; background-color: #fff; border: 1px solid #ccc; border-radius: 4px; cursor: pointer;">
-            Refocus
-        </button>
+        <!-- Daca userul este sofer, afisez butonul de Refocus -->
+        @if (isDriver)
+        {
+            <button id="refocusButton" style="position: absolute; bottom: 25px; right: 10px; z-index: 1000; padding: 10px; background-color: #fff; border: 1px solid #ccc; border-radius: 4px; cursor: pointer;">
+                Refocus
+            </button>
+        }
     </div>
 </div>
 
@@ -222,14 +232,14 @@
             @if (Model.Status == "Planned")
             {
                 <a asp-action="StartDelivery" asp-route-id="@Model.Id"
-                class="btn btn-success btn-lg fw-bold action-btn">
+                   class="btn btn-success btn-lg fw-bold action-btn">
                     🚚 Start Delivery
                 </a>
             }
             @if (Model.Status == "In Progress" && Model.Orders.All(o => o.Status == Licenta_v1.Services.OrderStatus.Delivered))
             {
                 <a asp-action="CompleteDelivery" asp-route-id="@Model.Id"
-                class="btn btn-primary btn-lg fw-bold action-btn">
+                   class="btn btn-primary btn-lg fw-bold action-btn">
                     ✅ Complete Delivery
                 </a>
             }

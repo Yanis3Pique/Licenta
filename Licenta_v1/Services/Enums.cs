@@ -29,7 +29,8 @@ namespace Licenta_v1.Services
 	{
 		Placed,
 		InProgress,
-		Delivered
+		Delivered,
+		FailedDelivery
 	}
 
 	public enum MaintenanceTypes

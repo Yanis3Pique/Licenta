@@ -5,10 +5,11 @@
     ViewBag.Title = "Delivery Details";
     // Iau urmatoarea Order din Delivery ce trebuie livrata (cea cu DeliverySequence cel mai mic printre Orders nelivrate)
     var nextOrderSequence = Model.Orders
-                              .Where(o => o.Status != Licenta_v1.Services.OrderStatus.Delivered)
-                              .OrderBy(o => o.DeliverySequence)
-                              .Select(o => o.DeliverySequence)
-                              .FirstOrDefault();
+        .Where(o => o.Status != Licenta_v1.Services.OrderStatus.Delivered
+                 && o.Status != Licenta_v1.Services.OrderStatus.FailedDelivery)
+        .OrderBy(o => o.DeliverySequence)
+        .Select(o => o.DeliverySequence)
+        .FirstOrDefault();
     // Variabila booleana - daca userul este Sofer sau nu
     var isDriver = User.IsInRole("Sofer");
 }
@@ -208,20 +209,32 @@
                         <strong>Volume:</strong> &asymp; @order.Volume m<sup>3</sup>
                     </span>
 
-                    @if (order.Status == Licenta_v1.Services.OrderStatus.Delivered)
+                    @if (order.Status == OrderStatus.Delivered)
                     {
                         <span class="badge bg-success">✅ Delivered</span>
+                    }
+                    else if (order.Status == OrderStatus.FailedDelivery)
+                    {
+                        <span class="badge bg-danger">❌ Unable to Deliver</span>
                     }
                     else if (Model.Status == "In Progress")
                     {
                         // Butoanele pot fi apasate doar in ordinea livrarilor Orders
                         bool isNextOrder = order.DeliverySequence == nextOrderSequence;
-                        <form asp-action="MarkOrderDelivered" method="post" class="d-inline">
-                            <input type="hidden" name="orderId" value="@order.Id" />
-                            <button type="submit" class="btn btn-outline-primary btn-sm action-btn mark-delivered-btn" @(isNextOrder ? "" : "disabled")>
-                                Mark as Delivered
-                            </button>
-                        </form>
+                        <div class="d-flex justify-content-center gap-2">
+                            <form asp-action="MarkOrderDelivered" method="post">
+                                <input type="hidden" name="orderId" value="@order.Id" />
+                                <button type="submit" class="btn btn-outline-primary btn-sm action-btn mark-delivered-btn" @(isNextOrder ? "" : "disabled")>
+                                    Mark as Delivered
+                                </button>
+                            </form>
+                            <form asp-action="MarkOrderFailed" method="post">
+                                <input type="hidden" name="orderId" value="@order.Id" />
+                                <button type="submit" class="btn btn-outline-danger btn-sm action-btn mark-failed-btn" @(isNextOrder ? "" : "disabled")>
+                                    Cannot Deliver
+                                </button>
+                            </form>
+                        </div>
                     }
                 </li>
             }
@@ -236,12 +249,31 @@
                     🚚 Start Delivery
                 </a>
             }
-            @if (Model.Status == "In Progress" && Model.Orders.All(o => o.Status == Licenta_v1.Services.OrderStatus.Delivered))
+            @if (Model.Status == "In Progress" && Model.Orders.All(o => o.Status == OrderStatus.Delivered || 
+                                                                        o.Status == OrderStatus.FailedDelivery))
             {
-                <a asp-action="CompleteDelivery" asp-route-id="@Model.Id"
-                   class="btn btn-primary btn-lg fw-bold action-btn">
-                    ✅ Complete Delivery
-                </a>
+                <form asp-action="CompleteDelivery" method="post" class="mt-4">
+                    <input type="hidden" name="id" value="@Model.Id" />
+                    <div class="mb-3">
+                        <label for="newOdometerReading" class="form-label">
+                            Please enter the Odometer Reading (km):
+                        </label>
+                        <input type="number"
+                               step="1"
+                               min="@Model.Vehicle.TotalDistanceTraveledKM"
+                               value="@Model.Vehicle.TotalDistanceTraveledKM"
+                               id="newOdometerReading"
+                               name="newOdometerReading"
+                               required
+                               class="form-control" />
+                        <div class="form-text">
+                            The entered value must be higher than the current odometer reading(@ViewBag.VehicleTotalKMBefore km).
+                        </div>
+                    </div>
+                    <button type="submit" class="btn btn-success btn-lg fw-bold action-btn">
+                        ✅ Complete Delivery
+                    </button>
+                </form>
             }
         </div>
     </div>

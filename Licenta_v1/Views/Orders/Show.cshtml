@@ -54,6 +54,10 @@
                             {
                                 <span class="badge bg-warning text-dark">In Progress</span>
                             }
+							else if (Model.Status == Licenta_v1.Services.OrderStatus.FailedDelivery)
+							{
+								<span class="badge bg-danger">Failed to Deliver</span>
+							}
                             else
                             {
                                 <span class="badge bg-success">Delivered</span>

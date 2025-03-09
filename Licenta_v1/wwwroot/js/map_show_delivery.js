@@ -5,7 +5,7 @@
 // Functia principala de initializare
 function initApp() {
     if (isDriver()) {
-        // Pentru sofer, se incarca comenzile si se configureaza traseul
+        // Pentru sofer, incarc comenzile si configurez traseul
         var ordersData = loadOrders();
         if (!ordersData) return;
         var validOrders = filterOrders(ordersData);
@@ -23,20 +23,21 @@ function initApp() {
         fetchRouteAndSetup(deliveryId);
         setupZoomControlListeners();
         setupMarkDeliveredButtons();
+        setupMarkFailedButtons();
         setTimeout(checkDeliveryStatus, 500);
     } else {
-        // Pentru non-sofer, se afiseaza doar marker-ul pentru Headquarter
+        // Pentru non-sofer, afisez pe harta doar marker-ul pentru Headquarter si comenzile din zona
         initMapForNonDriver();
     }
 }
 
-// Verifica daca utilizatorul este sofer (valorile din input-ul hidden "isDriver")
+// Verific daca utilizatorul este sofer (valorile din input-ul hidden "isDriver")
 function isDriver() {
     var isDriverElement = document.getElementById("isDriver");
     return isDriverElement ? (isDriverElement.value === "true") : false;
 }
 
-// Incarca comenzile din input-ul hidden
+// Incarc comenzile din input-ul hidden
 function loadOrders() {
     var ordersDataElement = document.getElementById("ordersData");
     if (!ordersDataElement) {
@@ -57,14 +58,14 @@ function loadOrders() {
     }
 }
 
-// Filtreaza comenzile care au coordonate valide
+// Filtrez comenzile care au coordonate valide
 function filterOrders(orders) {
     return orders.filter(function (o) {
         return !isNaN(o.latitude) && !isNaN(o.longitude);
     });
 }
 
-// Initializeaza harta pentru sofer cu marker-ele pentru comenzi
+// Initializez harta pentru sofer cu marker-ele pentru comenzi
 function initMap(validOrders) {
     window.map = L.map('map', { zoomControl: true });
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -83,7 +84,7 @@ function initMap(validOrders) {
     }
 }
 
-// Initializeaza harta pentru non-sofer, cu marker pentru Headquarter si comenzile din zona
+// Initializez harta pentru non-sofer, cu marker pentru Headquarter si comenzile din zona
 function initMapForNonDriver() {
     var hqLat = parseFloat(document.getElementById("headquarterLat").value);
     var hqLng = parseFloat(document.getElementById("headquarterLng").value);
@@ -120,7 +121,7 @@ function initMapForNonDriver() {
     }
 }
 
-// Preia deliveryId-ul din input-ul hidden
+// Preiau deliveryId-ul din input-ul hidden
 function getDeliveryId() {
     var deliveryIdElement = document.getElementById("deliveryId");
     if (!deliveryIdElement) {
@@ -130,7 +131,7 @@ function getDeliveryId() {
     return deliveryIdElement.value;
 }
 
-// Configurare modul de follow si evenimentele aferente
+// Configurez modul de follow si evenimentele aferente
 function setupFollowMode() {
     window.followMode = true;
     window.userMarker = null;
@@ -173,7 +174,7 @@ function setupFollowMode() {
     watchUserPosition();
 }
 
-// Urmareste pozitia userului (doar pentru sofer)
+// Urmaresc pozitia userului (doar pentru sofer)
 function watchUserPosition() {
     if (!isDriver()) return;
     var carIcon = L.icon({
@@ -189,7 +190,7 @@ function watchUserPosition() {
         if (!window.userMarker) {
             window.userMarker = L.marker(latlng, { icon: carIcon, rotationAngle: 0 })
                 .addTo(window.map)
-                .bindPopup("Pozitia curenta");
+                .bindPopup("Your location");
         } else {
             window.userMarker.setLatLng(latlng);
         }
@@ -210,7 +211,7 @@ function watchUserPosition() {
     }, { enableHighAccuracy: true });
 }
 
-// Preia ruta optima si configureaza marker-ele si afisarea segmentului curent
+// Preiau ruta optima si configurez marker-ele si afisez segmentului curent
 function fetchRouteAndSetup(deliveryId) {
     fetch('/Deliveries/GetOptimalRoute?deliveryId=' + deliveryId)
         .then(function (response) {
@@ -241,14 +242,14 @@ function fetchRouteAndSetup(deliveryId) {
             }).addTo(window.map).bindPopup("<b>Headquarter</b>");
 
             setupFullscreenControl();
-            displayCurrentSegment();
+            displayAllSegments();
         })
         .catch(function (error) {
             console.error("Eroare la preluarea rutei:", error);
         });
 }
 
-// Configureaza controlul fullscreen pentru harta
+// Configurez controlul fullscreen pentru harta
 function setupFullscreenControl() {
     L.Control.Fullscreen = L.Control.extend({
         options: {
@@ -278,7 +279,7 @@ function setupFullscreenControl() {
     L.control.fullscreen().addTo(window.map);
 }
 
-// Comuta modul fullscreen pentru harta
+// Comut modul fullscreen pentru harta
 function toggleFullScreen() {
     window.ignoreNextMovestart = true;
     var mapContainer = document.getElementById('map-container');
@@ -291,7 +292,7 @@ function toggleFullScreen() {
     }
 }
 
-// Configurare listener pentru butoanele de zoom
+// Configurez listener pentru butoanele de zoom
 function setupZoomControlListeners() {
     var zoomInButton = document.querySelector('.leaflet-control-zoom-in');
     if (zoomInButton) {
@@ -307,7 +308,7 @@ function setupZoomControlListeners() {
     }
 }
 
-// Configurare listener pentru butoanele "Mark as Delivered"
+// Configurez listener pentru butoanele "Mark as Delivered"
 function setupMarkDeliveredButtons() {
     document.querySelectorAll(".mark-delivered-btn").forEach(function (button) {
         button.addEventListener("click", function (e) {
@@ -318,71 +319,114 @@ function setupMarkDeliveredButtons() {
                 method: form.method,
                 body: formData
             })
-                .then(function (response) {
-                    return response.json();
-                })
-                .then(function (data) {
+            .then(function (response) {
+                return response.text();
+            })
+            .then(function (text) {
+                try {
+                    var data = JSON.parse(text);
                     if (data.success) {
-                        console.log("Order marcat ca livrat pe server.");
+                        console.log("Order marcat ca livrat.");
                     } else {
-                        console.error("Eroare la marcarea comenzii ca livrate pe server.");
+                        console.error("Eroare la marcarea comenzii ca livrate.");
                     }
-                    advanceRoute();
-                    window.location.reload();
-                })
-                .catch(function (error) {
-                    console.error("Eroare la marcarea comenzii ca livrate:", error);
-                    advanceRoute();
-                    window.location.reload();
-                });
+                } catch (e) {
+                    console.warn("Raspunsul nu este JSON valid, continuam...");
+                }
+                advanceRoute();
+                window.location.reload();
+            })
+            .catch(function (error) {
+                console.error("Eroare la marcarea comenzii ca livrate:", error);
+                advanceRoute();
+                window.location.reload();
+            });
         });
     });
 }
 
-// Afiseaza segmentul curent din ruta livrarii
-function displayCurrentSegment() {
-    console.log("stopIndices:", window.stopIndices, "currentSegment:", window.currentSegment);
-    if (!window.stopIndices || window.currentSegment >= window.stopIndices.length - 1) {
-        console.log("Toate segmentele au fost parcurse.");
-        return;
-    }
-    // Sterg segmentul curent, daca exista
-    if (window.currentSegmentLayer) {
-        window.map.removeLayer(window.currentSegmentLayer);
-        window.map.removeLayer(window.currentDecorator);
-    }
-    var startIdx = window.stopIndices[window.currentSegment];
-    var endIdx = window.stopIndices[window.currentSegment + 1];
-    console.log("Afisez segmentul:", window.currentSegment, "de la indexul", startIdx, "la", endIdx);
-    var segmentCoords = window.routeCoords.slice(startIdx, endIdx + 1);
-    window.currentSegmentLayer = L.polyline(segmentCoords, {
-        color: 'red',
-        weight: 5,
-        opacity: 0.3
-    }).addTo(window.map);
-    window.currentDecorator = L.polylineDecorator(window.currentSegmentLayer, {
-        patterns: [{
-            offset: '0%',
-            repeat: '50px',
-            symbol: L.Symbol.arrowHead({
-                pixelSize: 10,
-                polygon: false,
-                pathOptions: { stroke: true, color: 'blue', weight: 2 }
+// Configurez listener pentru butoanele "Cannot Deliver"
+function setupMarkFailedButtons() {
+    document.querySelectorAll(".mark-failed-btn").forEach(function (button) {
+        button.addEventListener("click", function (e) {
+            e.preventDefault();
+            var form = this.closest("form");
+            var formData = new FormData(form);
+            fetch(form.action, {
+                method: form.method,
+                body: formData
             })
-        }]
-    }).addTo(window.map);
-    window.map.fitBounds(window.currentSegmentLayer.getBounds(), { padding: [50, 50] });
-    if (window.currentSegment === window.stopIndices.length - 2) {
-        console.log("Segment final: Revenire la Headquarter.");
-    }
+            .then(function (response) {
+                return response.text();
+            })
+            .then(function (text) {
+                try {
+                    var data = JSON.parse(text);
+                    if (data.success) {
+                        console.log("Order marcat ca nelivrat.");
+                    } else {
+                        console.error("Eroare la marcarea comenzii ca nelivrate.");
+                    }
+                } catch (e) {
+                    console.warn("Raspunsul nu este JSON valid, continuam...");
+                }
+                advanceRoute();
+                window.location.reload();
+            })
+            .catch(function (error) {
+                console.error("Eroare la marcarea comenzii ca nelivrate:", error);
+                advanceRoute();
+                window.location.reload();
+            });
+        });
+    });
 }
 
-// Avanseaza la urmatorul segment din ruta livrarii
+// Afisez toate segmentele din traseu, evidentiind segmentul curent
+function displayAllSegments() {
+    // Sterg straturile anterioare, daca exista
+    if (window.segmentsLayerGroup) {
+        window.map.removeLayer(window.segmentsLayerGroup);
+    }
+    // Folosesc un FeatureGroup in loc de LayerGroup ca sa am getBounds()
+    window.segmentsLayerGroup = L.featureGroup().addTo(window.map);
+
+    // Iterez prin segmente (fiecare segment e definit de stopIndices[i] -> stopIndices[i+1])
+    for (let i = 0; i < window.stopIndices.length - 1; i++) {
+        let startIdx = window.stopIndices[i];
+        let endIdx = window.stopIndices[i + 1];
+        let segmentCoords = window.routeCoords.slice(startIdx, endIdx + 1);
+        let isCurrent = (i === window.currentSegment);
+        let polylineStyle = isCurrent
+            ? { color: 'blue', weight: 6, opacity: 1 }
+            : { color: '#ADD8E6', weight: 3, opacity: 0.6, dashArray: '5, 5' };
+
+        let polyline = L.polyline(segmentCoords, polylineStyle).addTo(window.segmentsLayerGroup);
+
+        if (isCurrent) {
+            L.polylineDecorator(polyline, {
+                patterns: [{
+                    offset: '0%',
+                    repeat: '50px',
+                    symbol: L.Symbol.arrowHead({
+                        pixelSize: 10,
+                        polygon: false,
+                        pathOptions: { stroke: true, color: 'aqua', weight: 2 }
+                    })
+                }]
+            }).addTo(window.segmentsLayerGroup);
+        }
+    }
+    // Ajustez harta sa cuprinda toate segmentele
+    window.map.fitBounds(window.segmentsLayerGroup.getBounds(), { padding: [50, 50] });
+}
+
+// Avansez la urmatorul segment din ruta livrarii
 function advanceRoute() {
     if (window.currentSegment < window.stopIndices.length - 1) {
         window.currentSegment++;
-        localStorage.setItem("currentSegment_" + document.getElementById("deliveryId").value, window.currentSegment);
-        displayCurrentSegment();
+        localStorage.setItem("currentSegment_" + getDeliveryId(), window.currentSegment);
+        displayAllSegments();  // Reafisez toate segmentele cu actualizarea curenta
         if (window.currentSegment === window.stopIndices.length - 1) {
             console.log("Segment final afisat: Revenire la HQ.");
         }
@@ -391,7 +435,7 @@ function advanceRoute() {
     }
 }
 
-// Sterge toate segmentele si decoratorii de pe harta
+// Sterg toate segmentele si decoratorii de pe harta
 function clearRouteSegments() {
     return new Promise(function (resolve) {
         if (window.currentSegmentLayer) {
@@ -413,7 +457,7 @@ function clearRouteSegments() {
     });
 }
 
-// Verifica statusul livrarii si sterge segmentele daca livrarea este completa
+// Verific statusul livrarii si sterg segmentele daca livrarea este completa
 function checkDeliveryStatus() {
     var deliveryStatusElement = document.getElementById("deliveryStatus");
     if (!deliveryStatusElement) {

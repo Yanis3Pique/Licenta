@@ -255,6 +255,9 @@ public class TaskuriAutomate : BackgroundService
 			case OrderStatus.Delivered:
 				displayStatus = "Delivered";
 				break;
+			case OrderStatus.FailedDelivery:
+				displayStatus = "Failed to Deliver";
+				break;
 			default:
 				displayStatus = order.Status.ToString();
 				break;
@@ -264,6 +267,7 @@ public class TaskuriAutomate : BackgroundService
 		{
 			OrderStatus.Placed => "Your order has been successfully placed. We will notify you once it's out for delivery.",
 			OrderStatus.InProgress => "Your order is on the way! Our driver is working hard to get it to you.",
+			OrderStatus.FailedDelivery => "We're sorry, but we were unable to deliver your order. Please contact us for more information.",
 			OrderStatus.Delivered => "Your order has been delivered successfully! We hope you enjoy your purchase.",
 			_ => "There is an update on your order. Please check your account for details."
 		};

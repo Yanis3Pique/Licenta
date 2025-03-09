@@ -81,8 +81,12 @@
                         <strong>Weight:</strong> @order.Weight kg<br />
                         <strong>Volume:</strong> @order.Volume m³<br />
                         <strong>Status:</strong>
-                        <span style="color: @(order.Status.ToString() == "Placed" ? "blue" : order.Status.ToString() == "InProgress" ? "orange" : "gray")">
-                            @(order.Status.ToString() == "InProgress" ? "In Progress" : order.Status.ToString())
+                        <span style="color: @(order.Status.ToString() == "Placed" ? "blue" :
+                                 order.Status.ToString() == "InProgress" ? "orange" :
+                                 order.Status.ToString() == "FailedDelivery" ? "red" : "#006400")">
+                                      @(order.Status.ToString() == "InProgress" ? "In Progress" :
+                                        order.Status.ToString() == "FailedDelivery" ? "Failed Delivery" :
+                                        order.Status.ToString())
                         </span><br />
                         <strong>Date Placed:</strong> @order.PlacedDate.ToString("d MMM yyyy")
                     </p>

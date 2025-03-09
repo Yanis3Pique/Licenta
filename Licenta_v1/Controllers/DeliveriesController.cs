@@ -119,6 +119,7 @@ namespace Licenta_v1.Controllers
 				return NotFound();
 
 			ViewBag.CurrentUserId = user.Id;
+			ViewBag.VehicleTotalKMBefore = delivery.Vehicle.TotalDistanceTraveledKM;
 
 			return View(delivery);
 		}
@@ -554,7 +555,26 @@ namespace Licenta_v1.Controllers
 		}
 
 		[Authorize(Roles = "Sofer")]
-		public IActionResult CompleteDelivery(int id)
+		public IActionResult MarkOrderFailed(int orderId)
+		{
+			var user = db.ApplicationUsers.FirstOrDefault(u => u.UserName == User.Identity.Name);
+			if (user == null) return Unauthorized();
+
+			var order = db.Orders.Include(o => o.Delivery)
+								 .FirstOrDefault(o => o.Id == orderId && o.Delivery.DriverId == user.Id);
+
+			if (order == null || order.Status != OrderStatus.InProgress) return NotFound();
+
+			// Marchez Order ca fiind esuata
+			order.Status = OrderStatus.FailedDelivery;
+
+			db.SaveChanges();
+			return RedirectToAction("Show", new { id = order.DeliveryId });
+		}
+
+		[HttpPost]
+		[Authorize(Roles = "Sofer")]
+		public IActionResult CompleteDelivery(int id, double newOdometerReading)
 		{
 			var user = db.ApplicationUsers.FirstOrDefault(u => u.UserName == User.Identity.Name);
 			if (user == null) return Unauthorized();
@@ -567,12 +587,25 @@ namespace Licenta_v1.Controllers
 
 			if (delivery == null || delivery.Status != "In Progress") return NotFound();
 
-			// Ma asigur ca toate Orders din Delivery au fost livrate
-			if (delivery.Orders.Any(o => o.Status != OrderStatus.Delivered))
+			// Ma asigur ca toate Orders din Delivery au fost livrate/fail-uite
+			if (delivery.Orders.Any(o => o.Status != OrderStatus.Delivered && o.Status != OrderStatus.FailedDelivery))
 			{
-				TempData["Error"] = "Not all orders have been delivered yet!";
+				TempData["Error"] = "Not all orders have been delivered or failed yet!";
 				return RedirectToAction("Show", new { id });
 			}
+
+			foreach (Order order in delivery.Orders)
+			{
+				if (order.Status == OrderStatus.FailedDelivery)
+				{
+					// Daca o comanda a esuat, o marchez ca fiind disponibila pentru alt Delivery
+					order.Status = OrderStatus.Placed;
+					order.DeliveryId = null;
+					order.DeliverySequence = null;
+				}
+			}
+
+			db.SaveChanges();
 
 			// Marchez Delivery ca fiind completa
 			delivery.Status = "Completed";
@@ -582,7 +615,19 @@ namespace Licenta_v1.Controllers
 			user.IsAvailable = true;
 			delivery.Vehicle.Status = VehicleStatus.Available;
 
+			// Actualizez TotalDistanceTraveledKM dacă noua valoare este mai mare
+			if (newOdometerReading > delivery.Vehicle.TotalDistanceTraveledKM)
+			{
+				delivery.Vehicle.TotalDistanceTraveledKM = newOdometerReading;
+			}
+			else
+			{
+				TempData["Error"] = "The entered odometer reading must be higher than the current value.";
+				return RedirectToAction("Show", new { id });
+			}
+
 			db.SaveChanges();
+			TempData["Success"] = "Delivery completed successfully!";
 			return RedirectToAction("Show", new { id });
 		}
 

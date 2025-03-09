@@ -30,7 +30,7 @@ namespace Licenta_v1.Models
 		public double? Longitude { get; set; }
 		[Required(ErrorMessage = "The region id is mandatory.")]
 		public int? RegionId { get; set; }
-		public OrderStatus Status { get; set; } = OrderStatus.Placed; // (Placed, InProgress, Delivered)
+		public OrderStatus Status { get; set; } = OrderStatus.Placed; // (Placed, InProgress, Delivered, (FailedDelivery))
 		public DateTime PlacedDate { get; set; } = System.DateTime.Now;
 		public DateTime? EstimatedDeliveryDate { get; set; }
 		public DateTime? DeliveredDate { get; set; }

@@ -71,7 +71,7 @@ namespace Licenta_v1.Controllers
 			}
 
 			// Filtrez comenzile dupa judet
-			if (regionId.HasValue)
+			if (regionId.HasValue && regionId.Value != 0)
 			{
 				orders = orders.Where(o => o.RegionId == regionId);
 			}

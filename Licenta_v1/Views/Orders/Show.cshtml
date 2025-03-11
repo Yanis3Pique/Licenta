@@ -88,6 +88,10 @@
                         <th id="light-blue-elements-background-id">Estimated Delivery Date</th>
                         <td id="light-blue-elements-background-id">@(Model.EstimatedDeliveryDate?.ToString("dd/MM/yyyy") ?? "N/A")</td>
                     </tr>
+                    <tr>
+                        <th id="light-blue-elements-background-id">Estimated Delivery Time</th>
+                        <td id="light-blue-elements-background-id">@(Model.EstimatedDeliveryInterval?.ToString() ?? "N/A")</td>
+                    </tr>
                     @if (User.IsInRole("Admin"))
                     {
                         <tr>

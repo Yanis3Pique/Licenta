@@ -33,6 +33,7 @@ namespace Licenta_v1.Models
 		public OrderStatus Status { get; set; } = OrderStatus.Placed; // (Placed, InProgress, Delivered, (FailedDelivery))
 		public DateTime PlacedDate { get; set; } = System.DateTime.Now;
 		public DateTime? EstimatedDeliveryDate { get; set; }
+		public string? EstimatedDeliveryInterval { get; set; }
 		public DateTime? DeliveredDate { get; set; }
 		public OrderStatus? LastNotifiedStatus { get; set; } // Folosit pentru mail-urile catre clienti
 		public int? DeliverySequence { get; set; } // Folosit pentru ordinea in Delivery

@@ -81,19 +81,13 @@ namespace Licenta_v1.Services
 				Longitude = headquarter.Longitude ?? 0
 			};
 
-			// Aplic Isochrone clustering pentru Orders
-			var clusters = await IsochroneClusterOrders(orders, depot);
-			if (clusters.Count == 0)
-				clusters.Add(orders);
-
-			// Re-sortez fiecare cluster conform criteriului
-			for (int i = 0; i < clusters.Count; i++)
+			// Use all orders as one cluster, sorted by placed date and priority.
+			var clusters = new List<List<Order>>
 			{
-				clusters[i] = clusters[i]
-					.OrderBy(o => o.PlacedDate)
-					.ThenBy(o => o.Priority == OrderPriority.High ? 0 : 1)
-					.ToList();
-			}
+				orders.OrderBy(o => o.PlacedDate)
+					  .ThenBy(o => o.Priority == OrderPriority.High ? 0 : 1)
+					  .ToList()
+			};
 
 			// Iau vehiculele disponibile in regiune
 			var vehicles = db.Vehicles
@@ -170,21 +164,11 @@ namespace Licenta_v1.Services
 		{
 			List<RouteResult> combinedResults = new List<RouteResult>();
 
-			//// Sortez vehiculele descrescator dupa greutate maxima si volum maxim admis
-			//var sortedVehicles = vehicles.OrderByDescending(v => v.MaxWeightCapacity)
-			//							 .ThenByDescending(v => v.MaxVolumeCapacity)
-			//							 .ToList();
-
-			//// Sortez vehiculele crescator dupa greutate maxima si volum maxim admis
-			//var sortedVehicles = vehicles.OrderBy(v => v.MaxWeightCapacity)
-			//							 .ThenBy(v => v.MaxVolumeCapacity)
-			//							 .ToList();
-
-			// Sortez vehiculele descrescator dupa greutate maxima / volum maxim admis
-			var sortedVehicles = vehicles.OrderByDescending(v => v.MaxWeightCapacity / v.MaxVolumeCapacity).ToList();
-
-			//// Sortez vehiculele crescator dupa greutate maxima / volum maxim admis
-			//var sortedVehicles = vehicles.OrderBy(v => v.MaxWeightCapacity / v.MaxVolumeCapacity).ToList();
+			// Sortez vehiculele descrescator dupa consum, greutate maxima si volum maxim admis
+			var sortedVehicles = vehicles.OrderByDescending(v => v.MaxVolumeCapacity)
+										 .ThenByDescending(v => v.MaxWeightCapacity)
+										 .ThenByDescending(v => v.ConsumptionRate)
+										 .ToList();
 
 			// Fac o copie a comenzilor ca sa stiu ce comenzi raman neasignate
 			List<Order> remainingOrders = new List<Order>(orders);
@@ -208,7 +192,7 @@ namespace Licenta_v1.Services
 						id = v.Id,
 						profile = "driving-car",
 						start = new[] { depot.Longitude, depot.Latitude },
-						capacity = new[] { (int)v.MaxWeightCapacity, (int)v.MaxVolumeCapacity }
+						capacity = new[] { (int)v.MaxWeightCapacity, (int)v.MaxVolumeCapacity },
 					})
 				};
 
@@ -361,148 +345,6 @@ namespace Licenta_v1.Services
 			public List<Order> Orders { get; set; }
 		}
 
-		// Folosesc endpoint-ul ORS Isochrones pentru a obtine praguri de timp de calatorie in jurul Headquarter
-		// si apoi grupez comenzile in functie de cel mai mic prag de timp de calatorie care contine comanda
-		private async Task<List<List<Order>>> IsochroneClusterOrders(List<Order> orders, Depot2 depot)
-		{
-			// Aici sunt pragurile de timp (in secunde) pentru 15, 30, 45 si 60 de minute
-			int[] timeRanges = new int[] { 900, 1800, 2700, 3600 };
-
-			var isochroneRequest = new
-			{
-				locations = new List<double[]> { new[] { depot.Longitude, depot.Latitude } },
-				range = timeRanges,
-				range_type = "time"
-			};
-
-			string requestUrl = "https://api.openrouteservice.org/v2/isochrones/driving-car";
-			string jsonBody = JsonConvert.SerializeObject(isochroneRequest);
-			Debug.WriteLine($"Sending Isochrone Request: {jsonBody}");
-
-			List<IsochroneFeature> features = new List<IsochroneFeature>();
-
-			using (var client = new HttpClient())
-			{
-				client.DefaultRequestHeaders.Add("Authorization", OpenRouteServiceApiKey);
-				var content = new StringContent(jsonBody, Encoding.UTF8, "application/json");
-				var response = await client.PostAsync(requestUrl, content);
-				var responseString = await response.Content.ReadAsStringAsync();
-				Debug.WriteLine($"Isochrone Response: {responseString}");
-
-				if (response.IsSuccessStatusCode)
-				{
-					var isochroneResponse = JsonConvert.DeserializeObject<IsochroneResponse>(responseString);
-					if (isochroneResponse?.Features != null)
-					{
-						// Sortez feature-urile dupa timpul de calatorie
-						features = isochroneResponse.Features.OrderBy(f => f.Properties.Value).ToList();
-					}
-				}
-				else
-				{
-					Debug.WriteLine($"Isochrone API error: {response.StatusCode}");
-				}
-			}
-
-			// Pentru fiecare comanda, determin in care "poligon" de timp se incadreaza
-			// Daca o comanda se incadreaza in mai multe poligoane, o asignez la cel cu cel mai mic timp de calatorie
-			var clustersDict = new Dictionary<double, List<Order>>();
-			// Initializez clustere pentru fiecare valoare a poligonului
-			foreach (var feature in features)
-			{
-				clustersDict[feature.Properties.Value] = new List<Order>();
-			}
-			// Cluster default pentru comenzile care nu intra in niciun poligon
-			const double defaultKey = -1;
-			clustersDict[defaultKey] = new List<Order>();
-
-			foreach (var order in orders)
-			{
-				bool assigned = false;
-				// Verific fiecare poligon (de la cel mai mic la cel mai mare travel time)
-				foreach (var feature in features)
-				{
-					// Folosesc primul inel exterior de coordonate pentru poligon 
-					if (feature.Geometry?.Coordinates?.Any() == true)
-					{
-						var polygon = feature.Geometry.Coordinates.First(); // List<List<double>>
-						if (IsPointInPolygon(order.Latitude ?? 0, order.Longitude ?? 0, polygon))
-						{
-							clustersDict[feature.Properties.Value].Add(order);
-							assigned = true;
-							break;
-						}
-					}
-				}
-				if (!assigned)
-				{
-					clustersDict[defaultKey].Add(order);
-				}
-			}
-
-			// Inainte de returnare, re-sortez fiecare cluster dupa PlacedDate, apoi dupa prioritate
-			var sortedClusters = clustersDict.Values
-				.Where(c => c.Any())
-				.Select(c => c.OrderBy(o => o.PlacedDate)
-							   .ThenBy(o => o.Priority == OrderPriority.High ? 0 : 1)
-							   .ToList())
-				.ToList();
-
-			return sortedClusters;
-		}
-
-		// Verifica daca un punct (Order) se gaseste in vreun poligon, pe baza coordonatelor (latitudine, longitudine)
-		// Poligonul este o lista de puncte cu coordonate (latitudine, longitudine)
-		private bool IsPointInPolygon(double lat, double lon, List<List<double>> polygon)
-		{
-			bool inside = false;
-			int count = polygon.Count;
-			for (int i = 0, j = count - 1; i < count; j = i++)
-			{
-				double xi = polygon[i][0], yi = polygon[i][1];
-				double xj = polygon[j][0], yj = polygon[j][1];
-
-				bool intersect = ((yi > lat) != (yj > lat)) &&
-								 (lon < (xj - xi) * (lat - yi) / (yj - yi + 1e-10) + xi);
-				if (intersect)
-					inside = !inside;
-			}
-			return inside;
-		}
-
-		// DTO-uri pentru raspunsul de la Isochrone
-		public class IsochroneResponse
-		{
-			[JsonProperty("features")]
-			public List<IsochroneFeature> Features { get; set; }
-		}
-
-		public class IsochroneFeature
-		{
-			[JsonProperty("properties")]
-			public IsochroneProperties Properties { get; set; }
-
-			[JsonProperty("geometry")]
-			public IsochroneGeometry Geometry { get; set; }
-		}
-
-		public class IsochroneProperties
-		{
-			// Prin "value" ma refer la timpul de calatorie in secunde pentru acest isochrone
-			[JsonProperty("value")]
-			public double Value { get; set; }
-		}
-
-		public class IsochroneGeometry
-		{
-			[JsonProperty("type")]
-			public string Type { get; set; }
-
-			// Coordonatele sunt o lista liniara de inele, iar fiecare inel este o lista de perechi [latitudine, longitudine]
-			[JsonProperty("coordinates")]
-			public List<List<List<double>>> Coordinates { get; set; }
-		}
-
 		// Pentru o ruta anume (cluster de comenzi), alegem un vehicul disponibil care poate sa transporte comenzile
 		// si un sofer disponibil pentru a crea obiectul de Delivery
 		private async Task AssignOrdersToDeliveriesAsync(
@@ -527,15 +369,6 @@ namespace Licenta_v1.Services
 					v.Id == assignedVehicleId.Value &&
 					CanFitOrders(v, orderedOrders));
 			}
-			//if (candidateVehicle == null)
-			//{
-			//	candidateVehicle = vehicles
-			//		.Where(v => !usedVehicleIds.Contains(v.Id) && CanFitOrders(v, orderedOrders))
-			//		.OrderBy(v => v.MaxWeightCapacity)
-			//		.ThenBy(v => v.MaxVolumeCapacity)
-			//		.ThenBy(v => v.FuelType == FuelType.Electric ? 0 : 1)
-			//		.FirstOrDefault();
-			//}
 
 			if (candidateVehicle == null)
 				return;
@@ -579,6 +412,7 @@ namespace Licenta_v1.Services
 			{
 				orderedOrders[i].DeliverySequence = i; // Numar mai mic inseamna ca se va livra mai repede(primele opriri)
 				orderedOrders[i].DeliveryId = delivery.Id;
+				orderedOrders[i].EstimatedDeliveryDate = DateTime.Today.AddDays(1);
 				db.Orders.Update(orderedOrders[i]);
 			}
 
@@ -642,6 +476,38 @@ namespace Licenta_v1.Services
 						// Factorul de emisie e calculat cu metoda de mai jos
 						double emissionFactor = GetEmissionFactor((FuelType)vehicle.FuelType);
 						double emissions = fuelConsumed * emissionFactor; // in g CO2
+
+						DateTime baseTime = delivery.PlannedStartDate;
+						// Iau comenzile sortate dupa DeliverySequence
+						var sortedOrders2 = orders.OrderBy(o => o.DeliverySequence).ToList();
+						// Iau durata totala a rutei si imparte-o la numarul de comenzi
+						double averageInterval = (duration / 60.0) / sortedOrders2.Count; // in minute
+
+						// Pt fiecare comanda, calculez un timp estimat cumulativ plus 5 minute in plus per comanda
+						for (int i = 0; i < sortedOrders2.Count; i++)
+						{
+							double estimatedMinutes = i * averageInterval + i * 5; // extra 5 minute pe comanda
+
+							// Ca sa inceapa numararea de la ora 8, cand incepe si programul de munca
+							DateTime estimatedDeliveryTime = baseTime.AddMinutes(estimatedMinutes).AddHours(8);
+
+							// Impart intervalul de livrare in 2 intervale: 8-12, 12-18
+							string interval;
+							if (estimatedDeliveryTime.Hour >= 8 && estimatedDeliveryTime.Hour < 12)
+							{
+								interval = "8-12";
+							}
+							else if (estimatedDeliveryTime.Hour >= 12 && estimatedDeliveryTime.Hour < 18)
+							{
+								interval = "12-18";
+							}
+							else
+							{
+								interval = "N/A";
+							}
+							sortedOrders2[i].EstimatedDeliveryInterval = interval;
+							db.Orders.Update(sortedOrders2[i]);
+						}
 
 						// Actualizez Delivery
 						delivery.DistanceEstimated = distanceKm; // kilometri

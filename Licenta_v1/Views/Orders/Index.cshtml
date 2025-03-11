@@ -5,6 +5,8 @@
 @{
     ViewBag.Title = "Orders";
     bool showColored = User.IsInRole("Admin") || User.IsInRole("Dispecer"); // Doar Adminii si Dispecerii vad diferit Orders
+    var regionsList = (ViewBag.Regions as SelectList).ToList();
+    regionsList.Insert(0, new SelectListItem { Text = "All Regions", Value = "0", Selected = (ViewBag.RegionId == null || ViewBag.RegionId.ToString() == "0") });
 }
 
 @if (TempData["Success"] != null)
@@ -72,10 +74,7 @@
             <!-- Afisez dropdown-ul cu regiuni doar pentru Admin si Client -->
             <div class="col-md-3 col-sm-6">
                 <label for="regionSelector" class="form-label">Region</label>
-                @Html.DropDownList("regionId",
-                         ViewBag.Regions as SelectList,
-                         "All Regions",
-                         new { @class = "form-select" })
+                @Html.DropDownList("regionId", regionsList, new { @class = "form-select" })
             </div>
         }
 

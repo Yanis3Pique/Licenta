@@ -185,7 +185,7 @@ namespace Licenta_v1.Services
 					{
 						id = o.Id,
 						location = new[] { o.Longitude ?? 0.0, o.Latitude ?? 0.0 },
-						amount = new[] { (int)(o.Weight ?? 0), (int)(o.Volume ?? 0) }
+						amount = new[] { (int)(o.Weight ?? 0), (int)(o.Volume ?? 0) },
 					}),
 					vehicles = subset.Select(v => new
 					{

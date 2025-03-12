@@ -22,6 +22,116 @@ namespace Licenta_v1.Controllers
 			rps = routePlannerService;
 		}
 
+		[Authorize(Roles = "Dispecer")]
+		public IActionResult Create()
+		{
+			// Iau Dispecerul(userul curent)
+			var user = db.ApplicationUsers.FirstOrDefault(u => u.UserName == User.Identity.Name);
+			if (user == null)
+				return Unauthorized();
+
+			// Iau comenzile disponibile in regiunea Dispecerului (comenzi neasignate)
+			var availableOrders = db.Orders
+				.Where(o => o.Status == OrderStatus.Placed && o.DeliveryId == null && o.RegionId == user.RegionId)
+				.ToList();
+
+			// Iau soferii disponibili in regiunea Dispecerului
+			var availableDrivers = (from u in db.ApplicationUsers
+									join ur in db.UserRoles on u.Id equals ur.UserId
+									join r in db.Roles on ur.RoleId equals r.Id
+									where r.Name == "Sofer" && u.IsAvailable == true && u.RegionId == user.RegionId
+									select u).ToList();
+
+			// Iau vehiculele disponibile in regiunea Dispecerului
+			var availableVehicles = db.Vehicles
+				.Where(v => v.Status == VehicleStatus.Available && v.RegionId == user.RegionId)
+				.ToList();
+
+			// Pentru capacitate, folosesc capacitatea primului vehicul disponibil (NU E BINEEEEEEEEEEEEEEEEEEEEEEE)
+			double totalWeightCapacity = availableVehicles.FirstOrDefault()?.MaxWeightCapacity ?? 1;
+			double totalVolumeCapacity = availableVehicles.FirstOrDefault()?.MaxVolumeCapacity ?? 1;
+
+			// Trimit datele la View
+			ViewBag.AvailableOrders = availableOrders;
+			ViewBag.AvailableDrivers = availableDrivers;
+			ViewBag.AvailableVehicles = availableVehicles;
+			ViewBag.TotalWeightCapacity = totalWeightCapacity;
+			ViewBag.TotalVolumeCapacity = totalVolumeCapacity;
+
+			return View();
+		}
+
+		[HttpPost]
+		[Authorize(Roles = "Dispecer")]
+		public async Task<IActionResult> CreateDelivery(string driverId, int vehicleId, int[] selectedOrderIds, ApplicationUser u)
+		{
+			var user = await db.ApplicationUsers.FirstOrDefaultAsync(u => u.UserName == User.Identity.Name);
+			if (user == null)
+				return Unauthorized();
+
+			// Iau comenzile selectate si neasignate niciunui Delivery
+			var orders = db.Orders.Where(o => selectedOrderIds.Contains(o.Id) && o.DeliveryId == null).ToList();
+			if (!orders.Any())
+			{
+				TempData["Error"] = "Please select at least one order.";
+				return RedirectToAction("Create");
+			}
+
+			// Iau soferul selectat
+			var driver = db.ApplicationUsers.FirstOrDefault(u => u.Id == driverId && u.IsAvailable == true);
+			if (driver == null)
+			{
+				TempData["Error"] = "The selected driver is not available.";
+				return RedirectToAction("Create");
+			}
+
+			// Iau vehiculul selectat
+			var vehicle = db.Vehicles.FirstOrDefault(v => v.Id == vehicleId && v.Status == VehicleStatus.Available);
+			if (vehicle == null)
+			{
+				TempData["Error"] = "The selected vehicle is not available.";
+				return RedirectToAction("Create");
+			}
+
+			// Verific daca comenzile selectate se incadreaza in capacitatea vehiculului
+			double usedWeight = orders.Sum(o => o.Weight ?? 0);
+			double usedVolume = orders.Sum(o => o.Volume ?? 0);
+			if (usedWeight > vehicle.MaxWeightCapacity || usedVolume > vehicle.MaxVolumeCapacity)
+			{
+				TempData["Error"] = "The selected orders exceed the vehicle's capacity.";
+				return RedirectToAction("Create");
+			}
+
+			// Fac un nou Delivery
+			var delivery = new Delivery
+			{
+				VehicleId = vehicle.Id,
+				DriverId = driver.Id,
+				Status = "Planned",
+				PlannedStartDate = DateTime.Now,
+				Orders = new List<Order>()
+			};
+
+			// Asociez fiecare Order cu noul Delivery
+			foreach (var order in orders)
+			{
+				order.DeliveryId = delivery.Id;
+				delivery.Orders.Add(order);
+				db.Orders.Update(order);
+			}
+
+			vehicle.Status = VehicleStatus.Busy;
+			driver.IsAvailable = false;
+			db.Deliveries.Add(delivery);
+			db.Vehicles.Update(vehicle);
+			db.ApplicationUsers.Update(driver);
+
+			await db.SaveChangesAsync();
+			TempData["Success"] = "Delivery created successfully!";
+			return RedirectToAction("Show", new { id = delivery.Id });
+		}
+
+
 		[Authorize(Roles = "Admin,Dispecer")]
 		public async Task<IActionResult> Index(
 			string searchString,
@@ -397,6 +507,8 @@ namespace Licenta_v1.Controllers
 				{
 					order.DeliveryId = null;
 					order.DeliverySequence = null;
+					order.EstimatedDeliveryInterval = null;
+					order.EstimatedDeliveryDate = null;
 					db.Orders.Update(order);
 				}
 
@@ -700,6 +812,56 @@ namespace Licenta_v1.Controllers
 			db.SaveChanges();
 			TempData["Success"] = "Delivery successfully claimed!";
 			return RedirectToAction("ShowDeliveriesOfDriver", new { id = user.Id });
+		}
+
+		[HttpPost]
+		[Authorize(Roles = "Admin,Dispecer")]
+		public async Task<IActionResult> DeleteDelivery(int id)
+		{
+			// Iau Delivery-ul cu Vehicle, Driver si Orders
+			var delivery = db.Deliveries
+				.Include(d => d.Vehicle)
+				.Include(d => d.Driver)
+				.Include(d => d.Orders)
+				.FirstOrDefault(d => d.Id == id);
+
+			if (delivery == null)
+			{
+				TempData["Error"] = "Delivery not found.";
+				return RedirectToAction("Index");
+			}
+
+			// Resetez fiecare comanda: elimin asocierea cu Delivery-ul si resetez statusul comenzii
+			foreach (var order in delivery.Orders)
+			{
+				order.DeliveryId = null;
+				order.DeliverySequence = null;
+				order.Status = OrderStatus.Placed;
+				order.EstimatedDeliveryInterval = null;
+				order.EstimatedDeliveryDate = null;
+				db.Orders.Update(order);
+			}
+
+			// Fac vehiculul disponibil
+			if (delivery.Vehicle != null)
+			{
+				delivery.Vehicle.Status = VehicleStatus.Available;
+				db.Vehicles.Update(delivery.Vehicle);
+			}
+
+			// Fac soferul disponibil
+			if (delivery.Driver != null)
+			{
+				delivery.Driver.IsAvailable = true;
+				db.ApplicationUsers.Update(delivery.Driver);
+			}
+
+			db.Deliveries.Remove(delivery);
+
+			await db.SaveChangesAsync();
+
+			TempData["Success"] = "Delivery deleted successfully!";
+			return RedirectToAction("Index");
 		}
 
 		private double HaversineDistance(double lat1, double lon1, double lat2, double lon2)

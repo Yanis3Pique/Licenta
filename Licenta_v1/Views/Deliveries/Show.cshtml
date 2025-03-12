@@ -245,12 +245,12 @@
             @if (Model.Status == "Planned")
             {
                 <a asp-action="StartDelivery" asp-route-id="@Model.Id"
-                   class="btn btn-success btn-lg fw-bold action-btn">
+                class="btn btn-success btn-lg fw-bold action-btn">
                     🚚 Start Delivery
                 </a>
             }
             @if (Model.Status == "In Progress" && Model.Orders.All(o => o.Status == OrderStatus.Delivered || 
-                                                                        o.Status == OrderStatus.FailedDelivery))
+                                                                       o.Status == OrderStatus.FailedDelivery))
             {
                 <form asp-action="CompleteDelivery" method="post" class="mt-4">
                     <input type="hidden" name="id" value="@Model.Id" />
@@ -259,13 +259,13 @@
                             Please enter the Odometer Reading (km):
                         </label>
                         <input type="number"
-                               step="1"
-                               min="@Model.Vehicle.TotalDistanceTraveledKM"
-                               value="@Model.Vehicle.TotalDistanceTraveledKM"
-                               id="newOdometerReading"
-                               name="newOdometerReading"
-                               required
-                               class="form-control" />
+                        step="1"
+                        min="@Model.Vehicle.TotalDistanceTraveledKM"
+                        value="@Model.Vehicle.TotalDistanceTraveledKM"
+                        id="newOdometerReading"
+                        name="newOdometerReading"
+                        required
+                        class="form-control" />
                         <div class="form-text">
                             The entered value must be higher than the current odometer reading(@ViewBag.VehicleTotalKMBefore km).
                         </div>
@@ -300,5 +300,12 @@ else if (User.IsInRole("Admin") || User.IsInRole("Dispecer"))
                 </li>
             }
         </ul>
+        <br />
+        <div class="text-center">
+            <form method="post" asp-action="DeleteDelivery" onsubmit="return confirm('Are you sure you want to delete this delivery?');">
+                <input type="hidden" name="id" value="@Model.Id" />
+                <button type="submit" class="btn btn-danger">Delete Delivery</button>
+            </form>
+        </div>
     </div>
 }

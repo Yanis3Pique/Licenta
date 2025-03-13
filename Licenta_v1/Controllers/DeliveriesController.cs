@@ -30,46 +30,39 @@ namespace Licenta_v1.Controllers
 			if (user == null)
 				return Unauthorized();
 
-			// Iau comenzile disponibile in regiunea Dispecerului (comenzi neasignate)
+			// Iau Comenzile disponibile in regiunea Dispecerului (comenzi neasignate)
 			var availableOrders = db.Orders
 				.Where(o => o.Status == OrderStatus.Placed && o.DeliveryId == null && o.RegionId == user.RegionId)
 				.ToList();
 
-			// Iau soferii disponibili in regiunea Dispecerului
+			// Iau Soferii disponibili in regiunea Dispecerului
 			var availableDrivers = (from u in db.ApplicationUsers
 									join ur in db.UserRoles on u.Id equals ur.UserId
 									join r in db.Roles on ur.RoleId equals r.Id
 									where r.Name == "Sofer" && u.IsAvailable == true && u.RegionId == user.RegionId
 									select u).ToList();
 
-			// Iau vehiculele disponibile in regiunea Dispecerului
+			// Iau Vehiculele disponibile in regiunea Dispecerului
 			var availableVehicles = db.Vehicles
 				.Where(v => v.Status == VehicleStatus.Available && v.RegionId == user.RegionId)
 				.ToList();
 
-			// Pentru capacitate, folosesc capacitatea primului vehicul disponibil (NU E BINEEEEEEEEEEEEEEEEEEEEEEE)
-			double totalWeightCapacity = availableVehicles.FirstOrDefault()?.MaxWeightCapacity ?? 1;
-			double totalVolumeCapacity = availableVehicles.FirstOrDefault()?.MaxVolumeCapacity ?? 1;
-
-			// Trimit datele la View
 			ViewBag.AvailableOrders = availableOrders;
 			ViewBag.AvailableDrivers = availableDrivers;
 			ViewBag.AvailableVehicles = availableVehicles;
-			ViewBag.TotalWeightCapacity = totalWeightCapacity;
-			ViewBag.TotalVolumeCapacity = totalVolumeCapacity;
 
 			return View();
 		}
 
 		[HttpPost]
 		[Authorize(Roles = "Dispecer")]
-		public async Task<IActionResult> CreateDelivery(string driverId, int vehicleId, int[] selectedOrderIds, ApplicationUser u)
+		public async Task<IActionResult> CreateDelivery(string driverId, int vehicleId, int[] selectedOrderIds)
 		{
 			var user = await db.ApplicationUsers.FirstOrDefaultAsync(u => u.UserName == User.Identity.Name);
 			if (user == null)
 				return Unauthorized();
 
-			// Iau comenzile selectate si neasignate niciunui Delivery
+			// Iau Comenzile selectate de user
 			var orders = db.Orders.Where(o => selectedOrderIds.Contains(o.Id) && o.DeliveryId == null).ToList();
 			if (!orders.Any())
 			{
@@ -77,7 +70,7 @@ namespace Licenta_v1.Controllers
 				return RedirectToAction("Create");
 			}
 
-			// Iau soferul selectat
+			// Iau Soferul selectat de user
 			var driver = db.ApplicationUsers.FirstOrDefault(u => u.Id == driverId && u.IsAvailable == true);
 			if (driver == null)
 			{
@@ -85,7 +78,7 @@ namespace Licenta_v1.Controllers
 				return RedirectToAction("Create");
 			}
 
-			// Iau vehiculul selectat
+			// Iau Vehiculul selectat de user
 			var vehicle = db.Vehicles.FirstOrDefault(v => v.Id == vehicleId && v.Status == VehicleStatus.Available);
 			if (vehicle == null)
 			{
@@ -108,11 +101,11 @@ namespace Licenta_v1.Controllers
 				VehicleId = vehicle.Id,
 				DriverId = driver.Id,
 				Status = "Planned",
-				PlannedStartDate = DateTime.Now,
+				PlannedStartDate = DateTime.Now.AddDays(1),
 				Orders = new List<Order>()
 			};
 
-			// Asociez fiecare Order cu noul Delivery
+			// Pun fiecare Order in Delivery-ul nou creat
 			foreach (var order in orders)
 			{
 				order.DeliveryId = delivery.Id;
@@ -120,6 +113,7 @@ namespace Licenta_v1.Controllers
 				db.Orders.Update(order);
 			}
 
+			// Actualizez statusurile: marchez vehiculul ca fiind ocupat si soferul ca fiind indisponibil
 			vehicle.Status = VehicleStatus.Busy;
 			driver.IsAvailable = false;
 			db.Deliveries.Add(delivery);
@@ -127,10 +121,15 @@ namespace Licenta_v1.Controllers
 			db.ApplicationUsers.Update(driver);
 
 			await db.SaveChangesAsync();
+
+			// Recalculez estimarile si DeliverySequence-ul
+			await opt.RecalculateDeliveryMetrics(db, delivery);
+
+			await db.SaveChangesAsync();
+
 			TempData["Success"] = "Delivery created successfully!";
 			return RedirectToAction("Show", new { id = delivery.Id });
 		}
-
 
 		[Authorize(Roles = "Admin,Dispecer")]
 		public async Task<IActionResult> Index(

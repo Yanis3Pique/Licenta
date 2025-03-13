@@ -1,10 +1,5 @@
-﻿@*
-    For more information on enabling MVC for empty projects, visit https://go.microsoft.com/fwlink/?LinkID=397860
-*@
-@{
+﻿@{
     ViewBag.Title = "Create Delivery";
-    var totalWeight = ViewBag.TotalWeightCapacity;
-    var totalVolume = ViewBag.TotalVolumeCapacity;
     var availableOrders = ViewBag.AvailableOrders as List<Order>;
     var availableDrivers = ViewBag.AvailableDrivers as List<ApplicationUser>;
     var availableVehicles = ViewBag.AvailableVehicles as List<Vehicle>;
@@ -19,13 +14,17 @@
     <div class="alert alert-success">@TempData["Success"]</div>
 }
 
-<!-- Capacity progress container -->
-<div id="capacity-progress" data-total-weight="@totalWeight" data-total-volume="@totalVolume" class="mb-3">
-    <div class="mb-1">Weight: <span id="weightValue">0 / @totalWeight kg</span></div>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="~/js/create_delivery.js"></script>
+
+<!-- Container pt progresul capacitatii -->
+<div id="capacity-progress" data-total-weight="1" data-total-volume="1" class="mb-3">
+    <div class="mb-1">Weight: <span id="weightValue">0 / 1 kg</span></div>
     <div class="progress mb-2">
         <div id="weightProgress" class="progress-bar bg-primary" role="progressbar" style="width: 0%;"></div>
     </div>
-    <div class="mb-1">Volume: <span id="volumeValue">0 / @totalVolume m³</span></div>
+    <div class="mb-1">Volume: <span id="volumeValue">0 / 1 m³</span></div>
     <div class="progress">
         <div id="volumeProgress" class="progress-bar bg-info" role="progressbar" style="width: 0%;"></div>
     </div>
@@ -47,7 +46,9 @@
         <select id="vehicleSelect" name="vehicleId" class="form-control">
             @foreach (var vehicle in availableVehicles)
             {
-                <option value="@vehicle.Id">
+                <option value="@vehicle.Id"
+                        data-maxweight="@vehicle.MaxWeightCapacity"
+                        data-maxvolume="@vehicle.MaxVolumeCapacity">
                     @vehicle.Brand @vehicle.Model (@vehicle.RegistrationNumber)
                 </option>
             }
@@ -79,83 +80,3 @@
 </form>
 
 <div id="map" style="width: 100%; height: 500px; margin-top: 20px;"></div>
-
-@section Scripts {
-    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
-    <script>
-        document.addEventListener("DOMContentLoaded", function () {
-            // Get capacity container values
-            var progressContainer = document.getElementById("capacity-progress");
-            var totalWeight = parseFloat(progressContainer.getAttribute("data-total-weight")) || 1;
-            var totalVolume = parseFloat(progressContainer.getAttribute("data-total-volume")) || 1;
-            var createButton = document.getElementById("createDeliveryButton");
-
-            // Update capacity visuals and map markers
-            function updateCapacityVisuals() {
-                var checkboxes = document.querySelectorAll(".order-checkbox");
-                var usedWeight = 0, usedVolume = 0;
-                checkboxes.forEach(function (checkbox) {
-                    if (checkbox.checked) {
-                        usedWeight += parseFloat(checkbox.getAttribute("data-weight")) || 0;
-                        usedVolume += parseFloat(checkbox.getAttribute("data-volume")) || 0;
-                    }
-                });
-                var weightPerc = Math.min((usedWeight / totalWeight) * 100, 100);
-                var volumePerc = Math.min((usedVolume / totalVolume) * 100, 100);
-                document.getElementById("weightProgress").style.width = weightPerc + "%";
-                document.getElementById("volumeProgress").style.width = volumePerc + "%";
-                document.getElementById("weightValue").innerText = usedWeight.toFixed(1) + " / " + totalWeight + " kg";
-                document.getElementById("volumeValue").innerText = usedVolume.toFixed(1) + " / " + totalVolume + " m³";
-
-                // Disable the create button if capacity is exceeded
-                createButton.disabled = (usedWeight > totalWeight || usedVolume > totalVolume);
-
-                // Update map markers accordingly
-                updateMapMarkers();
-            }
-
-            // Attach change event to each order checkbox
-            var orderCheckboxes = document.querySelectorAll(".order-checkbox");
-            orderCheckboxes.forEach(function (checkbox) {
-                checkbox.addEventListener("change", updateCapacityVisuals);
-            });
-            updateCapacityVisuals();
-
-            // Initialize the map (default center set arbitrarily, adjust as needed)
-            var map = L.map('map').setView([45.9432, 24.9668], 7);
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                attribution: '© OpenStreetMap contributors'
-            }).addTo(map);
-
-            var markers = [];
-            function updateMapMarkers() {
-                // Remove existing markers
-                markers.forEach(function (marker) {
-                    map.removeLayer(marker);
-                });
-                markers = [];
-
-                orderCheckboxes.forEach(function (checkbox) {
-                    var lat = parseFloat(checkbox.getAttribute("data-latitude"));
-                    var lng = parseFloat(checkbox.getAttribute("data-longitude"));
-                    if (!isNaN(lat) && !isNaN(lng)) {
-                        // Use red icon if selected, blue if not
-                        var iconUrl = checkbox.checked
-                            ? "https://cdn-icons-png.flaticon.com/512/1828/1828665.png"
-                            : "https://cdn-icons-png.flaticon.com/512/1828/1828843.png";
-                        var icon = L.icon({
-                            iconUrl: iconUrl,
-                            iconSize: [25, 41],
-                            iconAnchor: [12, 41]
-                        });
-                        var marker = L.marker([lat, lng], { icon: icon })
-                            .addTo(map)
-                            .bindPopup("Order #" + checkbox.value);
-                        markers.push(marker);
-                    }
-                });
-            }
-            updateMapMarkers();
-        });
-    </script>
-}

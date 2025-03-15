@@ -206,7 +206,7 @@ namespace Licenta_v1.Controllers
 		public IActionResult Show(int id)
 		{
 			var user = db.ApplicationUsers.FirstOrDefault(u => u.UserName == User.Identity.Name);
-			
+
 			if (user == null)
 			{
 				return Unauthorized(); // Trebuie sa fie un user autentificat
@@ -341,7 +341,7 @@ namespace Licenta_v1.Controllers
 
 			if (delivery == null)
 				return NotFound();
-			
+
 			// Daca Delivery-ul are alt status decat Planned, nu am voie sa o editez
 			if (delivery.Status != "Planned")
 			{
@@ -753,7 +753,7 @@ namespace Licenta_v1.Controllers
 			if (id <= 0)
 			{
 				TempData["Error"] = "Invalid delivery ID!";
-				return RedirectToAction("ShowDeliveriesOfDriver",  new { user.Id });
+				return RedirectToAction("ShowDeliveriesOfDriver", new { user.Id });
 			}
 
 			if (!lat.HasValue || !lon.HasValue)

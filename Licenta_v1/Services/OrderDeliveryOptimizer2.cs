@@ -17,6 +17,8 @@ namespace Licenta_v1.Services
 	{
 		private readonly IServiceScopeFactory scopeFactory; // Ca sa creez mai multe instante de DbContext
 		private readonly string OpenRouteServiceApiKey;
+		private const int MaxWorkingSeconds = 6 * 3600; // 6 ore
+		private const int ServiceTimePerOrderSeconds = 300; // 5 minute pe comanda
 
 		public OrderDeliveryOptimizer2(IServiceScopeFactory serviceScopeFactory, string apiKey)
 		{
@@ -81,7 +83,8 @@ namespace Licenta_v1.Services
 				Longitude = headquarter.Longitude ?? 0
 			};
 
-			// Use all orders as one cluster, sorted by placed date and priority.
+			// Use all orders as one cluster, sorted by placed date and priority
+			// Folosesc toate comenzile ca un singur cluster, sortate dupa data plasarii si prioritate
 			var clusters = new List<List<Order>>
 			{
 				orders.OrderBy(o => o.PlacedDate)
@@ -156,6 +159,13 @@ namespace Licenta_v1.Services
 		private bool IsRouteFeasible(List<Order> orders, List<Vehicle> vehicles)
 		{
 			return vehicles.Any(v => CanFitOrders(v, orders));
+		}
+
+		// Helper care verifica daca ruta se incadreaza in limita de timp
+		private bool IsRouteWithinTimeLimit(int routeDurationSeconds, int numberOfOrders)
+		{
+			int totalServiceTime = numberOfOrders * ServiceTimePerOrderSeconds;
+			return (routeDurationSeconds + totalServiceTime) <= MaxWorkingSeconds;
 		}
 
 		// Metoda imparte vehiculele disponibile in submultimi (de cel mult 3 vehicule)
@@ -237,12 +247,44 @@ namespace Licenta_v1.Services
 						}
 						if (orderedOrders.Any())
 						{
-							combinedResults.Add(new RouteResult
+							// Iau durata totala din raspunsul ORS
+							int routeDurationSeconds = route.Duration;
+
+							// Verific daca ruta se incadreaza in limita de timp
+							if (IsRouteWithinTimeLimit(routeDurationSeconds, orderedOrders.Count))
 							{
-								VehicleId = route.Vehicle,
-								Orders = orderedOrders
-							});
-							anyRouteFound = true;
+								combinedResults.Add(new RouteResult
+								{
+									VehicleId = route.Vehicle,
+									Orders = orderedOrders
+								});
+								anyRouteFound = true;
+							}
+							else
+							{
+								// Sterg din coada pana cand ruta se incadreaza in limita de timp
+								while (orderedOrders.Count > 0)
+								{
+									orderedOrders.RemoveAt(orderedOrders.Count - 1); // Sterg ultima comanda adaugata
+
+									if (!orderedOrders.Any())
+										break;
+
+									// Apoi recalculez durata pentru setul de comenzi redus ca sa vad daca se incadreaza in timp
+									routeDurationSeconds = await GetRouteDurationFromORS(orderedOrders, depot);
+
+									if (IsRouteWithinTimeLimit(routeDurationSeconds, orderedOrders.Count))
+									{
+										combinedResults.Add(new RouteResult
+										{
+											VehicleId = route.Vehicle,
+											Orders = orderedOrders
+										});
+										anyRouteFound = true;
+										break;
+									}
+								}
+							}
 						}
 					}
 					if (anyRouteFound)
@@ -267,6 +309,40 @@ namespace Licenta_v1.Services
 				}
 			}
 			return combinedResults;
+		}
+
+		private async Task<int> GetRouteDurationFromORS(List<Order> orders, Depot2 depot)
+		{
+			var coordinates = new List<double[]>
+			{
+				new double[] { depot.Longitude, depot.Latitude }
+			};
+			coordinates.AddRange(orders.Select(o => new double[] { o.Longitude ?? 0.0, o.Latitude ?? 0.0 }));
+			coordinates.Add(new double[] { depot.Longitude, depot.Latitude });
+
+			var directionsRequest = new { coordinates };
+			string requestUrl = "https://api.openrouteservice.org/v2/directions/driving-car";
+			string jsonBody = JsonConvert.SerializeObject(directionsRequest);
+
+			using (var client = new HttpClient())
+			{
+				client.DefaultRequestHeaders.Add("Authorization", OpenRouteServiceApiKey);
+				var content = new StringContent(jsonBody, Encoding.UTF8, "application/json");
+				var response = await client.PostAsync(requestUrl, content);
+				var responseJson = await response.Content.ReadAsStringAsync();
+
+				if (response.IsSuccessStatusCode)
+				{
+					var directionsResponse = JsonConvert.DeserializeObject<ORSRouteResponse>(responseJson);
+					if (directionsResponse?.routes?.Any() == true)
+					{
+						return (int)directionsResponse.routes[0].summary.duration;
+					}
+				}
+
+				Debug.WriteLine("Failed to recalculate duration from ORS.");
+				return int.MaxValue; // Daca nu am primit raspuns de la ORS, returnez un nr mare
+			}
 		}
 
 		// Metoda de partitionare spatiala: impart un cluster in doua subclustere pe baza dispersiei spatiale
@@ -327,6 +403,9 @@ namespace Licenta_v1.Services
 
 			[JsonProperty("steps")]
 			public List<ORSOptimizationStep> Steps { get; set; }
+
+			[JsonProperty("duration")]
+			public int Duration { get; set; } // secunde
 		}
 
 		public class ORSOptimizationStep

@@ -24,8 +24,7 @@ namespace Licenta_v1.Services
 		// Ma folosesc de API-ul celor de la OpenRouteService Directions
 		public async Task<RouteResult> CalculateOptimalRouteAsync(Delivery delivery)
 		{
-			var orders = delivery.Orders?.Where(o => o.Latitude.HasValue && o.Longitude.HasValue)
-										 .ToList();
+			var orders = delivery.Orders?.Where(o => o.Latitude.HasValue && o.Longitude.HasValue).ToList();
 			if (orders == null || orders.Count == 0)
 				throw new Exception("No valid orders found for route planning.");
 
@@ -42,12 +41,11 @@ namespace Licenta_v1.Services
 
 			// Construiesc vectorul de coordonate pentru API (formatul [longitude, latitude])
 			// Incep cu HQ, apoi adaug comenzile in ordinea stabilita (DeliverySequence), apoi intorc la HQ
-			var coordinates = new List<double[]>();
-			coordinates.Add(new double[] { start.Longitude, start.Latitude });
-			foreach (var order in orderedStops)
+			var coordinates = new List<double[]>
 			{
-				coordinates.Add(new double[] { order.Longitude.Value, order.Latitude.Value });
-			}
+				new double[] { start.Longitude, start.Latitude }
+			};
+			coordinates.AddRange(orderedStops.Select(order => new double[] { order.Longitude.Value, order.Latitude.Value }));
 			coordinates.Add(new double[] { start.Longitude, start.Latitude });
 
 			Debug.WriteLine("Request Coordinates:");
@@ -57,15 +55,45 @@ namespace Licenta_v1.Services
 			}
 
 			// Construiesc request-ul pentru API-ul ORS Directions
-			var requestBody = new { coordinates = coordinates, instructions = true };
+			var profile = GetVehicleProfile(delivery.Vehicle.VehicleType);
+
+			dynamic requestBody = new
+			{
+				coordinates = coordinates,
+				instructions = true
+			};
+
+			// Adaug proprietatea de OPTIONS pt masinile mai mari
+			if (profile == "driving-hgv")
+			{
+				requestBody = new
+				{
+					coordinates = coordinates,
+					instructions = true,
+					options = new
+					{
+						profile_params = new
+						{
+							restrictions = new
+							{
+								height = delivery.Vehicle.HeightMeters ?? 4.0,
+								width = delivery.Vehicle.WidthMeters ?? 2.5,
+								length = delivery.Vehicle.LengthMeters ?? 12,
+								weight = delivery.Vehicle.WeightTons ?? 40
+							}
+						}
+					}
+				};
+			}
+
+
 			var jsonBody = JsonConvert.SerializeObject(requestBody);
 			var content = new StringContent(jsonBody, Encoding.UTF8, "application/json");
 
 			using var client = new HttpClient();
 			client.DefaultRequestHeaders.Add("Authorization", OpenRouteServiceApiKey);
-			string url = "https://api.openrouteservice.org/v2/directions/driving-car";
+			string url = $"https://api.openrouteservice.org/v2/directions/{profile}";
 
-			Debug.WriteLine("Request JSON: " + jsonBody);
 			var response = await client.PostAsync(url, content);
 			var responseJson = await response.Content.ReadAsStringAsync();
 			Debug.WriteLine("Response JSON: " + responseJson);
@@ -134,6 +162,20 @@ namespace Licenta_v1.Services
 				poly.Add(new Coordinate { Latitude = lat / 1E5, Longitude = lng / 1E5 });
 			}
 			return poly;
+		}
+
+		private string GetVehicleProfile(VehicleType vehicleType)
+		{
+			switch (vehicleType)
+			{
+				case VehicleType.HeavyTruck:
+				case VehicleType.SmallTruck:
+					return "driving-hgv";
+				case VehicleType.Van:
+				case VehicleType.Car:
+				default:
+					return "driving-car";
+			}
 		}
 	}
 

@@ -724,6 +724,20 @@ namespace Licenta_v1.Services
 					return 2500; // medie
 			}
 		}
+
+		private string GetVehicleProfile(VehicleType vehicleType)
+		{
+			switch (vehicleType)
+			{
+				case VehicleType.HeavyTruck:
+				case VehicleType.SmallTruck:
+					return "driving-hgv";
+				case VehicleType.Van:
+				case VehicleType.Car:
+				default:
+					return "driving-car";
+			}
+		}
 	}
 
 	// Clasa pentru Depozit (Headquarter)

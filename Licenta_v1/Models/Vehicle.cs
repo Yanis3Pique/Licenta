@@ -20,11 +20,15 @@ namespace Licenta_v1.Models
 		[Required(ErrorMessage = "The year of manufacture is mandatory.")]
 		[Range(1900, 2025, ErrorMessage = "The year of manufacture must be between 1900 and 2025.")]
 		public int? YearOfManufacture { get; set; }
-		[EnumDataType(typeof(VehicleStatus), ErrorMessage = "Invalid vehicle type.")]
-		public VehicleStatus? Status { get; set; } = VehicleStatus.Available; // (Active, Busy, Maintenance, Retired)
+		[Required(ErrorMessage = "Status type is mandatory.")]
+		[EnumDataType(typeof(VehicleStatus), ErrorMessage = "Invalid status type.")]
+		public VehicleStatus Status { get; set; } = VehicleStatus.Available; // (Active, Busy, Maintenance, Retired)
 		[Required(ErrorMessage = "The fuel type is mandatory.")]
 		[EnumDataType(typeof(FuelType), ErrorMessage = "Invalid fuel type.")]
 		public FuelType? FuelType { get; set; } // (Diesel, Petrol, LPG, Electric, Hybrid)
+		[Required(ErrorMessage = "Vehicle type is mandatory.")]
+		[EnumDataType(typeof(VehicleType), ErrorMessage = "Invalid vehicle type.")]
+		public VehicleType VehicleType { get; set; }
 		[Required(ErrorMessage = "The max weight capacity is mandatory.")]
 		[Range(0, double.MaxValue, ErrorMessage = "The max weight capacity must be a positive number.")]
 		public double? MaxWeightCapacity { get; set; }
@@ -39,6 +43,23 @@ namespace Licenta_v1.Models
 		[Required(ErrorMessage = "The total distance traveled is mandatory.")]
 		[Range(0, double.MaxValue, ErrorMessage = "The total distance traveled must be a positive number.")]
 		public double? TotalDistanceTraveledKM { get; set; }
+
+		// Dimensiuni - pt rutare
+		[Required(ErrorMessage = "Vehicle height is mandatory.")]
+		[Range(0, double.MaxValue, ErrorMessage = "Height must be positive (meters).")]
+		public double? HeightMeters { get; set; }
+
+		[Required(ErrorMessage = "Vehicle width is mandatory.")]
+		[Range(0, double.MaxValue, ErrorMessage = "Width must be positive (meters).")]
+		public double? WidthMeters { get; set; }
+
+		[Required(ErrorMessage = "Vehicle length is mandatory.")]
+		[Range(0, double.MaxValue, ErrorMessage = "Length must be positive (meters).")]
+		public double? LengthMeters { get; set; }
+
+		[Required(ErrorMessage = "Vehicle total weight is mandatory.")]
+		[Range(0, double.MaxValue, ErrorMessage = "Weight must be positive (tons).")]
+		public double? WeightTons { get; set; }
 		public string? ImagePath { get; set; }
 
 		public virtual Region? Region { get; set; }

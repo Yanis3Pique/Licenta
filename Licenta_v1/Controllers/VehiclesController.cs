@@ -9,7 +9,9 @@ using Microsoft.AspNetCore.Mvc.Rendering;
 using Microsoft.EntityFrameworkCore;
 using SendGrid;
 using SendGrid.Helpers.Mail;
+using System.ComponentModel.DataAnnotations;
 using System.Linq;
+using System.Reflection;
 
 namespace Licenta_v1.Controllers
 {
@@ -117,6 +119,18 @@ namespace Licenta_v1.Controllers
 										Value = ((int)f).ToString()
 									});
 
+			ViewBag.VehicleTypes = Enum.GetValues(typeof(VehicleType))
+									   .Cast<VehicleType>()
+									   .Select(vt => new SelectListItem
+									   {
+										   Text = vt.GetType()
+													.GetMember(vt.ToString())
+													.First()
+													.GetCustomAttribute<DisplayAttribute>()?
+													.Name ?? vt.ToString(),
+										   Value = ((int)vt).ToString()
+									   });
+
 			ViewBag.Regions = new SelectList(db.Regions, "Id", "County");
 
 			return View();
@@ -125,7 +139,7 @@ namespace Licenta_v1.Controllers
 		// Post - Vehicles/Create
 		[HttpPost]
 		[Authorize(Roles = "Admin")]
-		public async Task<IActionResult> Create(Vehicle vehicle, IFormFile carPicture)
+		public async Task<IActionResult> Create(Vehicle vehicle, IFormFile? carPicture)
 		{
 			// Varific daca nu cumva am deja in BD o masina cu acelasi nr de inmatriculare
 			if (await db.Vehicles.AnyAsync(v => v.RegistrationNumber == vehicle.RegistrationNumber))
@@ -157,6 +171,18 @@ namespace Licenta_v1.Controllers
 											Text = f.ToString(),
 											Value = ((int)f).ToString()
 										});
+
+				ViewBag.VehicleTypes = Enum.GetValues(typeof(VehicleType))
+									   .Cast<VehicleType>()
+									   .Select(vt => new SelectListItem
+									   {
+										   Text = vt.GetType()
+													.GetMember(vt.ToString())
+													.First()
+													.GetCustomAttribute<DisplayAttribute>()?
+													.Name ?? vt.ToString(),
+										   Value = ((int)vt).ToString()
+									   });
 
 				return View(vehicle);
 			}
@@ -319,6 +345,19 @@ namespace Licenta_v1.Controllers
 										Value = ((int)f).ToString()
 									});
 
+			// Iau toate tipurile de vehicule pentru dropdown
+			ViewBag.VehicleTypes = Enum.GetValues(typeof(VehicleType))
+									   .Cast<VehicleType>()
+									   .Select(vt => new SelectListItem
+									   {
+										   Text = vt.GetType()
+													.GetMember(vt.ToString())
+													.First()
+													.GetCustomAttribute<DisplayAttribute>()?
+													.Name ?? vt.ToString(),
+										   Value = ((int)vt).ToString()
+									   });
+
 			return View(vehicle);
 		}
 
@@ -348,12 +387,17 @@ namespace Licenta_v1.Controllers
 				vehicle.YearOfManufacture = updatedVehicle.YearOfManufacture;
 				vehicle.Status = updatedVehicle.Status;
 				vehicle.FuelType = updatedVehicle.FuelType;
+				vehicle.VehicleType = updatedVehicle.VehicleType;
 				vehicle.ConsumptionRate = updatedVehicle.ConsumptionRate;
 				vehicle.MaxVolumeCapacity = updatedVehicle.MaxVolumeCapacity;
 				vehicle.MaxWeightCapacity = updatedVehicle.MaxWeightCapacity;
 				vehicle.TotalDistanceTraveledKM = updatedVehicle.TotalDistanceTraveledKM;
 				vehicle.ImagePath = vehicle.ImagePath;
 				vehicle.RegionId = updatedVehicle.RegionId;
+				vehicle.HeightMeters = updatedVehicle.HeightMeters;
+				vehicle.WidthMeters = updatedVehicle.WidthMeters;
+				vehicle.LengthMeters = updatedVehicle.LengthMeters;
+				vehicle.WeightTons = updatedVehicle.WeightTons;
 
 				try
 				{
@@ -374,6 +418,34 @@ namespace Licenta_v1.Controllers
 				Value = r.Id.ToString(),
 				Text = r.County
 			}).ToList();
+
+			ViewBag.Statuses = Enum.GetValues(typeof(VehicleStatus))
+								   .Cast<VehicleStatus>()
+								   .Select(s => new SelectListItem
+								   {
+									   Text = s.ToString(),
+									   Value = ((int)s).ToString()
+								   });
+
+			ViewBag.FuelTypes = Enum.GetValues(typeof(FuelType))
+									.Cast<FuelType>()
+									.Select(f => new SelectListItem
+									{
+										Text = f.ToString(),
+										Value = ((int)f).ToString()
+									});
+
+			ViewBag.VehicleTypes = Enum.GetValues(typeof(VehicleType))
+									   .Cast<VehicleType>()
+									   .Select(vt => new SelectListItem
+									   {
+										   Text = vt.GetType()
+													.GetMember(vt.ToString())
+													.First()
+													.GetCustomAttribute<DisplayAttribute>()?
+													.Name ?? vt.ToString(),
+										   Value = ((int)vt).ToString()
+									   });
 
 			TempData["Error"] = "There was an error updating the vehicle. Please check the input.";
 			return View(updatedVehicle);

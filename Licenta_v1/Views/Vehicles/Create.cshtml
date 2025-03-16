@@ -66,6 +66,16 @@
                 <br />
 
                 <div class="form-group">
+                    @Html.LabelFor(m => m.VehicleType, "Vehicle Type")
+                    @Html.DropDownListFor(m => m.VehicleType,
+                             ViewBag.VehicleTypes as IEnumerable<SelectListItem> ?? Enumerable.Empty<SelectListItem>(),
+                             "Select Vehicle Type",
+                             new { @class = "form-control" })
+                    @Html.ValidationMessageFor(m => m.VehicleType, "", new { @class = "text-danger" })
+                </div>
+                <br />
+
+                <div class="form-group">
                     @Html.LabelFor(m => m.MaxWeightCapacity, "Max Weight Capacity (kg)")
                     @Html.TextBoxFor(m => m.MaxWeightCapacity, new { @class = "form-control", type = "number", step = "0.01" })
                     @Html.ValidationMessageFor(m => m.MaxWeightCapacity, "", new { @class = "text-danger" })
@@ -78,6 +88,34 @@
 					@Html.ValidationMessageFor(m => m.MaxVolumeCapacity, "", new { @class = "text-danger" })
 				</div>
 				<br />
+
+                <div class="form-group">
+                    @Html.LabelFor(m => m.HeightMeters, "Height (meters)")
+                    @Html.TextBoxFor(m => m.HeightMeters, new { @class = "form-control", type = "number", step = "0.01" })
+                    @Html.ValidationMessageFor(m => m.HeightMeters, "", new { @class = "text-danger" })
+                </div>
+                <br />
+
+                <div class="form-group">
+                    @Html.LabelFor(m => m.WidthMeters, "Width (meters)")
+                    @Html.TextBoxFor(m => m.WidthMeters, new { @class = "form-control", type = "number", step = "0.01" })
+                    @Html.ValidationMessageFor(m => m.WidthMeters, "", new { @class = "text-danger" })
+                </div>
+                <br />
+
+                <div class="form-group">
+                    @Html.LabelFor(m => m.LengthMeters, "Length (meters)")
+                    @Html.TextBoxFor(m => m.LengthMeters, new { @class = "form-control", type = "number", step = "0.01" })
+                    @Html.ValidationMessageFor(m => m.LengthMeters, "", new { @class = "text-danger" })
+                </div>
+                <br />
+
+                <div class="form-group">
+                    @Html.LabelFor(m => m.WeightTons, "Total Weight (tons)")
+                    @Html.TextBoxFor(m => m.WeightTons, new { @class = "form-control", type = "number", step = "0.01" })
+                    @Html.ValidationMessageFor(m => m.WeightTons, "", new { @class = "text-danger" })
+                </div>
+                <br />
 
                 <div class="form-group">
                     @Html.LabelFor(m => m.RegionId, "Region")

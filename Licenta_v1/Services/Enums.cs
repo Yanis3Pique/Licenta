@@ -3,6 +3,21 @@ using System.Reflection;
 
 namespace Licenta_v1.Services
 {
+	public enum VehicleType
+	{
+		[Display(Name = "Car")]
+		Car,
+
+		[Display(Name = "Van")]
+		Van,
+
+		[Display(Name = "Small Truck")]
+		SmallTruck,
+
+		[Display(Name = "Heavy Truck")]
+		HeavyTruck
+	}
+
 	public enum VehicleStatus
 	{
 		Available,

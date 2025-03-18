@@ -86,7 +86,6 @@ namespace Licenta_v1.Services
 				};
 			}
 
-
 			var jsonBody = JsonConvert.SerializeObject(requestBody);
 			var content = new StringContent(jsonBody, Encoding.UTF8, "application/json");
 

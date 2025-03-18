@@ -168,7 +168,7 @@
         </div>
     </div>
     <div class="text-center">
-        @if (User.IsInRole("Dispecer") && Model.Status == "Planned")
+        @if (User.IsInRole("Dispecer") && (Model.Status == "Planned" || Model.Status == "Up for Taking"))
         {
             <a asp-action="Edit" asp-route-id="@Model.Id" class="btn btn-primary mt-4">
                 Edit Delivery

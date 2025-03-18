@@ -189,20 +189,22 @@ namespace Licenta_v1.Services
 				// Iau un subset de cel mult 3 vehicule din lista sortata
 				var subset = sortedVehicles.Take(3).ToList();
 
+				int scaleFactor = CalculateScaleFactor(remainingOrders);
+
 				var optimizationRequest = new
 				{
 					jobs = remainingOrders.Select(o => new
 					{
 						id = o.Id,
 						location = new[] { o.Longitude ?? 0.0, o.Latitude ?? 0.0 },
-						amount = new[] { (int)(o.Weight ?? 0), (int)(o.Volume ?? 0) },
+						amount = new[] { (int)((o.Weight ?? 0) * scaleFactor), (int)((o.Volume ?? 0) * scaleFactor) },
 					}),
 					vehicles = subset.Select(v => new
 					{
 						id = v.Id,
 						profile = "driving-car",
 						start = new[] { depot.Longitude, depot.Latitude },
-						capacity = new[] { (int)v.MaxWeightCapacity, (int)v.MaxVolumeCapacity },
+						capacity = new[] { (int)(v.MaxWeightCapacity * scaleFactor), (int)(v.MaxVolumeCapacity * scaleFactor) },
 					})
 				};
 
@@ -725,18 +727,26 @@ namespace Licenta_v1.Services
 			}
 		}
 
-		private string GetVehicleProfile(VehicleType vehicleType)
+		private int CalculateScaleFactor(List<Order> orders)
 		{
-			switch (vehicleType)
+			int maxDecimals = 0;
+			foreach (var order in orders)
 			{
-				case VehicleType.HeavyTruck:
-				case VehicleType.SmallTruck:
-					return "driving-hgv";
-				case VehicleType.Van:
-				case VehicleType.Car:
-				default:
-					return "driving-car";
+				maxDecimals = Math.Max(maxDecimals, GetDecimalPlaces(order.Weight ?? 0));
+				maxDecimals = Math.Max(maxDecimals, GetDecimalPlaces(order.Volume ?? 0));
 			}
+			return (int)Math.Pow(10, maxDecimals);
+		}
+
+		private int GetDecimalPlaces(double value)
+		{
+			string s = value.ToString(System.Globalization.CultureInfo.InvariantCulture);
+			int index = s.IndexOf('.');
+			if (index >= 0)
+			{
+				return s.Length - index - 1;
+			}
+			return 0;
 		}
 	}
 

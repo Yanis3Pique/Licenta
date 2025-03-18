@@ -1,7 +1,4 @@
-﻿@*
-    For more information on enabling MVC for empty projects, visit https://go.microsoft.com/fwlink/?LinkID=397860
-*@
-@{
+﻿@{
     ViewBag.Title = "Edit Delivery";
     var availableOrders = ViewBag.AvailableOrders as List<Licenta_v1.Models.Order>;
 }
@@ -17,11 +14,14 @@
 
 <h2 class="text-center mb-4">@ViewBag.Title @Model.Id</h2>
 
-<!-- Container pentru progresul de capacitate -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="~/js/edit_delivery.js"></script>
+
+<!-- Container pt progresul capacitatii -->
 <div id="capacity-progress"
      data-total-weight="@Model.Vehicle.MaxWeightCapacity"
      data-total-volume="@Model.Vehicle.MaxVolumeCapacity">
-    <!-- Progress bar pentru greutate -->
     <div class="mb-3">
         <label class="form-label">Weight Usage</label>
         <div class="progress" style="height: 25px;">
@@ -30,7 +30,6 @@
         </div>
         <div id="weightValue" class="mt-1">0 / @Model.Vehicle.MaxWeightCapacity kg</div>
     </div>
-    <!-- Progress bar pentru volum -->
     <div class="mb-3">
         <label class="form-label">Volume Usage</label>
         <div class="progress" style="height: 25px;">
@@ -44,11 +43,11 @@
 <form asp-action="EditDelivery" method="post">
     <input type="hidden" name="id" value="@Model.Id" />
 
-    <!-- Comenzi asignate momentan la livrare (bifate implicit) -->
+    <!-- Comenzi deja in Delivery -->
     <div class="card mb-4">
         <div class="card-header">
             <h5>Current Orders</h5>
-            <small class="text-muted">Uncheck the Orders that you want to erase from the Delivery.</small>
+            <small class="text-muted">Uncheck the orders that you want to remove from the delivery.</small>
         </div>
         <div class="card-body">
             @foreach (var order in Model.Orders)
@@ -61,7 +60,9 @@
                            id="currentOrder_@order.Id"
                            checked="checked"
                            data-weight="@order.Weight"
-                           data-volume="@order.Volume" />
+                           data-volume="@order.Volume"
+                           data-latitude="@order.Latitude"
+                           data-longitude="@order.Longitude" />
                     <label class="form-check-label" for="currentOrder_@order.Id">
                         #@order.Id - @order.Address (Placed: @order.PlacedDate.ToString("d"))
                     </label>
@@ -70,11 +71,11 @@
         </div>
     </div>
 
-    <!-- Comenzi neasignate -->
+    <!-- Comenzi de adaugat la cerere -->
     <div class="card mb-4">
         <div class="card-header">
             <h5>Add Orders</h5>
-            <small class="text-muted">Select the Orders that you want to add to the Delivery.</small>
+            <small class="text-muted">Select the orders that you want to add to the delivery.</small>
         </div>
         <div class="card-body">
             @if (availableOrders != null && availableOrders.Any())
@@ -88,7 +89,9 @@
                                value="@order.Id"
                                id="availableOrder_@order.Id"
                                data-weight="@order.Weight"
-                               data-volume="@order.Volume" />
+                               data-volume="@order.Volume"
+                               data-latitude="@order.Latitude"
+                               data-longitude="@order.Longitude" />
                         <label class="form-check-label" for="availableOrder_@order.Id">
                             #@order.Id - @order.Address (Placed: @order.PlacedDate.ToString("d"))
                         </label>
@@ -97,7 +100,7 @@
             }
             else
             {
-                <p class="text-muted">Nu exista comenzi disponibile de adaugat.</p>
+                <p class="text-muted">No available orders to add.</p>
             }
         </div>
     </div>
@@ -105,4 +108,4 @@
     <button id="updateDeliveryButton" type="submit" class="btn btn-primary">Update Delivery</button>
 </form>
 
-<script src="~/js/capacity.js"></script>
+<div id="map" style="width: 100%; height: 500px; margin-top: 20px;"></div>

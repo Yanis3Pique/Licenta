@@ -70,14 +70,6 @@ namespace Licenta_v1.Controllers
 				return RedirectToAction("Create");
 			}
 
-			// Iau Soferul selectat de user
-			var driver = db.ApplicationUsers.FirstOrDefault(u => u.Id == driverId && u.IsAvailable == true);
-			if (driver == null)
-			{
-				TempData["Error"] = "The selected driver is not available.";
-				return RedirectToAction("Create");
-			}
-
 			// Iau Vehiculul selectat de user
 			var vehicle = db.Vehicles.FirstOrDefault(v => v.Id == vehicleId && v.Status == VehicleStatus.Available);
 			if (vehicle == null)
@@ -85,6 +77,11 @@ namespace Licenta_v1.Controllers
 				TempData["Error"] = "The selected vehicle is not available.";
 				return RedirectToAction("Create");
 			}
+
+			// Iau Soferul selectat de user
+			var driver = !string.IsNullOrEmpty(driverId)
+						 ? db.ApplicationUsers.FirstOrDefault(u => u.Id == driverId && u.IsAvailable == true)
+						 : null;
 
 			// Verific daca comenzile selectate se incadreaza in capacitatea vehiculului
 			double usedWeight = orders.Sum(o => o.Weight ?? 0);
@@ -99,8 +96,8 @@ namespace Licenta_v1.Controllers
 			var delivery = new Delivery
 			{
 				VehicleId = vehicle.Id,
-				DriverId = driver.Id,
-				Status = "Planned",
+				DriverId = driver?.Id,
+				Status = driver != null ? "Planned" : "Up for Taking",
 				PlannedStartDate = DateTime.Now.AddDays(1),
 				Orders = new List<Order>()
 			};
@@ -115,16 +112,19 @@ namespace Licenta_v1.Controllers
 
 			// Actualizez statusurile: marchez vehiculul ca fiind ocupat si soferul ca fiind indisponibil
 			vehicle.Status = VehicleStatus.Busy;
-			driver.IsAvailable = false;
 			db.Deliveries.Add(delivery);
 			db.Vehicles.Update(vehicle);
-			db.ApplicationUsers.Update(driver);
+
+			if (driver != null)
+			{
+				driver.IsAvailable = false;
+				db.ApplicationUsers.Update(driver);
+			}
 
 			await db.SaveChangesAsync();
 
 			// Recalculez estimarile si DeliverySequence-ul
 			await opt.RecalculateDeliveryMetrics(db, delivery);
-
 			await db.SaveChangesAsync();
 
 			TempData["Success"] = "Delivery created successfully!";
@@ -343,7 +343,7 @@ namespace Licenta_v1.Controllers
 				return NotFound();
 
 			// Daca Delivery-ul are alt status decat Planned, nu am voie sa o editez
-			if (delivery.Status != "Planned")
+			if (delivery.Status != "Planned" && delivery.Status != "Up for Taking")
 			{
 				TempData["Error"] = "You cannot edit this Delivery.";
 				return RedirectToAction("Show", new { id });
@@ -382,6 +382,11 @@ namespace Licenta_v1.Controllers
 				db.Orders.Update(order);
 			}
 
+			foreach (var order in ordersToRemove)
+			{
+				delivery.Orders.Remove(order);
+			}
+
 			// Adaug noile comenzi selectate
 			foreach (var orderId in addOrderIds)
 			{
@@ -403,7 +408,7 @@ namespace Licenta_v1.Controllers
 
 			// Daca, dupa modificare, Delivery-ul nu mai contine nici o comanda,
 			// stergem Delivery-ul si actualizam Vehicle-ul si User-ul la available
-			if (delivery.Orders == null || delivery.Orders.Count - ordersToRemove.Count == 0)
+			if (delivery.Orders == null || delivery.Orders.Count - ordersToRemove.Count + 1 == 0)
 			{
 				if (delivery.Vehicle != null)
 				{

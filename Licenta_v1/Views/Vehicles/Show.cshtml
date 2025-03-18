@@ -86,27 +86,31 @@
                     </tr>
                     <tr>
                         <th id="light-blue-elements-background-id">Maximum weight capacity</th>
-                        <td id="light-blue-elements-background-id">@Html.DisplayFor(model => model.MaxWeightCapacity)</td>
+                        <td id="light-blue-elements-background-id">
+                            @Html.DisplayFor(model => model.MaxWeightCapacity) kg
+                        </td>
                     </tr>
                     <tr>
                         <th id="light-blue-elements-background-id">Maximum volume capacity</th>
-                        <td id="light-blue-elements-background-id">@Html.DisplayFor(model => model.MaxVolumeCapacity)</td>
+                        <td id="light-blue-elements-background-id">
+                            @Html.DisplayFor(model => model.MaxVolumeCapacity) m<sup>3</sup>
+                        </td>
                     </tr>
                     <tr>
-                        <th id="light-blue-elements-background-id">Height (m)</th>
-                        <td id="light-blue-elements-background-id">@Model.HeightMeters</td>
+                        <th id="light-blue-elements-background-id">Height</th>
+                        <td id="light-blue-elements-background-id">@Model.HeightMeters m</td>
                     </tr>
                     <tr>
-                        <th id="light-blue-elements-background-id">Width (m)</th>
-                        <td id="light-blue-elements-background-id">@Model.WidthMeters</td>
+                        <th id="light-blue-elements-background-id">Width</th>
+                        <td id="light-blue-elements-background-id">@Model.WidthMeters m</td>
                     </tr>
                     <tr>
-                        <th id="light-blue-elements-background-id">Length (m)</th>
-                        <td id="light-blue-elements-background-id">@Model.LengthMeters</td>
+                        <th id="light-blue-elements-background-id">Length</th>
+                        <td id="light-blue-elements-background-id">@Model.LengthMeters m</td>
                     </tr>
                     <tr>
-                        <th id="light-blue-elements-background-id">Total Weight (tons)</th>
-                        <td id="light-blue-elements-background-id">@Model.WeightTons</td>
+                        <th id="light-blue-elements-background-id">Total Weight</th>
+                        <td id="light-blue-elements-background-id">@Model.WeightTons tons</td>
                     </tr>
                     <tr>
                         <th id="light-blue-elements-background-id">Consumption rate</th>

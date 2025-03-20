@@ -47,19 +47,19 @@ namespace Licenta_v1.Models
 		// Dimensiuni - pt rutare
 		[Required(ErrorMessage = "Vehicle height is mandatory.")]
 		[Range(0, double.MaxValue, ErrorMessage = "Height must be positive (meters).")]
-		public double? HeightMeters { get; set; }
+		public double HeightMeters { get; set; }
 
 		[Required(ErrorMessage = "Vehicle width is mandatory.")]
 		[Range(0, double.MaxValue, ErrorMessage = "Width must be positive (meters).")]
-		public double? WidthMeters { get; set; }
+		public double WidthMeters { get; set; }
 
 		[Required(ErrorMessage = "Vehicle length is mandatory.")]
 		[Range(0, double.MaxValue, ErrorMessage = "Length must be positive (meters).")]
-		public double? LengthMeters { get; set; }
+		public double LengthMeters { get; set; }
 
 		[Required(ErrorMessage = "Vehicle total weight is mandatory.")]
 		[Range(0, double.MaxValue, ErrorMessage = "Weight must be positive (tons).")]
-		public double? WeightTons { get; set; }
+		public double WeightTons { get; set; }
 		public string? ImagePath { get; set; }
 
 		public virtual Region? Region { get; set; }

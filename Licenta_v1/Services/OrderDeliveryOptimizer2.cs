@@ -26,9 +26,67 @@ namespace Licenta_v1.Services
 			OpenRouteServiceApiKey = apiKey;
 		}
 
+		public async Task UpdateOrderRestrictionsForHeavyVehicles(int? userRegionId = null)
+		{
+			using var scope = scopeFactory.CreateScope();
+			var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+
+			// Get Orders that are still unassigned.
+			var orders = db.Orders
+				.Where(o => o.Status == OrderStatus.Placed &&
+							o.DeliveryId == null &&
+							(!userRegionId.HasValue || o.RegionId == userRegionId.Value))
+				.ToList();
+
+			// Process orders region by region.
+			var groupedOrders = orders.GroupBy(o => o.RegionId ?? 0);
+			foreach (var regionGroup in groupedOrders)
+			{
+				int regionId = regionGroup.Key;
+				var regionOrders = regionGroup.ToList();
+
+				// Get the headquarter (depot) for this region.
+				var headquarter = db.Headquarters.FirstOrDefault(hq => hq.RegionId == regionId);
+				if (headquarter == null)
+				{
+					Debug.WriteLine($"Skipping Region {regionId} - No headquarter found.");
+					continue;
+				}
+
+				var depot = new Depot2
+				{
+					Latitude = headquarter.Latitude ?? 0,
+					Longitude = headquarter.Longitude ?? 0
+				};
+
+				// Get heavy vehicles in the region.
+				var heavyVehicles = db.Vehicles
+					.Where(v => v.RegionId == regionId &&
+								v.Status == VehicleStatus.Available &&
+								(v.VehicleType == VehicleType.HeavyTruck || v.VehicleType == VehicleType.SmallTruck))
+					.ToList();
+
+				// Pre-validate each order and update its HeavyVehicleRestricted flag.
+				await PreValidateHeavyVehicleAccessAsync(regionOrders, depot, heavyVehicles);
+
+				// Update orders in the database.
+				foreach (var order in regionOrders)
+				{
+					db.Orders.Update(order);
+				}
+			}
+			await db.SaveChangesAsync();
+
+			// Wait for all tasks to complete.
+			await Task.CompletedTask;
+		}
+
 		// Metoda principala, apelata o data pe zi de catre Admin pentru toate regiunile/Dispecer pentru regiunea sa
 		public async Task RunDailyOptimization(int? userRegionId = null)
 		{
+			// Marchez comenzile care nu pot fi livrate de vehicule grele
+			await UpdateOrderRestrictionsForHeavyVehicles(userRegionId);
+
 			using var scope = scopeFactory.CreateScope();
 			var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
 
@@ -83,15 +141,6 @@ namespace Licenta_v1.Services
 				Longitude = headquarter.Longitude ?? 0
 			};
 
-			// Use all orders as one cluster, sorted by placed date and priority
-			// Folosesc toate comenzile ca un singur cluster, sortate dupa data plasarii si prioritate
-			var clusters = new List<List<Order>>
-			{
-				orders.OrderBy(o => o.PlacedDate)
-					  .ThenBy(o => o.Priority == OrderPriority.High ? 0 : 1)
-					  .ToList()
-			};
-
 			// Iau vehiculele disponibile in regiune
 			var vehicles = db.Vehicles
 				.Where(v => v.RegionId == regionId &&
@@ -108,57 +157,76 @@ namespace Licenta_v1.Services
 				return;
 			}
 
-			// Creez un HashSet pentru a tine evidenta vehiculelor deja folosite
+			var heavyVehicles = vehicles.Where(v => v.VehicleType == VehicleType.HeavyTruck ||
+													v.VehicleType == VehicleType.SmallTruck).ToList();
+			var standardVehicles = vehicles.Where(v => v.VehicleType == VehicleType.Car || 
+													   v.VehicleType == VehicleType.Van).ToList();
+
+			// Impart comenzile in doua liste, daca pot fi livrate de Heavy Vehicles sau nu
+			var heavyAllowedOrders = orders.Where(o => !o.HeavyVehicleRestricted).ToList();
+			var restrictedOrders = orders.Where(o => o.HeavyVehicleRestricted).ToList();
+
+			// HashSet pt evidenta vehiculelor folosite
 			var usedVehicleIds = new HashSet<int>();
 
-			// Procesez fiecare cluster separat
-			foreach (var cluster in clusters)
+			// Mai intai optimizez cu vehiculele grele
+			List<RouteResult> heavyRoutes = new List<RouteResult>();
+			if (heavyAllowedOrders.Any() && heavyVehicles.Any())
 			{
-				// Apelez metoda pentru mai mult de 3 vehicule (restrictie ORS), impartindu-le in subseturi
-				var availableForOptimization = vehicles.Where(v => !usedVehicleIds.Contains(v.Id)).ToList();
-				var optimizationRoutes = await OptimizeRoutesWithORSForCluster(cluster, availableForOptimization, depot);
+				var heavyClusters = new List<List<Order>> { 
+					heavyAllowedOrders.OrderBy(o => o.PlacedDate)
+									  .ThenBy(o => o.Priority == OrderPriority.High ? 0 : 1)
+									  .ToList() 
+				};
 
-				// Pentru fiecare ruta din optimizationRoutes, verific fezabilitatea
-				List<RouteResult> clusterFeasibleRoutes = new List<RouteResult>();
-
-				foreach (var route in optimizationRoutes)
+				foreach (var cluster in heavyClusters)
 				{
-					if (!IsRouteFeasible(route.Orders, vehicles) && route.Orders.Count > 1)
+					try
 					{
-						// Daca ruta nu este fezabila, se face partitionare spatiala a comenzilor
-						var partitions = SpatialPartitionOrders(route.Orders);
-						var subRoutes1 = await OptimizeRoutesWithORSForCluster(partitions.subcluster1, availableForOptimization, depot);
-						var subRoutes2 = await OptimizeRoutesWithORSForCluster(partitions.subcluster2, availableForOptimization, depot);
-						var subFeasible = subRoutes1.Concat(subRoutes2)
-													.Where(r => IsRouteFeasible(r.Orders, vehicles))
-													.ToList();
-						clusterFeasibleRoutes.AddRange(subFeasible);
+						var routes = await OptimizeRoutesWithORSForCluster(cluster, heavyVehicles.Where(v => !usedVehicleIds.Contains(v.Id)).ToList(), depot);
+						heavyRoutes.AddRange(routes);
 					}
-					else if (IsRouteFeasible(route.Orders, vehicles))
+					catch (Exception ex)
 					{
-						clusterFeasibleRoutes.Add(route);
+						Debug.WriteLine($"Heavy route optimization failed: {ex.Message}");
+						// Marchez comenzile pentru fallback(in caz ca nu pot fi livrate de vehicule grele)
+						foreach (var order in cluster)
+						{
+							order.HeavyVehicleRestricted = true;
+							if (!restrictedOrders.Contains(order))
+								restrictedOrders.Add(order);
+						}
 					}
 				}
 
-				if (clusterFeasibleRoutes.Count == 0)
-				{
-					Debug.WriteLine("No valid routes generated for cluster or its subclusters.");
-					continue;
-				}
-
-				// Pentru fiecare ruta fezabila gasita de ORS, creez un Delivery
-				foreach (var route in clusterFeasibleRoutes)
-				{
-					await AssignOrdersToDeliveriesAsync(route.Orders, vehicles, usedVehicleIds, depot, route.VehicleId);
-				}
-
+				// Sterg comenzile care au fost asignate vehiculelor grele
+				var heavyDeliveredOrderIds = heavyRoutes.SelectMany(r => r.Orders.Select(o => o.Id)).ToHashSet();
+				var heavyUnassigned = heavyAllowedOrders.Where(o => !heavyDeliveredOrderIds.Contains(o.Id)).ToList();
+				restrictedOrders.AddRange(heavyUnassigned);
 			}
-		}
 
-		// Helper care verifica daca exista cel putin un vehicul care poate acoperi comenzile date
-		private bool IsRouteFeasible(List<Order> orders, List<Vehicle> vehicles)
-		{
-			return vehicles.Any(v => CanFitOrders(v, orders));
+			// Apoi optimizez cu vehiculele standard
+			List<RouteResult> standardRoutes = new List<RouteResult>();
+			if (restrictedOrders.Any() && standardVehicles.Any())
+			{
+				var standardClusters = new List<List<Order>> { 
+					restrictedOrders.OrderBy(o => o.PlacedDate)
+					    			.ThenBy(o => o.Priority == OrderPriority.High ? 0 : 1)
+									.ToList() 
+				};
+
+				foreach (var cluster in standardClusters)
+				{
+					var routes = await OptimizeRoutesWithORSForCluster(cluster, standardVehicles.Where(v => !usedVehicleIds.Contains(v.Id)).ToList(), depot);
+					standardRoutes.AddRange(routes);
+				}
+			}
+
+			// Asignez comenzile la Deliveries in functie de rutele obtinute
+			foreach (var route in heavyRoutes.Concat(standardRoutes))
+			{
+				await AssignOrdersToDeliveriesAsync(route.Orders, vehicles, usedVehicleIds, depot, route.VehicleId);
+			}
 		}
 
 		// Helper care verifica daca ruta se incadreaza in limita de timp
@@ -166,6 +234,129 @@ namespace Licenta_v1.Services
 		{
 			int totalServiceTime = numberOfOrders * ServiceTimePerOrderSeconds;
 			return (routeDurationSeconds + totalServiceTime) <= MaxWorkingSeconds;
+		}
+
+		// Metoda care face request-uri batch pentru accesibilitatea vehiculelor mari
+		private async Task PreValidateHeavyVehicleAccessAsync(List<Order> orders, Depot2 depot, List<Vehicle> heavyVehicles)
+		{
+			// Dictionar pt a tine evidenta comenzilor accesibile de vehiculele mari
+			var accessibleOrders = orders.ToDictionary(o => o.Id, o => false);
+
+			int batchSize = 10;
+
+			// Pt fiecare vehicul mari
+			foreach (var heavyVehicle in heavyVehicles)
+			{
+				// Iau comenzile care nu sunt marcate ca accesibile de niciun vehicul mare
+				var ordersToCheck = orders.Where(o => !accessibleOrders[o.Id]).ToList();
+				for (int i = 0; i < ordersToCheck.Count; i += batchSize)
+				{
+					var batch = ordersToCheck.Skip(i).Take(batchSize).ToList();
+
+					var coordinates = new List<double[]>
+					{
+						new double[] { depot.Longitude, depot.Latitude }
+					};
+					coordinates.AddRange(batch.Select(o => new double[] { o.Longitude ?? 0.0, o.Latitude ?? 0.0 }));
+					coordinates.Add(new double[] { depot.Longitude, depot.Latitude });
+
+					var requestBody = new
+					{
+						coordinates = coordinates,
+						options = new
+						{
+							profile_params = new
+							{
+								restrictions = new
+								{
+									height = heavyVehicle.HeightMeters,
+									width = heavyVehicle.WidthMeters,
+									weight = heavyVehicle.WeightTons * 1000
+								}
+							}
+						}
+					};
+
+					string jsonBody = JsonConvert.SerializeObject(requestBody);
+					string requestUrl = "https://api.openrouteservice.org/v2/directions/driving-hgv";
+
+					using (var client = new HttpClient())
+					{
+						client.DefaultRequestHeaders.Add("Authorization", OpenRouteServiceApiKey);
+						var content = new StringContent(jsonBody, Encoding.UTF8, "application/json");
+						var response = await client.PostAsync(requestUrl, content);
+
+						Debug.WriteLine("Directions API ResponseX ", response.ToString());
+
+						if (response.IsSuccessStatusCode)
+						{
+							// Daca request-ul batch a reusit, marchez toate comenzile din batch ca accesibile
+							foreach (var order in batch)
+							{
+								accessibleOrders[order.Id] = true;
+							}
+						}
+						else
+						{
+							Debug.WriteLine($"Batch request failed for heavy vehicle {heavyVehicle.Id}: {response.StatusCode}");
+							// Daca un request a esuat, incerc sa verific comenzile individual
+							foreach (var order in batch)
+							{
+								bool result = await IsHeavyVehicleAccessibleAsync(order, depot, heavyVehicle.HeightMeters, heavyVehicle.WidthMeters, heavyVehicle.WeightTons);
+								if (result)
+								{
+									accessibleOrders[order.Id] = true;
+								}
+							}
+						}
+					}
+				}
+			}
+
+			foreach (var order in orders)
+			{
+				order.HeavyVehicleRestricted = !accessibleOrders[order.Id];
+			}
+		}
+
+		// Metoda pt verificarea accesibilitatii vehiculelor mari la o comanda
+		private async Task<bool> IsHeavyVehicleAccessibleAsync(Order order, Depot2 depot, double maxHeight, double maxWidth, double maxWeightTons)
+		{
+			double maxWeightKg = maxWeightTons * 1000;
+
+			var coordinates = new List<double[]>
+			{
+				new double[] { depot.Longitude, depot.Latitude },
+				new double[] { order.Longitude ?? 0.0, order.Latitude ?? 0.0 }
+			};
+
+			var requestBody = new
+			{
+				coordinates = coordinates,
+				options = new
+				{
+					profile_params = new
+					{
+						restrictions = new
+						{
+							height = maxHeight,
+							width = maxWidth,
+							weight = maxWeightKg
+						}
+					}
+				}
+			};
+
+			string jsonBody = JsonConvert.SerializeObject(requestBody);
+			string requestUrl = "https://api.openrouteservice.org/v2/directions/driving-hgv";
+
+			using (var client = new HttpClient())
+			{
+				client.DefaultRequestHeaders.Add("Authorization", OpenRouteServiceApiKey);
+				var content = new StringContent(jsonBody, Encoding.UTF8, "application/json");
+				var response = await client.PostAsync(requestUrl, content);
+				return response.IsSuccessStatusCode;
+			}
 		}
 
 		// Metoda imparte vehiculele disponibile in submultimi (de cel mult 3 vehicule)
@@ -202,7 +393,7 @@ namespace Licenta_v1.Services
 					vehicles = subset.Select(v => new
 					{
 						id = v.Id,
-						profile = "driving-car",
+						profile = GetProfileForVehicle(v),
 						start = new[] { depot.Longitude, depot.Latitude },
 						capacity = new[] { (int)(v.MaxWeightCapacity * scaleFactor), (int)(v.MaxVolumeCapacity * scaleFactor) },
 					})
@@ -345,50 +536,6 @@ namespace Licenta_v1.Services
 				Debug.WriteLine("Failed to recalculate duration from ORS.");
 				return int.MaxValue; // Daca nu am primit raspuns de la ORS, returnez un nr mare
 			}
-		}
-
-		// Metoda de partitionare spatiala: impart un cluster in doua subclustere pe baza dispersiei spatiale
-		private (List<Order> subcluster1, List<Order> subcluster2) SpatialPartitionOrders(List<Order> cluster)
-		{
-			// Calculez media latitudinii si longitudinii
-			double avgLat = cluster.Average(o => o.Latitude ?? 0);
-			double avgLon = cluster.Average(o => o.Longitude ?? 0);
-
-			// Calculez varianta pentru latitudine si longitudine
-			double varLat = cluster.Average(o => Math.Pow((o.Latitude ?? 0) - avgLat, 2));
-			double varLon = cluster.Average(o => Math.Pow((o.Longitude ?? 0) - avgLon, 2));
-
-			List<Order> subcluster1;
-			List<Order> subcluster2;
-
-			if (varLon >= varLat)
-			{
-				// Impart dupa longitudine
-				var medianLon = cluster.Select(o => o.Longitude ?? 0)
-									   .OrderBy(lon => lon)
-									   .ElementAt(cluster.Count / 2);
-				subcluster1 = cluster.Where(o => (o.Longitude ?? 0) <= medianLon).ToList();
-				subcluster2 = cluster.Where(o => (o.Longitude ?? 0) > medianLon).ToList();
-			}
-			else
-			{
-				// Impart dupa latitudine
-				var medianLat = cluster.Select(o => o.Latitude ?? 0)
-									   .OrderBy(lat => lat)
-									   .ElementAt(cluster.Count / 2);
-				subcluster1 = cluster.Where(o => (o.Latitude ?? 0) <= medianLat).ToList();
-				subcluster2 = cluster.Where(o => (o.Latitude ?? 0) > medianLat).ToList();
-			}
-
-			// Daca oricare dintre subclustere e gol, repartitionez egal pe baza indexului
-			if (!subcluster1.Any() || !subcluster2.Any())
-			{
-				int mid = cluster.Count / 2;
-				subcluster1 = cluster.Take(mid).ToList();
-				subcluster2 = cluster.Skip(mid).ToList();
-			}
-
-			return (subcluster1, subcluster2);
 		}
 
 		// Data Transfer Objects pt raspunsul de la optimizarea cu ORS
@@ -653,7 +800,7 @@ namespace Licenta_v1.Services
 			var vehicleRequest = new
 			{
 				id = 1,
-				profile = "driving-car",
+				profile = GetProfileForVehicle(delivery.Vehicle),
 				start = new[] { depot.Longitude, depot.Latitude },
 				capacity = new[] { int.MaxValue, int.MaxValue }
 			};
@@ -747,6 +894,13 @@ namespace Licenta_v1.Services
 				return s.Length - index - 1;
 			}
 			return 0;
+		}
+
+		private string GetProfileForVehicle(Vehicle vehicle)
+		{
+			return (vehicle.VehicleType == VehicleType.HeavyTruck || vehicle.VehicleType == VehicleType.SmallTruck)
+				? "driving-hgv"
+				: "driving-car";
 		}
 	}
 

@@ -76,15 +76,18 @@ namespace Licenta_v1.Services
 						{
 							restrictions = new
 							{
-								height = delivery.Vehicle.HeightMeters ?? 4.0,
-								width = delivery.Vehicle.WidthMeters ?? 2.5,
-								length = delivery.Vehicle.LengthMeters ?? 12,
-								weight = delivery.Vehicle.WeightTons ?? 40
+								height = delivery.Vehicle.HeightMeters,
+								width = delivery.Vehicle.WidthMeters,
+								length = delivery.Vehicle.LengthMeters,
+								weight = delivery.Vehicle.WeightTons
 							}
 						}
 					}
 				};
 			}
+
+			Debug.WriteLine(delivery.Vehicle.HeightMeters.ToString(), " ", delivery.Vehicle.WidthMeters, " ",
+							delivery.Vehicle.LengthMeters, " ", delivery.Vehicle.WeightTons);
 
 			var jsonBody = JsonConvert.SerializeObject(requestBody);
 			var content = new StringContent(jsonBody, Encoding.UTF8, "application/json");
@@ -165,16 +168,11 @@ namespace Licenta_v1.Services
 
 		private string GetVehicleProfile(VehicleType vehicleType)
 		{
-			switch (vehicleType)
+			return vehicleType switch
 			{
-				case VehicleType.HeavyTruck:
-				case VehicleType.SmallTruck:
-					return "driving-hgv";
-				case VehicleType.Van:
-				case VehicleType.Car:
-				default:
-					return "driving-car";
-			}
+				VehicleType.HeavyTruck or VehicleType.SmallTruck => "driving-hgv",
+				_ => "driving-car",
+			};
 		}
 	}
 

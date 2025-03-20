@@ -37,7 +37,7 @@ namespace Licenta_v1.Models
 		public DateTime? DeliveredDate { get; set; }
 		public OrderStatus? LastNotifiedStatus { get; set; } // Folosit pentru mail-urile catre clienti
 		public int? DeliverySequence { get; set; } // Folosit pentru ordinea in Delivery
-
+		public bool HeavyVehicleRestricted { get; set; } = false; // Pentru rutarea in functie de Vehicul
 		public virtual ApplicationUser? Client { get; set; }
 		public virtual Region? Region { get; set; }
 		public virtual Delivery? Delivery { get; set; }

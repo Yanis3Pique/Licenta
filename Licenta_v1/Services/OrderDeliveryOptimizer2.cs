@@ -92,14 +92,16 @@ namespace Licenta_v1.Services
 				foreach (var order in modifiedOrders)
 				{
 					var existingOrder = await db.Orders.FindAsync(order.Id);
-					if (existingOrder != null && existingOrder.HeavyVehicleRestricted != order.HeavyVehicleRestricted)
+					if (existingOrder != null)
 					{
-						existingOrder.HeavyVehicleRestricted = order.HeavyVehicleRestricted;
-						db.Entry(existingOrder).Property(o => o.HeavyVehicleRestricted).IsModified = true;
+						existingOrder.InaccessibleHeavyVehicleIds = order.InaccessibleHeavyVehicleIds.ToList();
+						db.Entry(existingOrder).Property(o => o.InaccessibleHeavyVehicleIds).IsModified = true;
 					}
 				}
 				await db.SaveChangesAsync();
 			}
+
+			Debug.WriteLine($"[SUMMARY] PTV Cache: {ptvCheckCache.Count} entries, ORS Cache: {orsCheckCache.Count} entries");
 		}
 
 		// Metoda principala, apelata o data pe zi de catre Admin pentru toate regiunile/Dispecer pentru regiunea sa
@@ -222,18 +224,22 @@ namespace Licenta_v1.Services
 				.ThenBy(o => o.Priority == OrderPriority.High ? 0 : 1)
 				.ToList();
 
-			var heavyAllowedOrders = remainingOrders
-				.Where(o => !o.HeavyVehicleRestricted && !o.IsHeavyVehicleRestricted)
-				.ToList();
-
 			var heavyRoutes = new List<RouteResult>();
 
-			if (heavyAllowedOrders.Any() && heavyVehicles.Any())
+			foreach (var heavyVehicle in heavyVehicles)
 			{
-				var routes = await OptimizeRoutesWithORSForCluster(heavyAllowedOrders, heavyVehicles, depot);
+				var heavyAllowedOrders = remainingOrders
+					.Where(o => !o.ManuallyRestrictedVehicleIds.Contains(heavyVehicle.Id) &&
+								!o.InaccessibleHeavyVehicleIds.Contains(heavyVehicle.Id))
+					.ToList();
+
+				if (!heavyAllowedOrders.Any())
+					continue;
+
+				var routes = await OptimizeRoutesWithORSForCluster(heavyAllowedOrders, new List<Vehicle> { heavyVehicle }, depot);
 				heavyRoutes.AddRange(routes);
 
-				foreach (var route in heavyRoutes)
+				foreach (var route in routes)
 				{
 					await AssignOrdersToDeliveriesAsync(route.Orders, heavyVehicles, usedVehicleIds, depot, route.VehicleId);
 				}
@@ -296,10 +302,9 @@ namespace Licenta_v1.Services
 
 			foreach (var order in orders)
 			{
-				if (order.IsHeavyVehicleRestricted)
+				if (order.ManuallyRestrictedVehicleIds.Any())
 				{
-					order.HeavyVehicleRestricted = true;
-					Debug.WriteLine($"[AUTO-RESTRICTED] Order {order.Id} manually restricted.");
+					Debug.WriteLine($"[MANUAL BLOCK] Order {order.Id} already manually restricted for some vehicles.");
 				}
 			}
 
@@ -307,59 +312,42 @@ namespace Licenta_v1.Services
 			foreach (var heavyVehicle in heavyVehicles)
 			{
 				var ordersToCheck = orders
-					.Where(o => !o.HeavyVehicleRestricted)
+					.Where(o => !o.ManuallyRestrictedVehicleIds.Contains(heavyVehicle.Id))
 					.ToList();
 
 				if (!ordersToCheck.Any())
-				{
-					Debug.WriteLine($"[NO CHECKS] All orders are already restricted before checking with vehicle {heavyVehicle.Id}.");
 					continue;
-				}
 
 				for (int i = 0; i < ordersToCheck.Count; i += batchSize)
 				{
 					var batch = ordersToCheck.Skip(i).Take(batchSize).ToList();
 
-					Debug.WriteLine($"[BATCH CHECK] Checking orders {string.Join(", ", batch.Select(o => o.Id))} with Vehicle {heavyVehicle.Id}");
-
 					foreach (var order in batch)
 					{
 						if (!order.Latitude.HasValue || !order.Longitude.HasValue)
-						{
-							Debug.WriteLine($"[SKIPPED] Order {order.Id} missing coordinates.");
 							continue;
-						}
 
-						if (!ptvCheckCache.TryGetValue((order.Id, heavyVehicle.Id), out _))
+						var cacheKey = (order.Id, heavyVehicle.Id);
+						if (ptvCheckCache.TryGetValue(cacheKey, out bool accessible))
 						{
-							bool result = await IsHeavyVehicleAccessibleAsync(order, depot, heavyVehicle);
-							ptvCheckCache[(order.Id, heavyVehicle.Id)] = result;
-							Debug.WriteLine($"[CHECKED] Order {order.Id}, Vehicle {heavyVehicle.Id}, Accessible: {result}");
+							Debug.WriteLine($"[CACHE HIT] PTV: Order {order.Id}, Vehicle {heavyVehicle.Id} => {accessible}");
 						}
 						else
 						{
-							Debug.WriteLine($"[CACHE HIT] Order {order.Id}, Vehicle {heavyVehicle.Id}");
+							Debug.WriteLine($"[CACHE MISS] PTV: Order {order.Id}, Vehicle {heavyVehicle.Id} — calling API...");
+							accessible = await IsHeavyVehicleAccessibleAsync(order, depot, heavyVehicle);
+							ptvCheckCache[cacheKey] = accessible;
+						}
+
+						if (!accessible && !order.InaccessibleHeavyVehicleIds.Contains(heavyVehicle.Id))
+						{
+							order.InaccessibleHeavyVehicleIds.Add(heavyVehicle.Id);
+							updatedOrders.Add(order);
+							Debug.WriteLine($"[RESTRICTED] Order {order.Id} marked inaccessible for Vehicle {heavyVehicle.Id}");
 						}
 					}
-
 					await Task.Delay(1000);
 				}
-			}
-
-			foreach (var order in orders.Where(o => !o.HeavyVehicleRestricted))
-			{
-				bool accessibleByAnyHeavyVehicle = heavyVehicles.Any(hv =>
-					ptvCheckCache.TryGetValue((order.Id, hv.Id), out var accessible) && accessible);
-
-				bool wasRestricted = order.HeavyVehicleRestricted;
-				order.HeavyVehicleRestricted = !accessibleByAnyHeavyVehicle;
-
-				if (order.HeavyVehicleRestricted != wasRestricted)
-				{
-					updatedOrders.Add(order);
-				}
-
-				Debug.WriteLine($"[FINAL STATUS] Order {order.Id}: HeavyVehicleRestricted = {order.HeavyVehicleRestricted}");
 			}
 
 			return updatedOrders;
@@ -438,8 +426,12 @@ namespace Licenta_v1.Services
 			// Daca am incercat toate cheile PTV fara success, incerc cache-ul ORS sau ORS API
 			if (orsCheckCache.TryGetValue(cacheKey, out bool cachedORSResult))
 			{
-				Debug.WriteLine($"[ORS CACHE] Order {order.Id}, Vehicle {heavyVehicle.Id}: {cachedORSResult}");
+				Debug.WriteLine($"[CACHE HIT] ORS: Order {order.Id}, Vehicle {heavyVehicle.Id} => {cachedORSResult}");
 				return cachedORSResult;
+			}
+			else
+			{
+				Debug.WriteLine($"[CACHE MISS] ORS: Order {order.Id}, Vehicle {heavyVehicle.Id} — calling ORS API...");
 			}
 
 			Debug.WriteLine($"[FALLBACK TO ORS] All PTV keys failed for Order {order.Id}, Vehicle {heavyVehicle.Id}. Using ORS.");

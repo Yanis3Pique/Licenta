@@ -20,18 +20,21 @@ namespace Licenta_v1.Controllers
 		private readonly ApplicationDbContext db;
 		private readonly UserManager<ApplicationUser> _userManager;
 		private readonly RoleManager<IdentityRole> _roleManager;
+		private readonly OrderDeliveryOptimizer2 opt;
 		private readonly IEmailSender _emailSender;
 
 		public VehiclesController(
 			ApplicationDbContext context,
 			UserManager<ApplicationUser> userManager,
 			RoleManager<IdentityRole> roleManager,
-			IEmailSender emailSender)
+			IEmailSender emailSender,
+			OrderDeliveryOptimizer2 optimizer)
 		{
 			db = context;
 			_userManager = userManager;
 			_roleManager = roleManager;
 			_emailSender = emailSender;
+			opt = optimizer;
 		}
 
 		[NonAction]
@@ -381,6 +384,13 @@ namespace Licenta_v1.Controllers
 
 			if (ModelState.IsValid)
 			{
+				bool shouldInvalidateCache =
+					vehicle.HeightMeters != updatedVehicle.HeightMeters ||
+					vehicle.LengthMeters != updatedVehicle.LengthMeters ||
+					vehicle.WeightTons != updatedVehicle.WeightTons ||
+					vehicle.WidthMeters != updatedVehicle.WidthMeters || 
+					vehicle.MaxAxleLoadTons != updatedVehicle.MaxAxleLoadTons;
+
 				vehicle.Brand = updatedVehicle.Brand;
 				vehicle.Model = updatedVehicle.Model;
 				vehicle.RegistrationNumber = updatedVehicle.RegistrationNumber;
@@ -398,11 +408,18 @@ namespace Licenta_v1.Controllers
 				vehicle.WidthMeters = updatedVehicle.WidthMeters;
 				vehicle.LengthMeters = updatedVehicle.LengthMeters;
 				vehicle.WeightTons = updatedVehicle.WeightTons;
+				vehicle.MaxAxleLoadTons = updatedVehicle.MaxAxleLoadTons;
 
 				try
 				{
 					db.Vehicles.Update(vehicle);
 					await db.SaveChangesAsync();
+
+					if (shouldInvalidateCache)
+					{
+						opt.InvalidateCacheForVehicle(vehicle.Id);
+					}
+
 					TempData["Success"] = "Vehicle updated successfully!";
 					return RedirectToAction("Index");
 				}

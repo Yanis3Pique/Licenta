@@ -16,6 +16,9 @@ var cheie_API_confirmare_email_Sendgrid = Env.GetString("Cheie_API_confirmare_em
 var email_personal = Env.GetString("Email_personal");
 var nume_personal = Env.GetString("Nume_personal");
 var openRouteServiceApiKey = Env.GetString("OpenRouteServiceApiKey");
+var ptvApiKey = Env.GetString("PTV_ApiKey");
+var ptvApiKeyReserve = Env.GetString("PTV_ApiKeyReserve");
+var ptvApiKeyEmergency = Env.GetString("PTV_ApiKeyEmergency");
 
 // Add services to the container.
 builder.Services.AddScoped<RoutePlannerService>();
@@ -26,10 +29,14 @@ builder.Services.AddScoped<RoutePlannerService>();
 //	var scopeFactory = provider.GetRequiredService<IServiceScopeFactory>();
 //	return new OrderDeliveryOptimizer(scopeFactory, openRouteServiceApiKey);
 //});
+builder.Services.AddHttpClient("ApiClient", client =>
+{
+	client.Timeout = TimeSpan.FromSeconds(30); // Set global timeout
+});
 builder.Services.AddSingleton<OrderDeliveryOptimizer2>(provider =>
 {
 	var scopeFactory = provider.GetRequiredService<IServiceScopeFactory>();
-	return new OrderDeliveryOptimizer2(scopeFactory, openRouteServiceApiKey);
+	return new OrderDeliveryOptimizer2(scopeFactory, openRouteServiceApiKey, ptvApiKey, ptvApiKeyReserve, ptvApiKeyEmergency);
 });
 
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection") ??

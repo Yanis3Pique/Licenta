@@ -10,6 +10,10 @@ using Newtonsoft.Json;
 using System.Text;
 using System.Diagnostics;
 using Google.OrTools.ConstraintSolver;
+using Humanizer;
+using System.Globalization;
+using System.Net;
+using System.Collections.Concurrent;
 
 namespace Licenta_v1.Services
 {
@@ -17,13 +21,28 @@ namespace Licenta_v1.Services
 	{
 		private readonly IServiceScopeFactory scopeFactory; // Ca sa creez mai multe instante de DbContext
 		private readonly string OpenRouteServiceApiKey;
+		private readonly string PtvApiKey;
+		private readonly string PtVApiKeyReserve;
+		private readonly string PtVApiKeyEmergency;
+		private string CurrentPtvApiKey;
 		private const int MaxWorkingSeconds = 6 * 3600; // 6 ore
 		private const int ServiceTimePerOrderSeconds = 300; // 5 minute pe comanda
 
-		public OrderDeliveryOptimizer2(IServiceScopeFactory serviceScopeFactory, string apiKey)
+		// Semafor pentru a limita apelurile Directions ORS API
+		private static SemaphoreSlim orsSemaphore = new SemaphoreSlim(5);
+
+		// Cache-uri pentru a evita apelurile multiple pentru aceeasi comanda si vehicul
+		private static ConcurrentDictionary<(int orderId, int vehicleId), bool> ptvCheckCache = new();
+		private static ConcurrentDictionary<(int orderId, int vehicleId), bool> orsCheckCache = new();
+
+		public OrderDeliveryOptimizer2(IServiceScopeFactory serviceScopeFactory, string openRouteServiceApiKey, string ptvApiKey, string ptVApiKeyReserve, string ptVApiKeyEmergency)
 		{
 			scopeFactory = serviceScopeFactory;
-			OpenRouteServiceApiKey = apiKey;
+			OpenRouteServiceApiKey = openRouteServiceApiKey;
+			PtvApiKey = ptvApiKey;
+			PtVApiKeyReserve = ptVApiKeyReserve;
+			PtVApiKeyEmergency = ptVApiKeyEmergency;
+			CurrentPtvApiKey = ptvApiKey; // Default
 		}
 
 		public async Task UpdateOrderRestrictionsForHeavyVehicles(int? userRegionId = null)
@@ -31,21 +50,21 @@ namespace Licenta_v1.Services
 			using var scope = scopeFactory.CreateScope();
 			var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
 
-			// Get Orders that are still unassigned.
+			// Iau comenzile care sunt inca neasignate
 			var orders = db.Orders
 				.Where(o => o.Status == OrderStatus.Placed &&
 							o.DeliveryId == null &&
 							(!userRegionId.HasValue || o.RegionId == userRegionId.Value))
 				.ToList();
 
-			// Process orders region by region.
+			// Procesez comenzile pe regiuni
 			var groupedOrders = orders.GroupBy(o => o.RegionId ?? 0);
 			foreach (var regionGroup in groupedOrders)
 			{
 				int regionId = regionGroup.Key;
 				var regionOrders = regionGroup.ToList();
 
-				// Get the headquarter (depot) for this region.
+				// Headquarter-ul pe regiunea respectiva
 				var headquarter = db.Headquarters.FirstOrDefault(hq => hq.RegionId == regionId);
 				if (headquarter == null)
 				{
@@ -59,52 +78,84 @@ namespace Licenta_v1.Services
 					Longitude = headquarter.Longitude ?? 0
 				};
 
-				// Get heavy vehicles in the region.
+				// Masinile mari din regiunea respectiva
 				var heavyVehicles = db.Vehicles
 					.Where(v => v.RegionId == regionId &&
 								v.Status == VehicleStatus.Available &&
 								(v.VehicleType == VehicleType.HeavyTruck || v.VehicleType == VehicleType.SmallTruck))
 					.ToList();
 
-				// Pre-validate each order and update its HeavyVehicleRestricted flag.
-				await PreValidateHeavyVehicleAccessAsync(regionOrders, depot, heavyVehicles);
+				Debug.WriteLine($"Region {regionId}: Processing {regionOrders.Count} orders with {heavyVehicles.Count} heavy vehicles.");
 
-				// Update orders in the database.
-				foreach (var order in regionOrders)
+				var modifiedOrders = await PreValidateHeavyVehicleAccessAsync(regionOrders, depot, heavyVehicles);
+
+				foreach (var order in modifiedOrders)
 				{
-					db.Orders.Update(order);
+					var existingOrder = await db.Orders.FindAsync(order.Id);
+					if (existingOrder != null && existingOrder.HeavyVehicleRestricted != order.HeavyVehicleRestricted)
+					{
+						existingOrder.HeavyVehicleRestricted = order.HeavyVehicleRestricted;
+						db.Entry(existingOrder).Property(o => o.HeavyVehicleRestricted).IsModified = true;
+					}
 				}
+				await db.SaveChangesAsync();
 			}
-			await db.SaveChangesAsync();
-
-			// Wait for all tasks to complete.
-			await Task.CompletedTask;
 		}
 
 		// Metoda principala, apelata o data pe zi de catre Admin pentru toate regiunile/Dispecer pentru regiunea sa
 		public async Task RunDailyOptimization(int? userRegionId = null)
 		{
-			// Marchez comenzile care nu pot fi livrate de vehicule grele
-			await UpdateOrderRestrictionsForHeavyVehicles(userRegionId);
-
 			using var scope = scopeFactory.CreateScope();
 			var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
 
-			// Sorteaza comenzile: mai intai dupa data plasarii (crescator), iar pentru comenzile din aceeasi zi High inainte de Normal
-			var orders = db.Orders
-				.Where(o => o.Status == OrderStatus.Placed &&
-							o.DeliveryId == null &&  // Exclud comenzile deja asignate la un Delivery
-							(!userRegionId.HasValue || o.RegionId == userRegionId.Value))
-				.OrderBy(o => o.PlacedDate)
-				.ThenBy(o => o.Priority == OrderPriority.High ? 0 : 1)
+			// Verific daca sunt vehicule disponibile
+			var vehicles = db.Vehicles
+				.Where(v => (!userRegionId.HasValue || v.RegionId == userRegionId.Value) &&
+							v.Status == VehicleStatus.Available)
 				.ToList();
 
-			// Grupez comenzile dupa regiune
-			var groupedOrders = orders.GroupBy(o => o.RegionId ?? 0);
+			if (!vehicles.Any())
+			{
+				Debug.WriteLine("Exiting optimization: No available vehicles.");
+				return;
+			}
 
+			// Actualizez comenzile in functie de vehiculele grele din regiuni
+			await UpdateOrderRestrictionsForHeavyVehicles(userRegionId);
+
+			// Iau comenzile care sunt inca neasignate
+			var orders = db.Orders
+				.Where(o => o.Status == OrderStatus.Placed &&
+							o.DeliveryId == null &&
+							(!userRegionId.HasValue || o.RegionId == userRegionId.Value))
+				.ToList();
+
+			if (!orders.Any())
+			{
+				Debug.WriteLine("Exiting optimization: No orders available.");
+				return;
+			}
+
+			Debug.WriteLine($"Pre-flight check passed: {orders.Count} orders and {vehicles.Count} vehicles found.");
+
+			// Grupez comenzile pe regiuni si optimizez livrarile
+			var groupedOrders = orders.GroupBy(o => o.RegionId ?? 0);
 			foreach (var regionGroup in groupedOrders)
 			{
-				await OptimizeRegionDeliveries(regionGroup.Key, regionGroup.ToList());
+				int regionId = regionGroup.Key;
+				var regionOrders = regionGroup.ToList();
+				var regionVehicles = db.Vehicles
+					.Where(v => v.RegionId == regionId && v.Status == VehicleStatus.Available)
+					.ToList();
+
+				if (!regionOrders.Any() || !regionVehicles.Any())
+				{
+					Debug.WriteLine($"Region {regionId}: Exiting optimization – missing orders or vehicles.");
+					continue;
+				}
+
+				Debug.WriteLine($"Region {regionId}: Starting optimization with {regionOrders.Count} orders and {regionVehicles.Count} vehicles.");
+				await OptimizeRegionDeliveries(regionId, regionOrders);
 			}
 		}
 
@@ -115,19 +166,7 @@ namespace Licenta_v1.Services
 			var tomorrow = DateTime.Now.AddDays(1).Date;
 			var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
 
-			// Re-sortez comenzile: data plasarii ascendent si prioritate High inainte de Normal
-			orders = orders.Where(o => o.DeliveryId == null)
-						   .OrderBy(o => o.PlacedDate)
-						   .ThenBy(o => o.Priority == OrderPriority.High ? 0 : 1)
-						   .ToList();
-
-			if (orders.Count == 0)
-			{
-				Debug.WriteLine($"Skipping Region {regionId} - No orders found/All orders assigned.");
-				return;
-			}
-
-			// Iau Headquarter-ul din regiunea curenta
+			// Iau Headquarter-ul regiunii respective
 			var headquarter = db.Headquarters.FirstOrDefault(hq => hq.RegionId == regionId);
 			if (headquarter == null)
 			{
@@ -141,222 +180,304 @@ namespace Licenta_v1.Services
 				Longitude = headquarter.Longitude ?? 0
 			};
 
-			// Iau vehiculele disponibile in regiune
+			// Iau vehiculele disponibile din regiunea respectiva care nu sunt in mentenanta si nu au rute planificate pentru maine
 			var vehicles = db.Vehicles
 				.Where(v => v.RegionId == regionId &&
 							v.Status == VehicleStatus.Available &&
 							!db.Maintenances.Any(m => m.VehicleId == v.Id && m.ScheduledDate.Date == tomorrow))
-				.OrderBy(v => v.MaxWeightCapacity)
+				.OrderBy(v => v.FuelType == FuelType.Electric ? 0 : 1)
+				.ThenBy(v => v.MaxWeightCapacity)
 				.ThenBy(v => v.MaxVolumeCapacity)
-				.ThenBy(v => v.FuelType == FuelType.Electric ? 0 : 1)
 				.ToList();
 
-			if (vehicles.Count == 0)
-			{
-				Debug.WriteLine($"Skipping Region {regionId} - No available vehicles.");
-				return;
-			}
+			var heavyVehicles = vehicles.Where(v => v.VehicleType == VehicleType.HeavyTruck || v.VehicleType == VehicleType.SmallTruck).ToList();
+			var standardVehicles = vehicles.Where(v => v.VehicleType == VehicleType.Car || v.VehicleType == VehicleType.Van).ToList();
 
-			var heavyVehicles = vehicles.Where(v => v.VehicleType == VehicleType.HeavyTruck ||
-													v.VehicleType == VehicleType.SmallTruck).ToList();
-			var standardVehicles = vehicles.Where(v => v.VehicleType == VehicleType.Car || 
-													   v.VehicleType == VehicleType.Van).ToList();
-
-			// Impart comenzile in doua liste, daca pot fi livrate de Heavy Vehicles sau nu
-			var heavyAllowedOrders = orders.Where(o => !o.HeavyVehicleRestricted).ToList();
-			var restrictedOrders = orders.Where(o => o.HeavyVehicleRestricted).ToList();
-
-			// HashSet pt evidenta vehiculelor folosite
 			var usedVehicleIds = new HashSet<int>();
 
-			// Mai intai optimizez cu vehiculele grele
-			List<RouteResult> heavyRoutes = new List<RouteResult>();
+			// Mai intai incerc sa optimizez comenzile cu masinile standard
+			var lightVehicleCandidateOrders = orders
+				.OrderBy(o => o.PlacedDate)
+				.ThenBy(o => o.Priority == OrderPriority.High ? 0 : 1)
+				.ToList();
+
+			var standardRoutes = new List<RouteResult>();
+
+			if (lightVehicleCandidateOrders.Any() && standardVehicles.Any())
+			{
+				var routes = await OptimizeRoutesWithORSForCluster(lightVehicleCandidateOrders, standardVehicles, depot);
+				standardRoutes.AddRange(routes);
+
+				foreach (var route in standardRoutes)
+				{
+					await AssignOrdersToDeliveriesAsync(route.Orders, standardVehicles, usedVehicleIds, depot, route.VehicleId);
+				}
+			}
+
+			// Apoi incerc sa optimizez comenzile ramase(in functie de restrictii) cu masinile grele
+			var deliveredOrderIds = standardRoutes.SelectMany(r => r.Orders.Select(o => o.Id)).ToHashSet();
+			var remainingOrders = orders
+				.Where(o => !deliveredOrderIds.Contains(o.Id))
+				.OrderBy(o => o.PlacedDate)
+				.ThenBy(o => o.Priority == OrderPriority.High ? 0 : 1)
+				.ToList();
+
+			var heavyAllowedOrders = remainingOrders
+				.Where(o => !o.HeavyVehicleRestricted && !o.IsHeavyVehicleRestricted)
+				.ToList();
+
+			var heavyRoutes = new List<RouteResult>();
+
 			if (heavyAllowedOrders.Any() && heavyVehicles.Any())
 			{
-				var heavyClusters = new List<List<Order>> { 
-					heavyAllowedOrders.OrderBy(o => o.PlacedDate)
-									  .ThenBy(o => o.Priority == OrderPriority.High ? 0 : 1)
-									  .ToList() 
-				};
+				var routes = await OptimizeRoutesWithORSForCluster(heavyAllowedOrders, heavyVehicles, depot);
+				heavyRoutes.AddRange(routes);
 
-				foreach (var cluster in heavyClusters)
+				foreach (var route in heavyRoutes)
 				{
-					try
-					{
-						var routes = await OptimizeRoutesWithORSForCluster(cluster, heavyVehicles.Where(v => !usedVehicleIds.Contains(v.Id)).ToList(), depot);
-						heavyRoutes.AddRange(routes);
-					}
-					catch (Exception ex)
-					{
-						Debug.WriteLine($"Heavy route optimization failed: {ex.Message}");
-						// Marchez comenzile pentru fallback(in caz ca nu pot fi livrate de vehicule grele)
-						foreach (var order in cluster)
-						{
-							order.HeavyVehicleRestricted = true;
-							if (!restrictedOrders.Contains(order))
-								restrictedOrders.Add(order);
-						}
-					}
-				}
-
-				// Sterg comenzile care au fost asignate vehiculelor grele
-				var heavyDeliveredOrderIds = heavyRoutes.SelectMany(r => r.Orders.Select(o => o.Id)).ToHashSet();
-				var heavyUnassigned = heavyAllowedOrders.Where(o => !heavyDeliveredOrderIds.Contains(o.Id)).ToList();
-				restrictedOrders.AddRange(heavyUnassigned);
-			}
-
-			// Apoi optimizez cu vehiculele standard
-			List<RouteResult> standardRoutes = new List<RouteResult>();
-			if (restrictedOrders.Any() && standardVehicles.Any())
-			{
-				var standardClusters = new List<List<Order>> { 
-					restrictedOrders.OrderBy(o => o.PlacedDate)
-					    			.ThenBy(o => o.Priority == OrderPriority.High ? 0 : 1)
-									.ToList() 
-				};
-
-				foreach (var cluster in standardClusters)
-				{
-					var routes = await OptimizeRoutesWithORSForCluster(cluster, standardVehicles.Where(v => !usedVehicleIds.Contains(v.Id)).ToList(), depot);
-					standardRoutes.AddRange(routes);
+					await AssignOrdersToDeliveriesAsync(route.Orders, heavyVehicles, usedVehicleIds, depot, route.VehicleId);
 				}
 			}
 
-			// Asignez comenzile la Deliveries in functie de rutele obtinute
-			foreach (var route in heavyRoutes.Concat(standardRoutes))
-			{
-				await AssignOrdersToDeliveriesAsync(route.Orders, vehicles, usedVehicleIds, depot, route.VehicleId);
-			}
+			Debug.WriteLine($"Region {regionId} optimization complete: {standardRoutes.Count} standard vehicle routes and {heavyRoutes.Count} heavy vehicle routes created.");
 		}
 
-		// Helper care verifica daca ruta se incadreaza in limita de timp
+		// Verifica daca durata rutei + timpul de servire al comenzilor este mai mic decat limita de timp
 		private bool IsRouteWithinTimeLimit(int routeDurationSeconds, int numberOfOrders)
 		{
 			int totalServiceTime = numberOfOrders * ServiceTimePerOrderSeconds;
 			return (routeDurationSeconds + totalServiceTime) <= MaxWorkingSeconds;
 		}
 
-		// Metoda care face request-uri batch pentru accesibilitatea vehiculelor mari
-		private async Task PreValidateHeavyVehicleAccessAsync(List<Order> orders, Depot2 depot, List<Vehicle> heavyVehicles)
+		private async Task<HttpResponseMessage> SendApiRequestWithRetriesAsync(HttpClient client, string requestUrl, HttpContent content, int maxRetries = 10)
 		{
-			// Dictionar pt a tine evidenta comenzilor accesibile de vehiculele mari
-			var accessibleOrders = orders.ToDictionary(o => o.Id, o => false);
+			int retry = 0;
+			int delay = 1000; // delay initial de 1 secunda
+			HttpResponseMessage response = null;
 
-			int batchSize = 10;
+			while (retry < maxRetries)
+			{
+				await orsSemaphore.WaitAsync();
+				try
+				{
+					response = await client.PostAsync(requestUrl, content);
+				}
+				finally
+				{
+					orsSemaphore.Release();
+				}
 
-			// Pt fiecare vehicul mari
+				if (response.StatusCode == HttpStatusCode.OK)
+					return response;
+
+				string detailedResponse = await response.Content.ReadAsStringAsync();
+				Debug.WriteLine($"Attempt {retry + 1}: Status {response.StatusCode}. Response: {detailedResponse}");
+
+				if (response.StatusCode == (HttpStatusCode)429)
+				{
+					Debug.WriteLine($"429 Rate limit reached for ORS. Waiting 64 seconds before retry.");
+					await Task.Delay(TimeSpan.FromSeconds(64)); // limita ORS-ului de 64 secunde pt retry
+					retry++;
+					continue;
+				}
+
+				await Task.Delay(delay);
+				delay *= 2;
+				retry++;
+			}
+
+			throw new Exception("Maximum retry attempts exceeded due to API rate limiting.");
+		}
+
+		// Metoda care verifica accesul vehiculelor grele la comenzi si actualizeaza statusul comenzilor
+		private async Task<List<Order>> PreValidateHeavyVehicleAccessAsync(List<Order> orders, Depot2 depot, List<Vehicle> heavyVehicles)
+		{
+			var updatedOrders = new List<Order>();
+
+			foreach (var order in orders)
+			{
+				if (order.IsHeavyVehicleRestricted)
+				{
+					order.HeavyVehicleRestricted = true;
+					Debug.WriteLine($"[AUTO-RESTRICTED] Order {order.Id} manually restricted.");
+				}
+			}
+
+			int batchSize = 5;
 			foreach (var heavyVehicle in heavyVehicles)
 			{
-				// Iau comenzile care nu sunt marcate ca accesibile de niciun vehicul mare
-				var ordersToCheck = orders.Where(o => !accessibleOrders[o.Id]).ToList();
+				var ordersToCheck = orders
+					.Where(o => !o.HeavyVehicleRestricted)
+					.ToList();
+
+				if (!ordersToCheck.Any())
+				{
+					Debug.WriteLine($"[NO CHECKS] All orders are already restricted before checking with vehicle {heavyVehicle.Id}.");
+					continue;
+				}
+
 				for (int i = 0; i < ordersToCheck.Count; i += batchSize)
 				{
 					var batch = ordersToCheck.Skip(i).Take(batchSize).ToList();
 
-					var coordinates = new List<double[]>
-					{
-						new double[] { depot.Longitude, depot.Latitude }
-					};
-					coordinates.AddRange(batch.Select(o => new double[] { o.Longitude ?? 0.0, o.Latitude ?? 0.0 }));
-					coordinates.Add(new double[] { depot.Longitude, depot.Latitude });
+					Debug.WriteLine($"[BATCH CHECK] Checking orders {string.Join(", ", batch.Select(o => o.Id))} with Vehicle {heavyVehicle.Id}");
 
-					var requestBody = new
+					foreach (var order in batch)
 					{
-						coordinates = coordinates,
-						options = new
+						if (!order.Latitude.HasValue || !order.Longitude.HasValue)
 						{
-							profile_params = new
-							{
-								restrictions = new
-								{
-									height = heavyVehicle.HeightMeters,
-									width = heavyVehicle.WidthMeters,
-									weight = heavyVehicle.WeightTons * 1000
-								}
-							}
+							Debug.WriteLine($"[SKIPPED] Order {order.Id} missing coordinates.");
+							continue;
 						}
-					};
 
-					string jsonBody = JsonConvert.SerializeObject(requestBody);
-					string requestUrl = "https://api.openrouteservice.org/v2/directions/driving-hgv";
-
-					using (var client = new HttpClient())
-					{
-						client.DefaultRequestHeaders.Add("Authorization", OpenRouteServiceApiKey);
-						var content = new StringContent(jsonBody, Encoding.UTF8, "application/json");
-						var response = await client.PostAsync(requestUrl, content);
-
-						Debug.WriteLine("Directions API ResponseX ", response.ToString());
-
-						if (response.IsSuccessStatusCode)
+						if (!ptvCheckCache.TryGetValue((order.Id, heavyVehicle.Id), out _))
 						{
-							// Daca request-ul batch a reusit, marchez toate comenzile din batch ca accesibile
-							foreach (var order in batch)
-							{
-								accessibleOrders[order.Id] = true;
-							}
+							bool result = await IsHeavyVehicleAccessibleAsync(order, depot, heavyVehicle);
+							ptvCheckCache[(order.Id, heavyVehicle.Id)] = result;
+							Debug.WriteLine($"[CHECKED] Order {order.Id}, Vehicle {heavyVehicle.Id}, Accessible: {result}");
 						}
 						else
 						{
-							Debug.WriteLine($"Batch request failed for heavy vehicle {heavyVehicle.Id}: {response.StatusCode}");
-							// Daca un request a esuat, incerc sa verific comenzile individual
-							foreach (var order in batch)
-							{
-								bool result = await IsHeavyVehicleAccessibleAsync(order, depot, heavyVehicle.HeightMeters, heavyVehicle.WidthMeters, heavyVehicle.WeightTons);
-								if (result)
-								{
-									accessibleOrders[order.Id] = true;
-								}
-							}
+							Debug.WriteLine($"[CACHE HIT] Order {order.Id}, Vehicle {heavyVehicle.Id}");
 						}
 					}
+
+					await Task.Delay(1000);
 				}
 			}
 
-			foreach (var order in orders)
+			foreach (var order in orders.Where(o => !o.HeavyVehicleRestricted))
 			{
-				order.HeavyVehicleRestricted = !accessibleOrders[order.Id];
+				bool accessibleByAnyHeavyVehicle = heavyVehicles.Any(hv =>
+					ptvCheckCache.TryGetValue((order.Id, hv.Id), out var accessible) && accessible);
+
+				bool wasRestricted = order.HeavyVehicleRestricted;
+				order.HeavyVehicleRestricted = !accessibleByAnyHeavyVehicle;
+
+				if (order.HeavyVehicleRestricted != wasRestricted)
+				{
+					updatedOrders.Add(order);
+				}
+
+				Debug.WriteLine($"[FINAL STATUS] Order {order.Id}: HeavyVehicleRestricted = {order.HeavyVehicleRestricted}");
 			}
+
+			return updatedOrders;
 		}
 
-		// Metoda pt verificarea accesibilitatii vehiculelor mari la o comanda
-		private async Task<bool> IsHeavyVehicleAccessibleAsync(Order order, Depot2 depot, double maxHeight, double maxWidth, double maxWeightTons)
+		// Fallback in caz ca toate cheile PTV sunt folosite sau daca PTV returneaza eroare
+		private async Task<bool> IsHeavyVehicleAccessibleAsync(Order order, Depot2 depot, Vehicle heavyVehicle)
 		{
-			double maxWeightKg = maxWeightTons * 1000;
+			var cacheKey = (order.Id, heavyVehicle.Id);
 
-			var coordinates = new List<double[]>
+			// Mai intai verific cache-ul PTV
+			if (ptvCheckCache.TryGetValue(cacheKey, out bool cachedPTVResult))
 			{
-				new double[] { depot.Longitude, depot.Latitude },
-				new double[] { order.Longitude ?? 0.0, order.Latitude ?? 0.0 }
+				Debug.WriteLine($"[PTV CACHE] Order {order.Id}, Vehicle {heavyVehicle.Id}: {cachedPTVResult}");
+				return cachedPTVResult;
+			}
+
+			if (!order.Latitude.HasValue || !order.Longitude.HasValue)
+			{
+				Debug.WriteLine($"[SKIP] Order {order.Id} missing coordinates.");
+				ptvCheckCache[cacheKey] = false;
+				return false;
+			}
+
+			var baseUrl = "https://api.myptv.com/routing/v1/routes";
+			var queryParams = new List<string>
+			{
+				$"waypoints={depot.Latitude.ToString(CultureInfo.InvariantCulture)},{depot.Longitude.ToString(CultureInfo.InvariantCulture)}",
+				$"waypoints={order.Latitude.Value.ToString(CultureInfo.InvariantCulture)},{order.Longitude.Value.ToString(CultureInfo.InvariantCulture)}",
+				"profile=EUR_TRAILER_TRUCK",
+				"options[trafficMode]=REALISTIC",
+				$"vehicle[height]={Math.Round(heavyVehicle.HeightMeters * 100)}",
+				$"vehicle[width]={Math.Round(heavyVehicle.WidthMeters * 100)}",
+				$"vehicle[length]={Math.Round(heavyVehicle.LengthMeters * 100)}",
+				$"vehicle[totalPermittedWeight]={Math.Round(heavyVehicle.WeightTons * 1000)}"
 			};
 
-			var requestBody = new
+			var queryString = string.Join("&", queryParams);
+			var requestUrl = $"{baseUrl}?{queryString}";
+
+			using var client = new HttpClient();
+			var apiKeys = new List<string> { PtvApiKey, PtVApiKeyReserve, PtVApiKeyEmergency };
+
+			foreach (var apiKey in apiKeys)
 			{
-				coordinates = coordinates,
+				Debug.WriteLine($"[PTV] Trying key: {apiKey} for Order {order.Id}, Vehicle {heavyVehicle.Id}");
+				client.DefaultRequestHeaders.Clear();
+				client.DefaultRequestHeaders.Add("apiKey", apiKey);
+
+				var response = await client.GetAsync(requestUrl);
+				var responseContent = await response.Content.ReadAsStringAsync();
+
+				if (response.StatusCode == HttpStatusCode.OK)
+				{
+					dynamic ptvResponse = JsonConvert.DeserializeObject(responseContent);
+					bool violated = ptvResponse?.violated ?? false;
+					bool isAccessible = !violated;
+
+					ptvCheckCache[cacheKey] = isAccessible;
+					Debug.WriteLine($"[PTV SUCCESS] Key: {apiKey}, Order {order.Id}, Vehicle {heavyVehicle.Id}, Accessible: {isAccessible}");
+					CurrentPtvApiKey = apiKey;
+					return isAccessible;
+				}
+				else if ((response.StatusCode == HttpStatusCode.Forbidden && responseContent.Contains("GENERAL_QUOTA_EXCEEDED")) || response.StatusCode == (HttpStatusCode)429)
+				{
+					Debug.WriteLine($"[PTV QUOTA] Key: {apiKey}. Moving to next key.");
+					continue; // Incerc urmatorea cheie
+				}
+				else
+				{
+					Debug.WriteLine($"[PTV ERROR] Key: {apiKey}, Status: {response.StatusCode}. Trying next available key.");
+					continue; // In loc sa returnez eroarea, incerc urmatoarea cheie
+				}
+			}
+
+			// Daca am incercat toate cheile PTV fara success, incerc cache-ul ORS sau ORS API
+			if (orsCheckCache.TryGetValue(cacheKey, out bool cachedORSResult))
+			{
+				Debug.WriteLine($"[ORS CACHE] Order {order.Id}, Vehicle {heavyVehicle.Id}: {cachedORSResult}");
+				return cachedORSResult;
+			}
+
+			Debug.WriteLine($"[FALLBACK TO ORS] All PTV keys failed for Order {order.Id}, Vehicle {heavyVehicle.Id}. Using ORS.");
+
+			var orsRequestUrl = "https://api.openrouteservice.org/v2/directions/driving-hgv";
+			var orsRequestBody = new
+			{
+				coordinates = new[]
+				{
+					new[] { depot.Longitude, depot.Latitude },
+					new[] { order.Longitude.Value, order.Latitude.Value }
+				},
 				options = new
 				{
 					profile_params = new
 					{
 						restrictions = new
 						{
-							height = maxHeight,
-							width = maxWidth,
-							weight = maxWeightKg
+							height = heavyVehicle.HeightMeters,
+							width = heavyVehicle.WidthMeters,
+							length = heavyVehicle.LengthMeters,
+							weight = heavyVehicle.WeightTons * 1000
 						}
 					}
 				}
 			};
 
-			string jsonBody = JsonConvert.SerializeObject(requestBody);
-			string requestUrl = "https://api.openrouteservice.org/v2/directions/driving-hgv";
+			string orsJsonBody = JsonConvert.SerializeObject(orsRequestBody);
+			using var orsClient = new HttpClient();
+			orsClient.DefaultRequestHeaders.Add("Authorization", OpenRouteServiceApiKey);
+			var orsContent = new StringContent(orsJsonBody, Encoding.UTF8, "application/json");
+			var orsResponse = await SendApiRequestWithRetriesAsync(orsClient, orsRequestUrl, orsContent);
 
-			using (var client = new HttpClient())
-			{
-				client.DefaultRequestHeaders.Add("Authorization", OpenRouteServiceApiKey);
-				var content = new StringContent(jsonBody, Encoding.UTF8, "application/json");
-				var response = await client.PostAsync(requestUrl, content);
-				return response.IsSuccessStatusCode;
-			}
+			bool orsAccessible = orsResponse.IsSuccessStatusCode;
+			orsCheckCache[cacheKey] = orsAccessible;
+			Debug.WriteLine($"[ORS CHECK DONE] Order {order.Id}, Vehicle {heavyVehicle.Id}, Accessible: {orsAccessible}");
+
+			return orsAccessible;
 		}
 
 		// Metoda imparte vehiculele disponibile in submultimi (de cel mult 3 vehicule)
@@ -401,7 +522,6 @@ namespace Licenta_v1.Services
 
 				string requestUrl = "https://api.openrouteservice.org/optimization";
 				string jsonBody = JsonConvert.SerializeObject(optimizationRequest);
-				Debug.WriteLine($"Sending ORS Optimization Request (subset): {jsonBody}");
 
 				using var client = new HttpClient();
 				client.DefaultRequestHeaders.Add("Authorization", OpenRouteServiceApiKey);
@@ -506,15 +626,12 @@ namespace Licenta_v1.Services
 
 		private async Task<int> GetRouteDurationFromORS(List<Order> orders, Depot2 depot)
 		{
-			var coordinates = new List<double[]>
-			{
-				new double[] { depot.Longitude, depot.Latitude }
-			};
+			var coordinates = new List<double[]> { new double[] { depot.Longitude, depot.Latitude } };
 			coordinates.AddRange(orders.Select(o => new double[] { o.Longitude ?? 0.0, o.Latitude ?? 0.0 }));
 			coordinates.Add(new double[] { depot.Longitude, depot.Latitude });
 
 			var directionsRequest = new { coordinates };
-			string requestUrl = "https://api.openrouteservice.org/v2/directions/driving-car";
+			string requestUrl = "https://api.openrouteservice.org/v2/directions/driving-hgv";
 			string jsonBody = JsonConvert.SerializeObject(directionsRequest);
 
 			using (var client = new HttpClient())
@@ -678,7 +795,8 @@ namespace Licenta_v1.Services
 				coordinates = locations,
 			};
 
-			string requestUrl = "https://api.openrouteservice.org/v2/directions/driving-car";
+			string profile = GetProfileForVehicle(vehicle);
+			string requestUrl = $"https://api.openrouteservice.org/v2/directions/{profile}";
 			string jsonBody = JsonConvert.SerializeObject(directionsRequest);
 
 			using (var client = new HttpClient())
@@ -901,6 +1019,31 @@ namespace Licenta_v1.Services
 			return (vehicle.VehicleType == VehicleType.HeavyTruck || vehicle.VehicleType == VehicleType.SmallTruck)
 				? "driving-hgv"
 				: "driving-car";
+		}
+
+		public void InvalidateCacheForVehicle(int vehicleId)
+		{
+			// Sterg din cache PTV toate cheile care contin vehicleId dat
+			var ptvKeysToRemove = ptvCheckCache.Keys
+				.Where(key => key.vehicleId == vehicleId)
+				.ToList();
+
+			foreach (var key in ptvKeysToRemove)
+			{
+				ptvCheckCache.Remove(key, out _);
+				Debug.WriteLine($"PTV Cache invalidated for Order {key.orderId} and Vehicle {key.vehicleId}");
+			}
+
+			// Sterg din cache ORS toate cheile care contin vehicleId dat
+			var orsKeysToRemove = orsCheckCache.Keys
+				.Where(key => key.vehicleId == vehicleId)
+				.ToList();
+
+			foreach (var key in orsKeysToRemove)
+			{
+				orsCheckCache.Remove(key, out _);
+				Debug.WriteLine($"ORS Cache invalidated for Order {key.orderId} and Vehicle {key.vehicleId}");
+			}
 		}
 	}
 

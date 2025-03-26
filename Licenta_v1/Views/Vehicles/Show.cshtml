@@ -28,9 +28,9 @@
         <!-- Poza :) -->
         <div class="col-lg-4 col-md-6 text-center mb-3 d-flex flex-column align-items-center">
             <img src="@(Url.Content("~/" + (Model.ImagePath ?? "Images/VehicleDefault.jpg")))"
-                 class="img-fluid rounded mb-3"
-                 alt="Vehicle Photo"
-                 style="max-width: 100%; height: auto;">
+            class="img-fluid rounded mb-3"
+            alt="Vehicle Photo"
+            style="max-width: 100%; height: auto;">
 
             <!-- Formular ca sa adaug poza daca vreau -->
             @if (User.IsInRole("Admin")) {
@@ -78,10 +78,10 @@
                         <th id="light-blue-elements-background-id">Vehicle Type</th>
                         <td id="light-blue-elements-background-id">
                             @(Model.VehicleType.GetType()
-                                .GetMember(Model.VehicleType.ToString())
-                                .First()
-                                .GetCustomAttribute<DisplayAttribute>()?
-                                .Name ?? Model.VehicleType.ToString())
+                                    .GetMember(Model.VehicleType.ToString())
+                                    .First()
+                                    .GetCustomAttribute<DisplayAttribute>()?
+                                    .Name ?? Model.VehicleType.ToString())
                         </td>
                     </tr>
                     <tr>
@@ -110,7 +110,13 @@
                     </tr>
                     <tr>
                         <th id="light-blue-elements-background-id">Total Weight</th>
-                        <td id="light-blue-elements-background-id">@Model.WeightTons tons</td>
+                        <td id="light-blue-elements-background-id">@($"{ Model.WeightTons:F2} tons")</td>
+                    </tr>
+                    <tr>
+                        <th id="light-blue-elements-background-id">Maximum Axle Load</th>
+                        <td id="light-blue-elements-background-id">
+                            @(Model.MaxAxleLoadTons.HasValue ? $"{Model.MaxAxleLoadTons.Value:F2} tons" : "N/A")
+                        </td>
                     </tr>
                     <tr>
                         <th id="light-blue-elements-background-id">Consumption rate</th>

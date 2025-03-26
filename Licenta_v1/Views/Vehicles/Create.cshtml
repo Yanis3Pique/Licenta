@@ -118,6 +118,13 @@
                 <br />
 
                 <div class="form-group">
+                    @Html.LabelFor(m => m.MaxAxleLoadTons, "Maximum Axle Load (tons)")
+                    @Html.TextBoxFor(m => m.MaxAxleLoadTons, new { @class = "form-control", type = "number", step = "0.01" })
+                    @Html.ValidationMessageFor(m => m.MaxAxleLoadTons, "", new { @class = "text-danger" })
+                </div>
+                <br />
+
+                <div class="form-group">
                     @Html.LabelFor(m => m.RegionId, "Region")
                     @Html.DropDownListFor(m => m.RegionId, new SelectList(ViewBag.Regions, "Value", "Text"), "Select Region", new { @class = "form-control" })
                     @Html.ValidationMessageFor(m => m.RegionId, "", new { @class = "text-danger" })

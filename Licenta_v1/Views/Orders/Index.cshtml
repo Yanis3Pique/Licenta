@@ -60,10 +60,14 @@
             <div class="col-md-3 col-sm-6">
                 <label for="statusFilter" class="form-label">Status</label>
                 <select class="form-select" name="statusFilter">
-                    <option value="Placed" selected="@(ViewBag.StatusFilter == "Placed" ? "selected" : "")">Placed</option>
-                    <option value="Assigned" selected="@(ViewBag.StatusFilter == "Assigned" ? "selected" : "")">Assigned to Delivery</option>
-                    <option value="Delivered" selected="@(ViewBag.StatusFilter == "Delivered" ? "selected" : "")">Delivered</option>
-                    <option value="">All Statuses</option>
+                    @{
+                        var selectedStatus = ViewBag.StatusFilter as string;
+                    }
+
+                    <option value="Placed" selected="@(selectedStatus == "Placed")">Unassigned to Delivery</option>
+                    <option value="Assigned" selected="@(selectedStatus == "Assigned")">Assigned to Delivery</option>
+                    <option value="Delivered" selected="@(selectedStatus == "Delivered")">Delivered</option>
+                    <option value="" selected="@(String.IsNullOrEmpty(selectedStatus))">All Statuses</option>
                 </select>
             </div>
         }

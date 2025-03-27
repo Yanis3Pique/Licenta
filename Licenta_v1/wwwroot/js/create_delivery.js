@@ -2,134 +2,218 @@
 var totalVolume = 1;
 var map, orderMarkers = {};
 
+const ICON_URLS = {
+    selected: "https://cdn-icons-png.flaticon.com/512/1828/1828665.png",
+    normal: "https://cdn-icons-png.flaticon.com/512/1828/1828643.png",
+    restricted: "https://cdn-icons-png.flaticon.com/512/8213/8213126.png"
+};
+
 document.addEventListener("DOMContentLoaded", function () {
-    var capacityContainer = document.getElementById("capacity-progress");
-    var vehicleSelect = document.getElementById("vehicleSelect");
-    var createButton = document.getElementById("createDeliveryButton");
+    const vehicleIdInput = document.getElementById("selectedVehicleId");
+    const selectedOrdersList = document.getElementById("selectedOrdersList");
+    const createButton = document.getElementById("createDeliveryButton");
+
+    // Handler pentru selectarea vehiculului
+    document.querySelectorAll(".vehicle-option").forEach(button => {
+        button.addEventListener("click", () => {
+            const vehicleId = button.getAttribute("data-id");
+            const label = button.getAttribute("data-name");
+            const maxWeight = parseFloat(button.getAttribute("data-maxweight")) || 1;
+            const maxVolume = parseFloat(button.getAttribute("data-maxvolume")) || 1;
+
+            totalWeight = maxWeight;
+            totalVolume = maxVolume;
+
+            vehicleIdInput.value = vehicleId;
+            document.getElementById("selectedVehicleDisplay").innerText = label;
+            document.getElementById("weightValue").innerText = `0 / ${totalWeight} kg`;
+            document.getElementById("volumeValue").innerText = `0 / ${totalVolume} m³`;
+
+            updateOrderAvailability();
+        });
+    });
+
+    // Handler pentru selectarea soferului
+    document.querySelectorAll(".driver-option").forEach(button => {
+        button.addEventListener("click", () => {
+            const driverId = button.getAttribute("data-id");
+            const name = button.getAttribute("data-name");
+
+            document.getElementById("selectedDriverId").value = driverId;
+            document.getElementById("selectedDriverDisplay").innerText = name;
+        });
+    });
 
     // Initializez harta
     map = L.map('map').setView([45.9432, 24.9668], 7);
+    map.attributionControl.setPosition('bottomleft');
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '© OpenStreetMap contributors'
     }).addTo(map);
 
-    // Creez markeri pentru fiecare comanda o singura data si ii stochez in orderMarkers
-    var orderCheckboxes = document.querySelectorAll(".order-checkbox");
-    var bounds = L.latLngBounds();
-    orderCheckboxes.forEach(function (checkbox) {
-        var lat = parseFloat(checkbox.getAttribute("data-latitude"));
-        var lng = parseFloat(checkbox.getAttribute("data-longitude"));
+    const orderCheckboxes = document.querySelectorAll(".order-checkbox");
+    const bounds = L.latLngBounds();
+
+    orderCheckboxes.forEach(cb => {
+        const lat = parseFloat(cb.getAttribute("data-latitude"));
+        const lng = parseFloat(cb.getAttribute("data-longitude"));
+        const orderId = cb.getAttribute("data-id");
+
         if (!isNaN(lat) && !isNaN(lng)) {
-            var iconUrl = checkbox.checked
-                ? "https://cdn-icons-png.flaticon.com/512/1828/1828665.png" // rosu pentru comenzi selectate
-                : "https://cdn-icons-png.flaticon.com/512/1828/1828643.png"; // albastru pentru comenzi neselectate
-            var icon = L.icon({
-                iconUrl: iconUrl,
-                iconSize: [25, 41],
-                iconAnchor: [12, 41]
-            });
-            var marker = L.marker([lat, lng], { icon: icon })
-                .addTo(map)
-                .bindPopup("Order #" + checkbox.value);
-            orderMarkers[checkbox.value] = marker;
+            const marker = L.marker([lat, lng], {
+                icon: L.icon({
+                    iconUrl: ICON_URLS.normal,
+                    iconSize: [25, 41],
+                    iconAnchor: [12, 41]
+                })
+            }).addTo(map).bindPopup("Order #" + orderId);
+
+            orderMarkers[orderId] = marker;
             bounds.extend(marker.getLatLng());
         }
     });
+
     if (Object.keys(orderMarkers).length > 0) {
         map.fitBounds(bounds, { padding: [50, 50] });
     }
 
-    // Marchez cu rosu comanda selectata si cu albastru comanda neselectata
+    function isOrderRestricted(cb) {
+        const vehicleId = parseInt(vehicleIdInput.value);
+        const inaccessible = cb.getAttribute("data-inaccessible")?.split(',').map(Number) || [];
+        const manual = cb.getAttribute("data-manual")?.split(',').map(Number) || [];
+        return inaccessible.includes(vehicleId) || manual.includes(vehicleId);
+    }
+
     function updateMapMarkers() {
-        orderCheckboxes.forEach(function (checkbox) {
-            var marker = orderMarkers[checkbox.value];
-            if (marker) {
-                var newIconUrl = checkbox.checked
-                    ? "https://cdn-icons-png.flaticon.com/512/1828/1828665.png"
-                    : "https://cdn-icons-png.flaticon.com/512/1828/1828643.png";
-                var newIcon = L.icon({
-                    iconUrl: newIconUrl,
-                    iconSize: [25, 41],
-                    iconAnchor: [12, 41]
-                });
-                marker.setIcon(newIcon);
-            }
+        const selected = new Set();
+        document.querySelectorAll(".order-checkbox:checked").forEach(cb => selected.add(cb.getAttribute("data-id")));
+
+        Object.entries(orderMarkers).forEach(([id, marker]) => {
+            const cb = document.querySelector(`.order-checkbox[data-id="${id}"]`);
+            const iconUrl = cb.disabled
+                ? ICON_URLS.restricted
+                : selected.has(id)
+                    ? ICON_URLS.selected
+                    : ICON_URLS.normal;
+
+            const icon = L.icon({ iconUrl, iconSize: [25, 41], iconAnchor: [12, 41] });
+            marker.setIcon(icon);
         });
     }
 
-    // Dau refresh la progress bar si la valorile afisate
     function updateCapacityVisuals() {
-        var usedWeight = 0, usedVolume = 0;
-        orderCheckboxes.forEach(function (checkbox) {
-            if (checkbox.checked) {
-                usedWeight += parseFloat(checkbox.getAttribute("data-weight")) || 0;
-                usedVolume += parseFloat(checkbox.getAttribute("data-volume")) || 0;
-            }
+        let usedWeight = 0, usedVolume = 0;
+
+        document.querySelectorAll(".order-checkbox:checked").forEach(cb => {
+            usedWeight += parseFloat(cb.getAttribute("data-weight")) || 0;
+            usedVolume += parseFloat(cb.getAttribute("data-volume")) || 0;
         });
-        var weightPerc = Math.min((usedWeight / totalWeight) * 100, 100);
-        var volumePerc = Math.min((usedVolume / totalVolume) * 100, 100);
-        var weightProgressElem = document.getElementById("weightProgress");
-        var volumeProgressElem = document.getElementById("volumeProgress");
 
-        weightProgressElem.style.width = weightPerc + "%";
-        volumeProgressElem.style.width = volumePerc + "%";
-        document.getElementById("weightValue").innerText = usedWeight.toFixed(1) + " / " + totalWeight + " kg";
-        document.getElementById("volumeValue").innerText = usedVolume.toFixed(1) + " / " + totalVolume + " m³";
+        const weightPerc = Math.min((usedWeight / totalWeight) * 100, 100);
+        const volumePerc = Math.min((usedVolume / totalVolume) * 100, 100);
 
-        // Schimb culoarea progress bar-ului in rosu daca capacitatea este depasita
-        if (usedWeight > totalWeight) {
-            weightProgressElem.classList.remove("bg-primary");
-            weightProgressElem.classList.add("bg-danger");
-        } else {
-            weightProgressElem.classList.remove("bg-danger");
-            weightProgressElem.classList.add("bg-primary");
-        }
+        document.getElementById("weightProgress").style.width = weightPerc + "%";
+        document.getElementById("volumeProgress").style.width = volumePerc + "%";
+        document.getElementById("weightValue").innerText = `${usedWeight.toFixed(1)} / ${totalWeight} kg`;
+        document.getElementById("volumeValue").innerText = `${usedVolume.toFixed(1)} / ${totalVolume} m³`;
 
-        if (usedVolume > totalVolume) {
-            volumeProgressElem.classList.remove("bg-info");
-            volumeProgressElem.classList.add("bg-danger");
-        } else {
-            volumeProgressElem.classList.remove("bg-danger");
-            volumeProgressElem.classList.add("bg-info");
-        }
+        document.getElementById("weightProgress").classList.toggle("bg-danger", usedWeight > totalWeight);
+        document.getElementById("volumeProgress").classList.toggle("bg-danger", usedVolume > totalVolume);
 
-        // Dau disable la butonul de creare delivery daca capacitatea este depasita
         createButton.disabled = (usedWeight > totalWeight || usedVolume > totalVolume);
+
+        // Lista de comenzi selectate + actualizarea ei
+        selectedOrdersList.innerHTML = "";
+        document.querySelectorAll(".order-checkbox:checked").forEach(cb => {
+            const id = cb.getAttribute("data-id");
+            const addr = cb.getAttribute("data-address");
+            const w = cb.getAttribute("data-weight");
+            const v = cb.getAttribute("data-volume");
+
+            const container = document.createElement("div");
+            container.className = "d-flex justify-content-between align-items-start border rounded p-1 bg-light";
+            container.innerHTML = `
+                <input type="hidden" name="selectedOrderIds" value="${id}" />
+                <div class="pe-2">
+                    <strong>Order #${id}</strong><br>
+                    <small>${addr}</small><br>
+                    <small>${w} kg, ${v} m³</small>
+                </div>
+                <button type="button" class="btn-close ms-2" aria-label="Remove" data-id="${id}"></button>
+            `;
+            selectedOrdersList.appendChild(container);
+        });
+
+        document.querySelectorAll("#selectedOrdersList .btn-close").forEach(btn => {
+            btn.addEventListener("click", () => {
+                const idToRemove = btn.getAttribute("data-id");
+                const checkbox = document.querySelector(`.order-checkbox[data-id="${idToRemove}"]`);
+                if (checkbox) checkbox.checked = false;
+                updateCapacityVisuals();
+            });
+        });
+
+        const wrapper = document.getElementById("selectedOrdersListWrapper");
+        const placeholder = document.getElementById("selectedOrdersListPlaceholder");
+        const selectedCount = selectedOrdersList.querySelectorAll(".d-flex").length;
+
+        placeholder.classList.toggle("d-none", selectedCount > 0);
+
+        const firstCard = selectedOrdersList.querySelector("div");
+        if (firstCard) {
+            const cardHeight = firstCard.offsetHeight;
+            selectedOrdersList.style.maxHeight = `${cardHeight}px`;
+            wrapper.style.height = `${cardHeight + 55}px`;
+        } else {
+            wrapper.style.height = `${70 + 55}px`;
+            selectedOrdersList.style.maxHeight = "none";
+        }
+
         updateMapMarkers();
     }
 
-    // Actualizez capacitatatile in functie de vehiculul selectat
-    if (vehicleSelect) {
-        var selectedOption = vehicleSelect.options[vehicleSelect.selectedIndex];
-        var newTotalWeight = selectedOption.getAttribute("data-maxweight");
-        var newTotalVolume = selectedOption.getAttribute("data-maxvolume");
-        capacityContainer.setAttribute("data-total-weight", newTotalWeight);
-        capacityContainer.setAttribute("data-total-volume", newTotalVolume);
-        totalWeight = parseFloat(newTotalWeight) || 1;
-        totalVolume = parseFloat(newTotalVolume) || 1;
-        document.getElementById("weightValue").innerText = "0 / " + newTotalWeight + " kg";
-        document.getElementById("volumeValue").innerText = "0 / " + newTotalVolume + " m³";
-    }
+    function updateOrderAvailability() {
+        const vehicleId = parseInt(vehicleIdInput.value);
+        if (!vehicleId) return;
 
-    // Modific capacitatile cans se selecteaza un alt vehicul
-    if (vehicleSelect) {
-        vehicleSelect.addEventListener("change", function () {
-            var selectedOption = vehicleSelect.options[vehicleSelect.selectedIndex];
-            var newTotalWeight = selectedOption.getAttribute("data-maxweight");
-            var newTotalVolume = selectedOption.getAttribute("data-maxvolume");
-            capacityContainer.setAttribute("data-total-weight", newTotalWeight);
-            capacityContainer.setAttribute("data-total-volume", newTotalVolume);
-            totalWeight = parseFloat(newTotalWeight) || 1;
-            totalVolume = parseFloat(newTotalVolume) || 1;
-            document.getElementById("weightValue").innerText = "0 / " + newTotalWeight + " kg";
-            document.getElementById("volumeValue").innerText = "0 / " + newTotalVolume + " m³";
-            updateCapacityVisuals();
+        document.querySelectorAll(".order-checkbox").forEach(cb => {
+            const restricted = isOrderRestricted(cb);
+            cb.disabled = restricted;
+            cb.checked = restricted ? false : cb.checked;
+            cb.closest("label")?.classList.toggle("text-muted", restricted);
         });
+
+        updateCapacityVisuals();
     }
 
-    // Evenimentul reprezinta selectarea sau deselectarea unei comenzi(box)
-    orderCheckboxes.forEach(function (checkbox) {
-        checkbox.addEventListener("change", updateCapacityVisuals);
+    // Initializez toate checkbox-urile
+    document.querySelectorAll(".order-checkbox").forEach(cb => {
+        cb.addEventListener("change", updateCapacityVisuals);
     });
-    updateCapacityVisuals();
+
+    // Panoul lateral cu comenzile selectabile
+    const panel = document.getElementById("ordersPanel");
+    const overlay = document.getElementById("ordersOverlay");
+
+    document.getElementById("toggleOrdersPanel")?.addEventListener("click", () => {
+        panel.style.display = "block";
+        overlay.style.display = "block";
+    });
+    document.getElementById("closeOrdersPanel")?.addEventListener("click", () => {
+        panel.style.display = "none";
+        overlay.style.display = "none";
+    });
+    overlay?.addEventListener("click", () => {
+        panel.style.display = "none";
+        overlay.style.display = "none";
+    });
+
+    // Functionalitatea de cautare pentru comenzile din panou
+    document.getElementById("orderSearch")?.addEventListener("input", e => {
+        const term = e.target.value.toLowerCase();
+        document.querySelectorAll("#orderListContainer .list-group-item").forEach(item => {
+            const match = item.innerText.toLowerCase().includes(term);
+            item.style.display = match ? "block" : "none";
+        });
+    });
 });

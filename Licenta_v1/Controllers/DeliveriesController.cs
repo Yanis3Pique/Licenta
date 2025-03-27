@@ -32,7 +32,9 @@ namespace Licenta_v1.Controllers
 
 			// Iau Comenzile disponibile in regiunea Dispecerului (comenzi neasignate)
 			var availableOrders = db.Orders
-				.Where(o => o.Status == OrderStatus.Placed && o.DeliveryId == null && o.RegionId == user.RegionId)
+				.Where(o => o.Status == OrderStatus.Placed &&
+							o.DeliveryId == null &&
+							o.RegionId == user.RegionId)
 				.ToList();
 
 			// Iau Soferii disponibili in regiunea Dispecerului
@@ -90,6 +92,16 @@ namespace Licenta_v1.Controllers
 			{
 				TempData["Error"] = "The selected orders exceed the vehicle's capacity.";
 				return RedirectToAction("Create");
+			}
+
+			// Verific daca vehiculul este restrictionat pentru una dintre comenzi
+			foreach (var order in orders)
+			{
+				if (order.InaccessibleHeavyVehicleIds.Contains(vehicle.Id) || order.ManuallyRestrictedVehicleIds.Contains(vehicle.Id))
+				{
+					TempData["Error"] = $"Order #{order.Id} is not accessible by the selected vehicle.";
+					return RedirectToAction("Create");
+				}
 			}
 
 			// Fac un nou Delivery
@@ -350,8 +362,12 @@ namespace Licenta_v1.Controllers
 			}
 
 			// Fac o lista de Orders plasate si neasignate niciunui Delivery
+			var deliveryVehicleId = delivery.Vehicle.Id;
+
 			ViewBag.AvailableOrders = db.Orders
 				.Where(o => o.Status == OrderStatus.Placed && o.DeliveryId == null && o.RegionId == user.RegionId)
+				.Where(o => !o.InaccessibleHeavyVehicleIds.Contains(deliveryVehicleId) &&
+							!o.ManuallyRestrictedVehicleIds.Contains(deliveryVehicleId))
 				.ToList();
 
 			return View(delivery);
@@ -363,16 +379,40 @@ namespace Licenta_v1.Controllers
 		{
 			var delivery = db.Deliveries
 				.Include(d => d.Vehicle)
-					.ThenInclude(v => v.Region)
-						.ThenInclude(r => r.Headquarters)
 				.Include(d => d.Driver)
 				.Include(d => d.Orders)
-					.ThenInclude(o => o.Client)
 				.FirstOrDefault(d => d.Id == id);
+
 			if (delivery == null)
 				return NotFound();
 
-			// Sterg comenzile la care s-a dat uncheck
+			var vehicle = delivery.Vehicle;
+
+			// Iau comenzile care sunt in lista de Orders curente si nu sunt in lista de Orders de pastrat
+			var newOrders = db.Orders.Where(o => addOrderIds.Contains(o.Id) && o.DeliveryId == null).ToList();
+			var keptOrders = delivery.Orders.Where(o => keepOrderIds.Contains(o.Id)).ToList();
+
+			var allFinalOrders = keptOrders.Concat(newOrders).ToList();
+
+			// Verific daca comenzile selectate se incadreaza in capacitatea masinii
+			if (!CanFitOrders(vehicle, allFinalOrders))
+			{
+				TempData["Error"] = "The selected orders exceed the vehicle's capacity.";
+				return RedirectToAction("Edit", new { id });
+			}
+
+			// Verific daca vehiculul este restrictionat pentru vreuna din comenzi
+			foreach (var order in newOrders)
+			{
+				if ((order.InaccessibleHeavyVehicleIds?.Contains(vehicle.Id) ?? false) ||
+					(order.ManuallyRestrictedVehicleIds?.Contains(vehicle.Id) ?? false))
+				{
+					TempData["Error"] = $"Order #{order.Id} is not accessible by the selected vehicle.";
+					return RedirectToAction("Edit", new { id });
+				}
+			}
+ 
+			// Sterg comenzile care nu sunt in lista
 			var ordersToRemove = delivery.Orders.Where(o => !keepOrderIds.Contains(o.Id)).ToList();
 			foreach (var order in ordersToRemove)
 			{
@@ -381,54 +421,39 @@ namespace Licenta_v1.Controllers
 				order.Status = OrderStatus.Placed;
 				db.Orders.Update(order);
 			}
-
 			foreach (var order in ordersToRemove)
 			{
 				delivery.Orders.Remove(order);
 			}
 
-			// Adaug noile comenzi selectate
-			foreach (var orderId in addOrderIds)
+			// Adaug comenzile noi
+			foreach (var order in newOrders)
 			{
-				var order = db.Orders.FirstOrDefault(o => o.Id == orderId && o.DeliveryId == null);
-				if (order != null)
-				{
-					order.DeliveryId = delivery.Id;
-					delivery.Orders.Add(order);
-					db.Orders.Update(order);
-				}
+				order.DeliveryId = delivery.Id;
+				delivery.Orders.Add(order);
+				db.Orders.Update(order);
 			}
 
-			// Verific daca comenzile modificate se incadreaza in capacitate
-			if (!CanFitOrders(delivery.Vehicle, delivery.Orders.ToList()))
+			// Daca nu mai sunt comenzi in Delivery, il sterg
+			if (!delivery.Orders.Any())
 			{
-				TempData["Error"] = "The modified orders exceed the vehicle's capacity.";
-				return RedirectToAction("Edit", new { id });
-			}
-
-			// Daca, dupa modificare, Delivery-ul nu mai contine nici o comanda,
-			// stergem Delivery-ul si actualizam Vehicle-ul si User-ul la available
-			if (delivery.Orders == null || delivery.Orders.Count - ordersToRemove.Count + 1 == 0)
-			{
-				if (delivery.Vehicle != null)
-				{
-					delivery.Vehicle.Status = VehicleStatus.Available;
-					db.Vehicles.Update(delivery.Vehicle);
-				}
+				vehicle.Status = VehicleStatus.Available;
 				if (delivery.Driver != null)
 				{
 					delivery.Driver.IsAvailable = true;
 					db.ApplicationUsers.Update(delivery.Driver);
 				}
+
+				db.Vehicles.Update(vehicle);
 				db.Deliveries.Remove(delivery);
 				await db.SaveChangesAsync();
+
 				TempData["Success"] = "Delivery removed successfully!";
 				return RedirectToAction("Index");
 			}
 
-			// Daca Delivery-ul contine comenzi, recalculez estimarile si DeliverySequence-ul
+			// Recalculez estimarile si DeliverySequence-ul
 			await opt.RecalculateDeliveryMetrics(db, delivery);
-
 			db.Deliveries.Update(delivery);
 			await db.SaveChangesAsync();
 
@@ -889,5 +914,13 @@ namespace Licenta_v1.Controllers
 			double totalVolume = orders.Sum(o => o.Volume ?? 0);
 			return totalWeight <= vehicle.MaxWeightCapacity && totalVolume <= vehicle.MaxVolumeCapacity;
 		}
+	}
+}
+
+public static class Extensions
+{
+	public static bool ContainsAll<T>(this ICollection<T> source, ICollection<T> items)
+	{
+		return items.All(i => source.Contains(i));
 	}
 }

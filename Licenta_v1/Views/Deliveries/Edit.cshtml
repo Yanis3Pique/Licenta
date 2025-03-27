@@ -1,6 +1,7 @@
 ﻿@{
     ViewBag.Title = "Edit Delivery";
     var availableOrders = ViewBag.AvailableOrders as List<Licenta_v1.Models.Order>;
+    var currentOrders = ((IEnumerable<Licenta_v1.Models.Order>)Model.Orders).ToList();
 }
 
 @if (TempData["Success"] != null)
@@ -12,100 +13,107 @@
     <div class="alert alert-danger">@TempData["Error"]</div>
 }
 
-<h2 class="text-center mb-4">@ViewBag.Title @Model.Id</h2>
+<h2 class="text-center mb-4">Edit Delivery #@Model.Id</h2>
 
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="~/js/edit_delivery.js"></script>
 
-<!-- Container pt progresul capacitatii -->
+<!-- Barile cu progres pentru greutate si volum -->
 <div id="capacity-progress"
      data-total-weight="@Model.Vehicle.MaxWeightCapacity"
-     data-total-volume="@Model.Vehicle.MaxVolumeCapacity">
-    <div class="mb-3">
-        <label class="form-label">Weight Usage</label>
-        <div class="progress" style="height: 25px;">
-            <div id="weightProgress" class="progress-bar bg-primary" role="progressbar" style="width: 0%;"
-                 aria-valuenow="0" aria-valuemin="0" aria-valuemax="@Model.Vehicle.MaxWeightCapacity"></div>
-        </div>
-        <div id="weightValue" class="mt-1">0 / @Model.Vehicle.MaxWeightCapacity kg</div>
+     data-total-volume="@Model.Vehicle.MaxVolumeCapacity"
+     class="mb-3">
+    <div class="mb-1">Weight: <span id="weightValue">0 / @Model.Vehicle.MaxWeightCapacity kg</span></div>
+    <div class="progress mb-2">
+        <div id="weightProgress" class="progress-bar bg-primary" role="progressbar" style="width: 0%;"></div>
     </div>
-    <div class="mb-3">
-        <label class="form-label">Volume Usage</label>
-        <div class="progress" style="height: 25px;">
-            <div id="volumeProgress" class="progress-bar bg-info" role="progressbar" style="width: 0%;"
-                 aria-valuenow="0" aria-valuemin="0" aria-valuemax="@Model.Vehicle.MaxVolumeCapacity"></div>
-        </div>
-        <div id="volumeValue" class="mt-1">0 / @Model.Vehicle.MaxVolumeCapacity m³</div>
+    <div class="mb-1">Volume: <span id="volumeValue">0 / @Model.Vehicle.MaxVolumeCapacity m³</span></div>
+    <div class="progress">
+        <div id="volumeProgress" class="progress-bar bg-info" role="progressbar" style="width: 0%;"></div>
     </div>
 </div>
 
-<form asp-action="EditDelivery" method="post">
+<form method="post" asp-action="EditDelivery">
     <input type="hidden" name="id" value="@Model.Id" />
 
-    <!-- Comenzi deja in Delivery -->
-    <div class="card mb-4">
-        <div class="card-header">
-            <h5>Current Orders</h5>
-            <small class="text-muted">Uncheck the orders that you want to remove from the delivery.</small>
+    <!-- Buton pentru panoul lateral ce contine comenzi -->
+    <button class="btn btn-outline-secondary mb-3" type="button" id="toggleOrdersPanel">Browse & Manage Orders</button>
+
+    <!-- Comenzile selectate -->
+    <div id="selectedOrdersListWrapper"
+         class="mt-3 border rounded bg-light p-2"
+         style="overflow-y: auto; display: block; height: auto;">
+        <h6 class="mb-2">Selected Orders</h6>
+
+        <div id="selectedOrdersListPlaceholder"
+             class="d-flex align-items-center justify-content-center text-muted small border rounded bg-white d-none"
+             style="height: 70px;">
+            No orders selected yet.
         </div>
-        <div class="card-body">
-            @foreach (var order in Model.Orders)
+
+        <div id="selectedOrdersList" class="d-flex flex-column gap-2"></div>
+    </div>
+
+    <!-- Overlay pt panoul de comenzi -->
+    <div id="ordersOverlay" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.3); z-index: 999;"></div>
+
+    <!-- Panoul cu selectii de comenzi -->
+    <div id="ordersPanel" class="border p-3 bg-light shadow" style="display: none; position: fixed; right: 0; top: 0; bottom: 0; width: 400px; overflow-y: auto; z-index: 1000;">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+            <h5>Manage Orders</h5>
+            <button type="button" class="btn-close" id="closeOrdersPanel" aria-label="Close"></button>
+        </div>
+
+        <input type="text" id="orderSearch" class="form-control mb-3" placeholder="Search orders...">
+
+        <div id="orderListContainer" class="list-group">
+            @foreach (var order in currentOrders)
             {
-                <div class="form-check">
-                    <input class="form-check-input"
-                           type="checkbox"
-                           name="keepOrderIds"
-                           value="@order.Id"
-                           id="currentOrder_@order.Id"
-                           checked="checked"
+                <div class="list-group-item">
+                    <input type="checkbox"
+                           class="form-check-input order-checkbox"
+                           data-id="@order.Id"
+                           data-address="@order.Address"
                            data-weight="@order.Weight"
                            data-volume="@order.Volume"
                            data-latitude="@order.Latitude"
-                           data-longitude="@order.Longitude" />
-                    <label class="form-check-label" for="currentOrder_@order.Id">
-                        #@order.Id - @order.Address (Placed: @order.PlacedDate.ToString("d"))
+                           data-longitude="@order.Longitude"
+                           checked
+                           name="keepOrderIds"
+                           value="@order.Id"
+                           id="order_@order.Id">
+                    <label class="form-check-label ms-2" for="order_@order.Id">
+                        <strong>Order #@order.Id</strong> - @order.Address<br />
+                        <small>@order.Weight kg, @order.Volume m³</small>
+                    </label>
+                </div>
+            }
+
+            @foreach (var order in availableOrders)
+            {
+                <div class="list-group-item">
+                    <input type="checkbox"
+                           class="form-check-input order-checkbox"
+                           data-id="@order.Id"
+                           data-address="@order.Address"
+                           data-weight="@order.Weight"
+                           data-volume="@order.Volume"
+                           data-latitude="@order.Latitude"
+                           data-longitude="@order.Longitude"
+                           name="addOrderIds"
+                           value="@order.Id"
+                           id="order_@order.Id">
+                    <label class="form-check-label ms-2" for="order_@order.Id">
+                        <strong>Order #@order.Id</strong> - @order.Address<br />
+                        <small>@order.Weight kg, @order.Volume m³</small>
                     </label>
                 </div>
             }
         </div>
     </div>
 
-    <!-- Comenzi de adaugat la cerere -->
-    <div class="card mb-4">
-        <div class="card-header">
-            <h5>Add Orders</h5>
-            <small class="text-muted">Select the orders that you want to add to the delivery.</small>
-        </div>
-        <div class="card-body">
-            @if (availableOrders != null && availableOrders.Any())
-            {
-                @foreach (var order in availableOrders)
-                {
-                    <div class="form-check">
-                        <input class="form-check-input"
-                               type="checkbox"
-                               name="addOrderIds"
-                               value="@order.Id"
-                               id="availableOrder_@order.Id"
-                               data-weight="@order.Weight"
-                               data-volume="@order.Volume"
-                               data-latitude="@order.Latitude"
-                               data-longitude="@order.Longitude" />
-                        <label class="form-check-label" for="availableOrder_@order.Id">
-                            #@order.Id - @order.Address (Placed: @order.PlacedDate.ToString("d"))
-                        </label>
-                    </div>
-                }
-            }
-            else
-            {
-                <p class="text-muted">No available orders to add.</p>
-            }
-        </div>
-    </div>
-
-    <button id="updateDeliveryButton" type="submit" class="btn btn-primary">Update Delivery</button>
+    <button type="submit" id="updateDeliveryButton" class="btn btn-primary mt-3">Update Delivery</button>
 </form>
 
 <div id="map" style="width: 100%; height: 500px; margin-top: 20px;"></div>

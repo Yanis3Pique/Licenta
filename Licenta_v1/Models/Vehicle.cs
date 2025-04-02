@@ -61,8 +61,6 @@ namespace Licenta_v1.Models
 		[Range(0, double.MaxValue, ErrorMessage = "Weight must be positive (tons).")]
 		public double WeightTons { get; set; }
 
-		[Range(0.1, 100)]
-		public double? MaxAxleLoadTons { get; set; }
 		public string? ImagePath { get; set; }
 
 		public virtual Region? Region { get; set; }

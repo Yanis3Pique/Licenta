@@ -388,8 +388,7 @@ namespace Licenta_v1.Controllers
 					vehicle.HeightMeters != updatedVehicle.HeightMeters ||
 					vehicle.LengthMeters != updatedVehicle.LengthMeters ||
 					vehicle.WeightTons != updatedVehicle.WeightTons ||
-					vehicle.WidthMeters != updatedVehicle.WidthMeters || 
-					vehicle.MaxAxleLoadTons != updatedVehicle.MaxAxleLoadTons;
+					vehicle.WidthMeters != updatedVehicle.WidthMeters;
 
 				vehicle.Brand = updatedVehicle.Brand;
 				vehicle.Model = updatedVehicle.Model;
@@ -408,7 +407,6 @@ namespace Licenta_v1.Controllers
 				vehicle.WidthMeters = updatedVehicle.WidthMeters;
 				vehicle.LengthMeters = updatedVehicle.LengthMeters;
 				vehicle.WeightTons = updatedVehicle.WeightTons;
-				vehicle.MaxAxleLoadTons = updatedVehicle.MaxAxleLoadTons;
 
 				try
 				{

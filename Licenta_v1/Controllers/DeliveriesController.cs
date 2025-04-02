@@ -1,4 +1,6 @@
-﻿using System.Linq;
+﻿using System.Diagnostics;
+using System.Linq;
+using Google.OrTools.ConstraintSolver;
 using Licenta_v1.Data;
 using Licenta_v1.Models;
 using Licenta_v1.Services;
@@ -6,6 +8,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Rendering;
 using Microsoft.EntityFrameworkCore;
+using SendGrid.Helpers.Mail;
 
 namespace Licenta_v1.Controllers
 {
@@ -129,8 +132,11 @@ namespace Licenta_v1.Controllers
 
 			if (driver != null)
 			{
-				driver.IsAvailable = false;
-				db.ApplicationUsers.Update(driver);
+				var trackedDriver = await db.Users.FirstOrDefaultAsync(u => u.Id == driver.Id);
+				if (trackedDriver != null)
+				{
+					trackedDriver.IsAvailable = false;
+				}
 			}
 
 			await db.SaveChangesAsync();
@@ -148,7 +154,7 @@ namespace Licenta_v1.Controllers
 			string searchString,
 			DateTime? plannedStartDate,
 			DateTime? actualEndDate,
-			int? regionId,
+			string regionId,
 			string status)
 		{
 			// Obtinem utilizatorul curent
@@ -164,8 +170,16 @@ namespace Licenta_v1.Controllers
 				.Include(d => d.Driver)
 				.Include(d => d.Orders)
 				.ThenInclude(o => o.Region)
-				.Where(d => User.IsInRole("Admin") || d.Vehicle.RegionId == user.RegionId)
 				.AsQueryable();
+
+			if (User.IsInRole("Dispecer"))
+			{
+				deliveriesQuery = deliveriesQuery.Where(d => d.Vehicle.RegionId == user.RegionId);
+			}
+			else if (User.IsInRole("Admin") && int.TryParse(regionId, out int parsedRegionId))
+			{
+				deliveriesQuery = deliveriesQuery.Where(d => d.Vehicle.RegionId == parsedRegionId);
+			}
 
 			// Search (sofer, marca/model/nr inmatriculare masina)
 			if (!string.IsNullOrEmpty(searchString))
@@ -189,12 +203,6 @@ namespace Licenta_v1.Controllers
 				deliveriesQuery = deliveriesQuery.Where(d => d.ActualEndDate.HasValue && d.ActualEndDate.Value.Date == actualEndDate.Value.Date);
 			}
 
-			// Filtrare dupa Region
-			if (regionId.HasValue)
-			{
-				deliveriesQuery = deliveriesQuery.Where(d => d.Vehicle.RegionId == regionId.Value);
-			}
-
 			// Filtrare dupa Delivery Status
 			if (!string.IsNullOrEmpty(status) && status != "All")
 			{
@@ -202,8 +210,8 @@ namespace Licenta_v1.Controllers
 				deliveriesQuery = deliveriesQuery.Where(d => d.Status.ToLower() == lowerStatus);
 			}
 
-			ViewBag.Regions = new SelectList(db.Regions, "Id", "County");
 			ViewBag.RegionId = regionId;
+			ViewBag.Regions = new SelectList(db.Regions, "Id", "County");
 			ViewBag.SearchString = searchString;
 			ViewBag.PlannedStartDate = plannedStartDate?.ToString("yyyy-MM-dd");
 			ViewBag.ActualEndDate = actualEndDate?.ToString("yyyy-MM-dd");
@@ -321,10 +329,11 @@ namespace Licenta_v1.Controllers
 
 				return Json(new
 				{
-					coordinates = route.Coordinates, // Coordonatele rutei
-					stopIndices = stopIndices,       // Indicii pentru vizualizarea pas cu pas a opririlor
-					segments = route.Segments,       // Distanta si Timp pe segment
-					orderIds = route.OrderIds         // Order IDs in ordinea optimizata
+					coordinates = route.Coordinates,		  // Coordonatele rutei
+					stopIndices = stopIndices,				  // Indicii pentru vizualizarea pas cu pas a opririlor
+					segments = route.Segments,				  // Distanta si Timp pe segment
+					orderIds = route.OrderIds,                // Order IDs in ordinea optimizata
+					dangerPolygons = route.DangerousPolygons  // Poligoanele cu vreme rea
 				});
 			}
 			catch (Exception ex)
@@ -474,7 +483,23 @@ namespace Licenta_v1.Controllers
 			//	return RedirectToAction("Index");
 			//}
 
-			await opt.RunDailyOptimization(); // Adminii optimizeaza toate regiunile
+			var user = db.ApplicationUsers.FirstOrDefault(u => u.UserName == User.Identity.Name);
+
+			try
+			{
+				await opt.RunDailyOptimization(user.Id); // Adminii optimizeaza toate regiunile
+				TempData["Success"] = "Global optimization completed successfully!";
+			}
+			catch (InvalidOperationException ex)
+			{
+				TempData["Error"] = ex.Message;
+			}
+			catch (Exception ex)
+			{
+				Debug.WriteLine(ex, "Unexpected error during global optimization.");
+				TempData["Error"] = "Unexpected error. Please try again later.";
+			}
+
 			return RedirectToAction("Index");
 		}
 
@@ -499,13 +524,27 @@ namespace Licenta_v1.Controllers
 				return RedirectToAction("Index");
 			}
 
-			await opt.RunDailyOptimization(user.RegionId); // Dispecerii optimizeaza regiunea lor
+			try
+			{
+				await opt.RunDailyOptimization(user.Id, user.RegionId);
+				TempData["Success"] = "Optimization completed successfully!";
+			}
+			catch (InvalidOperationException ex)
+			{
+				TempData["Error"] = ex.Message;
+			}
+			catch (Exception ex)
+			{
+				Debug.WriteLine(ex, "Unexpected error during optimization.");
+				TempData["Error"] = "Unexpected error. Please try again later.";
+			}
+
 			return RedirectToAction("Index");
 		}
 
 		[HttpPost]
 		[Authorize(Roles = "Admin")]
-		public async Task<IActionResult> CleanupDeliveries() // Doar pentru stadiul de development   !!!!!!!!!!
+		public async Task<IActionResult> CleanupDeliveries()
 		{
 			DateTime today = DateTime.Today;
 

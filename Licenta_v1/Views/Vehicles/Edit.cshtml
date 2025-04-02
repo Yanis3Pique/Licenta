@@ -104,11 +104,6 @@
                 @Html.ValidationMessageFor(m => m.WeightTons, null, new { @class = "text-danger" })
                 <br />
 
-                @Html.LabelFor(m => m.MaxAxleLoadTons, "Maximum Axle Load (tons)")
-                @Html.EditorFor(m => m.MaxAxleLoadTons, new { htmlAttributes = new { @class = "form-control", type = "number", step = "0.01" } })
-                @Html.ValidationMessageFor(m => m.MaxAxleLoadTons, null, new { @class = "text-danger" })
-                <br />
-
                 @Html.Label("Total Distance Traveled", "Total Distance Traveled")
                 @Html.EditorFor(model => model.TotalDistanceTraveledKM, new { htmlAttributes = new { @class = "form-control" } })
                 @Html.ValidationMessageFor(model => model.TotalDistanceTraveledKM, null, new { @class = "text-danger" })

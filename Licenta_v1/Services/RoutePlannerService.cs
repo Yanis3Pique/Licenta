@@ -11,12 +11,14 @@ namespace Licenta_v1.Services
 	{
 		private readonly IServiceScopeFactory scopeFactory;
 		private readonly string OpenRouteServiceApiKey;
+		private readonly string OpenWeatherMapApiKey;
 		private readonly string GoogleMapsApiKey;
 
 		public RoutePlannerService(IServiceScopeFactory serviceScopeFactory, IConfiguration configuration)
 		{
 			scopeFactory = serviceScopeFactory;
 			OpenRouteServiceApiKey = Env.GetString("OpenRouteServiceApiKey");
+			OpenWeatherMapApiKey = Env.GetString("OpenWeatherMapApiKey");
 			GoogleMapsApiKey = Env.GetString("Cheie_API_Google_Maps");
 		}
 
@@ -57,35 +59,54 @@ namespace Licenta_v1.Services
 			// Construiesc request-ul pentru API-ul ORS Directions
 			var profile = GetVehicleProfile(delivery.Vehicle.VehicleType);
 
-			dynamic requestBody = new
-			{
-				coordinates = coordinates,
-				instructions = true
-			};
+			dynamic? profileParams = null;
 
-			// Adaug proprietatea de OPTIONS pt masinile mai mari
 			if (profile == "driving-hgv")
 			{
-				requestBody = new
+				profileParams = new
 				{
-					coordinates = coordinates,
-					instructions = true,
-					options = new
+					restrictions = new
 					{
-						profile_params = new
-						{
-							restrictions = new
-							{
-								height = delivery.Vehicle.HeightMeters,
-								width = delivery.Vehicle.WidthMeters,
-								length = delivery.Vehicle.LengthMeters,
-								weight = delivery.Vehicle.WeightTons
-							}
-						}
+						height = delivery.Vehicle.HeightMeters,
+						width = delivery.Vehicle.WidthMeters,
+						length = delivery.Vehicle.LengthMeters,
+						weight = delivery.Vehicle.WeightTons
 					}
 				};
 			}
 
+			dynamic? options = null;
+
+			if (profileParams != null)
+			{
+				options = new
+				{
+					profile_params = profileParams
+				};
+			}
+
+			// Body final
+			dynamic requestBody;
+			if (options != null)
+			{
+				requestBody = new
+				{
+					coordinates,
+					instructions = true,
+					options
+				};
+			}
+			else
+			{
+				requestBody = new
+				{
+					coordinates,
+					instructions = true
+				};
+			}
+
+
+			Debug.WriteLine(JsonConvert.SerializeObject((object)requestBody, Formatting.Indented));
 			Debug.WriteLine(delivery.Vehicle.HeightMeters.ToString(), " ", delivery.Vehicle.WidthMeters, " ",
 							delivery.Vehicle.LengthMeters, " ", delivery.Vehicle.WeightTons);
 
@@ -94,38 +115,118 @@ namespace Licenta_v1.Services
 
 			using var client = new HttpClient();
 			client.DefaultRequestHeaders.Add("Authorization", OpenRouteServiceApiKey);
-			string url = $"https://api.openrouteservice.org/v2/directions/{profile}";
+			string url = $"https://api.openrouteservice.org/v2/directions/{profile}/geojson";
 
-			var response = await client.PostAsync(url, content);
-			var responseJson = await response.Content.ReadAsStringAsync();
-			Debug.WriteLine("Response JSON: " + responseJson);
+			HttpResponseMessage response = null;
+			string responseJson = null;
 
-			if (!response.IsSuccessStatusCode)
+			try
 			{
-				throw new Exception($"Failed to retrieve route: {response.StatusCode} - {responseJson}");
+				response = await client.PostAsync(url, content);
+				responseJson = await response.Content.ReadAsStringAsync();
+
+				if (!response.IsSuccessStatusCode)
+					throw new Exception($"ORS failed with avoid_polygons: {response.StatusCode} - {responseJson}");
+			}
+			catch (Exception ex)
+			{
+				Debug.WriteLine($"Fallback response body: {responseJson}");
+				Debug.WriteLine($"Primary ORS routing failed: {ex.Message}");
+				Debug.WriteLine("Retrying without avoid_polygons...");
+
+				// Reincerc sa calculez ruta, dar fara restrictii de evitare a zonelor periculoase
+				var fallbackBody = new
+				{
+					coordinates,
+					instructions = true,
+					profile_params = profileParams
+				};
+
+				var fallbackJson = JsonConvert.SerializeObject(fallbackBody);
+				var fallbackContent = new StringContent(fallbackJson, Encoding.UTF8, "application/json");
+
+				response = await client.PostAsync(url, fallbackContent);
+				responseJson = await response.Content.ReadAsStringAsync();
+
+				if (!response.IsSuccessStatusCode)
+					throw new Exception($"Fallback ORS routing also failed: {response.StatusCode} - {responseJson}");
 			}
 
-			// Deserializez raspunsul primit de la ORS
-			var orsResponse = JsonConvert.DeserializeObject<ORSRouteResponse>(responseJson);
-			if (orsResponse == null || orsResponse.routes == null || !orsResponse.routes.Any())
+			// Deserializez raspunsul primit de la ORS (noul format GEOJSON)
+			var orsResponse = JsonConvert.DeserializeObject<ORSGeoJsonResponse>(responseJson);
+			if (orsResponse?.features == null || !orsResponse.features.Any())
 				throw new Exception("No route found from OpenRouteService.");
 
-			var route = orsResponse.routes.First();
-			// Decodez polyline-ul pentru a obtine coordonatele traseului
-			var decodedCoordinates = DecodePolyline(route.geometry);
+			// Extrag prima ruta (de obicei e doar una)
+			var feature = orsResponse.features.First();
 
-			// Construiesc rezultatul final
+			// Extrag rezumatul, segmentele si coordonatele rutei
+			var routeSummary = feature.properties.summary;
+			var routeSegments = feature.properties.segments;
+			var decodedCoordinates = feature.geometry.coordinates
+				.Select(coord => new Coordinate
+				{
+					Longitude = coord[0],
+					Latitude = coord[1]
+				}).ToList();
+
+			// Incep procesarea segmentelor si aplicarea penalizarilor
+			var adjustedDuration = routeSummary.duration;
+			var adjustedSegments = new List<SegmentResult>();
+
+			for (int i = 0; i < routeSegments.Count; i++)
+			{
+				var segment = routeSegments[i];
+				var midpointIndex = (int)((decodedCoordinates.Count / routeSegments.Count) * (i + 0.5));
+				midpointIndex = Math.Min(midpointIndex, decodedCoordinates.Count - 1);
+				var midpoint = decodedCoordinates[midpointIndex];
+
+				bool isDangerous = await IsSegmentWeatherDangerousAsync(midpoint);
+
+				double penaltyFactor = isDangerous ? 1.2 : 1.0;
+				var segmentDurationAdjusted = segment.duration * penaltyFactor;
+				adjustedDuration += (segmentDurationAdjusted - segment.duration);
+
+				Debug.WriteLine($"Segment #{i + 1}: originalDuration={segment.duration}s, adjustedDuration={segmentDurationAdjusted}s, penaltyApplied={(penaltyFactor != 1)}");
+
+				adjustedSegments.Add(new SegmentResult
+				{
+					Distance = segment.distance,
+					Duration = segmentDurationAdjusted,
+					IsWeatherDangerous = isDangerous
+				});
+			}
+
+			Debug.WriteLine($"Original total duration: {routeSummary.duration}s, Adjusted total duration: {adjustedDuration}s");
+
+			var dangerousPolygons = adjustedSegments
+				.Select((segment, idx) => new { segment, idx })
+				.Where(x => x.segment.IsWeatherDangerous)
+				.Select(x =>
+				{
+					var coord = decodedCoordinates[(int)((decodedCoordinates.Count / routeSegments.Count) * (x.idx + 0.5))];
+					return new List<List<double[]>>
+					{
+						new List<double[]>
+						{
+							new[] { coord.Longitude - 0.002, coord.Latitude - 0.002 },
+							new[] { coord.Longitude - 0.002, coord.Latitude + 0.002 },
+							new[] { coord.Longitude + 0.002, coord.Latitude + 0.002 },
+							new[] { coord.Longitude + 0.002, coord.Latitude - 0.002 },
+							new[] { coord.Longitude - 0.002, coord.Latitude - 0.002 }
+						}
+					};
+				}).ToList();
+
+			// Construiesc rezultatul final ajustat
 			var routeResult = new RouteResult
 			{
 				Coordinates = decodedCoordinates,
-				Distance = route.summary.distance,
-				Duration = route.summary.duration,
-				Segments = route.segments?.Select(seg => new SegmentResult
-				{
-					Distance = seg.distance,
-					Duration = seg.duration
-				}).ToList(),
-				OrderIds = orderIds // ordine conform DeliverySequence
+				Distance = routeSummary.distance,
+				Duration = adjustedDuration,
+				Segments = adjustedSegments,
+				OrderIds = orderIds,
+				DangerousPolygons = dangerousPolygons
 			};
 
 			return routeResult;
@@ -174,6 +275,63 @@ namespace Licenta_v1.Services
 				_ => "driving-car",
 			};
 		}
+
+		private async Task<bool> IsSegmentWeatherDangerousAsync(Coordinate coord)
+		{
+			string url = $"https://api.openweathermap.org/data/2.5/weather?lat={coord.Latitude}&lon={coord.Longitude}&appid={OpenWeatherMapApiKey}&units=metric";
+
+			using var client = new HttpClient();
+			var response = await client.GetStringAsync(url);
+			dynamic weatherData = JsonConvert.DeserializeObject(response);
+
+			int weatherCode = weatherData.weather[0].id;
+			string weatherDescription = weatherData.weather[0].description;
+			double windSpeed = weatherData.wind.speed;
+
+			Debug.WriteLine($"Weather API response for [{coord.Latitude}, {coord.Longitude}]: code={weatherCode}, desc={weatherDescription}, windSpeed={windSpeed} m/s");
+
+			HashSet<int> dangerousCodes = new HashSet<int> {
+				200,201,202,210,211,212,221,230,231,232,
+				302,312,313,314,
+				502,503,504,511,522,531,
+				602,621,622,
+				721,741,771,781,
+				804, 803
+			};
+
+			bool isDangerous = dangerousCodes.Contains((int)weatherCode) || windSpeed >= 15.0;
+
+			Debug.WriteLine($"Segment [{coord.Latitude}, {coord.Longitude}] dangerous: {isDangerous}");
+
+			return isDangerous;
+		}
+
+		private async Task<List<List<List<double[]>>>> GetDangerousPolygonsAsync(List<Coordinate> coordinates)
+		{
+			var polygons = new List<List<List<double[]>>>();
+
+			foreach (var coord in coordinates)
+			{
+				if (await IsSegmentWeatherDangerousAsync(coord))
+				{
+					var polygon = new List<List<double[]>>
+					{
+						new List<double[]>
+						{
+							new[] { coord.Longitude - 0.002, coord.Latitude - 0.002 },
+							new[] { coord.Longitude - 0.002, coord.Latitude + 0.002 },
+							new[] { coord.Longitude + 0.002, coord.Latitude + 0.002 },
+							new[] { coord.Longitude + 0.002, coord.Latitude - 0.002 },
+							new[] { coord.Longitude - 0.002, coord.Latitude - 0.002 } // inchid poligonul
+						}
+					};
+
+					polygons.Add(polygon);
+				}
+			}
+
+			return polygons;
+		}
 	}
 
 	// DTO pentru rezultatul traseului (folosit pentru transmiterea catre view)
@@ -189,14 +347,15 @@ namespace Licenta_v1.Services
 		public List<SegmentResult> Segments { get; set; }
 		// Lista de OrderIds, in ordinea in care sunt parcurse comenzile (pentru primele n segmente)
 		public List<int> OrderIds { get; set; }
+		// Zonele cu vreme rea
+		public List<List<List<double[]>>> DangerousPolygons { get; set; }
 	}
 
 	public class SegmentResult
 	{
-		// Distanta segmentului (in metri)
 		public double Distance { get; set; }
-		// Durata segmentului (in secunde)
 		public double Duration { get; set; }
+		public bool IsWeatherDangerous { get; set; } // Nou adaugat
 	}
 
 	public class Coordinate
@@ -207,32 +366,39 @@ namespace Licenta_v1.Services
 		public double Longitude { get; set; }
 	}
 
-	// DTO-uri conform structurii raspunsului de la OpenRouteService
-	public class ORSRouteResponse
+	public class ORSGeoJsonResponse
 	{
-		public List<Route> routes { get; set; }
+		public string type { get; set; }
+		public List<ORSFeature> features { get; set; }
 	}
 
-	public class Route
+	public class ORSFeature
 	{
-		public Summary summary { get; set; }
-		// Geometria traseului codificata (encoded polyline)
-		public string geometry { get; set; }
-		// Segmentele traseului (fiecare segment corespunzator unei legaturi intre opriri)
-		public List<Segment> segments { get; set; }
+		public string type { get; set; }
+		public ORSProperties properties { get; set; }
+		public ORSGeometry geometry { get; set; }
 	}
 
-	public class Segment
+	public class ORSProperties
 	{
-		// Distanta segmentului (in metri)
-		public double distance { get; set; }
-		// Durata segmentului (in secunde)
-		public double duration { get; set; }
+		public ORSSummary summary { get; set; }
+		public List<ORSSegment> segments { get; set; }
 	}
 
-	public class Summary
+	public class ORSSegment
 	{
 		public double distance { get; set; }
 		public double duration { get; set; }
+	}
+
+	public class ORSSummary
+	{
+		public double distance { get; set; }
+		public double duration { get; set; }
+	}
+
+	public class ORSGeometry
+	{
+		public List<List<double>> coordinates { get; set; }
 	}
 }

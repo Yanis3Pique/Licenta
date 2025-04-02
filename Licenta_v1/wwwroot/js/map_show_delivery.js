@@ -214,25 +214,26 @@ function watchUserPosition() {
 // Preiau ruta optima si configurez marker-ele si afisez segmentului curent
 function fetchRouteAndSetup(deliveryId) {
     fetch('/Deliveries/GetOptimalRoute?deliveryId=' + deliveryId)
-        .then(function (response) {
-            return response.json();
-        })
-        .then(function (data) {
+        .then(response => response.json())
+        .then(data => {
             if (data.error) {
                 alert("Error: " + data.error);
                 return;
             }
-            window.routeCoords = data.coordinates.map(function (coord) {
-                return [coord.latitude, coord.longitude];
-            });
+
+            console.log("Ruta primită de la backend:", data);
+            window.routeCoords = data.coordinates.map(coord => [coord.latitude, coord.longitude]);
             window.stopIndices = data.stopIndices;
             window.orderIds = data.orderIds;
-            console.log("Data ruta:", data);
+            window.segmentsData = data.segments; // Salvez segmentele pentru acces ulterior
+
+            console.log("Coordonate ruta:", window.routeCoords);
             console.log("stopIndices:", window.stopIndices);
             console.log("orderIds:", window.orderIds);
+            console.log("Date segmente:", window.segmentsData);
 
             var headquarterLatLng = window.routeCoords[0];
-            var hqMarker = L.marker(headquarterLatLng, {
+            L.marker(headquarterLatLng, {
                 icon: L.icon({
                     iconUrl: 'https://cdn-icons-png.flaticon.com/512/684/684908.png',
                     iconSize: [32, 32],
@@ -243,12 +244,23 @@ function fetchRouteAndSetup(deliveryId) {
 
             setupFullscreenControl();
             displayAllSegments();
+            displayDangerPolygons(data.dangerPolygons);
+
+            function displayDangerPolygons(dangerPolygons) {
+                if (!dangerPolygons || dangerPolygons.length === 0) return;
+
+                dangerPolygons.forEach(polyCoords => {
+                    L.polygon(polyCoords.map(c => [c[1], c[0]]), {
+                        color: 'red',
+                        fillOpacity: 0.3
+                    }).addTo(window.map);
+                });
+            }
         })
-        .catch(function (error) {
+        .catch(error => {
             console.error("Eroare la preluarea rutei:", error);
         });
 }
-
 // Configurez controlul fullscreen pentru harta
 function setupFullscreenControl() {
     L.Control.Fullscreen = L.Control.extend({
@@ -384,22 +396,26 @@ function setupMarkFailedButtons() {
 
 // Afisez toate segmentele din traseu, evidentiind segmentul curent
 function displayAllSegments() {
-    // Sterg straturile anterioare, daca exista
     if (window.segmentsLayerGroup) {
         window.map.removeLayer(window.segmentsLayerGroup);
     }
-    // Folosesc un FeatureGroup in loc de LayerGroup ca sa am getBounds()
+
     window.segmentsLayerGroup = L.featureGroup().addTo(window.map);
 
-    // Iterez prin segmente (fiecare segment e definit de stopIndices[i] -> stopIndices[i+1])
     for (let i = 0; i < window.stopIndices.length - 1; i++) {
         let startIdx = window.stopIndices[i];
         let endIdx = window.stopIndices[i + 1];
         let segmentCoords = window.routeCoords.slice(startIdx, endIdx + 1);
         let isCurrent = (i === window.currentSegment);
+        let segment = window.segmentsData[i];  // Date segment primit de la backend
+
+        console.log(`Segment ${i + 1}:`, segment);
+
         let polylineStyle = isCurrent
             ? { color: 'blue', weight: 6, opacity: 1 }
-            : { color: '#ADD8E6', weight: 3, opacity: 0.6, dashArray: '5, 5' };
+            : segment.isWeatherDangerous
+                ? { color: 'orange', weight: 5, opacity: 0.8, dashArray: '10, 5' }
+                : { color: '#ADD8E6', weight: 3, opacity: 0.6, dashArray: '5, 5' };
 
         let polyline = L.polyline(segmentCoords, polylineStyle).addTo(window.segmentsLayerGroup);
 
@@ -417,7 +433,7 @@ function displayAllSegments() {
             }).addTo(window.segmentsLayerGroup);
         }
     }
-    // Ajustez harta sa cuprinda toate segmentele
+
     window.map.fitBounds(window.segmentsLayerGroup.getBounds(), { padding: [50, 50] });
 }
 

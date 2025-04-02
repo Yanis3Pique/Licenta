@@ -10,16 +10,6 @@
 <h2 class="text-center">Deliveries</h2>
 <br />
 
-@if (TempData["Success"] != null)
-{
-    <div class="alert alert-success">@TempData["Success"]</div>
-}
-
-@if (TempData["Error"] != null)
-{
-    <div class="alert alert-danger">@TempData["Error"]</div>
-}
-
 <!-- Search, Sort & Filter -->
 <div class="card shadow-sm p-3 mb-4" id="light-blue-elements-background-id">
     <form asp-action="Index" method="get">
@@ -30,25 +20,33 @@
                 <input type="text" id="searchString" name="searchString" class="form-control" placeholder="Driver, Vehicle" value="@ViewBag.SearchString" />
             </div>
 
-            <!-- Filter by Planned Start Date -->
+            <!-- Filter dupa Planned Start Date -->
             <div class="col-12 col-md-2 d-flex flex-column">
                 <label for="plannedStartDate" class="form-label">Planned</label>
                 <input type="date" id="plannedStartDate" name="plannedStartDate" class="form-control" value="@ViewBag.PlannedStartDate" />
             </div>
 
-            <!-- Filter by Delivered Date -->
+            <!-- Filter dupa Delivered Date -->
             <div class="col-12 col-md-2 d-flex flex-column">
                 <label for="actualEndDate" class="form-label">Delivered</label>
                 <input type="date" id="actualEndDate" name="actualEndDate" class="form-control" value="@ViewBag.ActualEndDate" />
             </div>
 
-            <!-- Filter by Region -->
+            <!-- Filter dupa Region -->
             <div class="col-12 col-md-2 d-flex flex-column">
                 <label for="regionId" class="form-label">Region</label>
-                @Html.DropDownList("regionId", ViewBag.Regions as SelectList, "All Regions", new { @class = "form-select" })
+                <select id="regionId" name="regionId" class="form-select">
+                    <option value="">All Regions</option>
+                    @foreach (var region in (SelectList)ViewBag.Regions)
+                    {
+                        <option value="@region.Value" selected="@(ViewBag.RegionId?.ToString() == region.Value ? "selected" : "")">
+                            @region.Text
+                        </option>
+                    }
+                </select>
             </div>
 
-            <!-- Filter by Status -->
+            <!-- Filter dupa Status -->
             <div class="col-12 col-md-2 d-flex flex-column">
                 <label for="status" class="form-label">Status</label>
                 <select id="status" name="status" class="form-select">
@@ -151,3 +149,33 @@ else
         </div>
     }
 </div>
+
+@section Scripts {
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script>
+        $(document).ready(function () {
+            const successMessage = '@TempData["Success"]';
+            const errorMessage = '@TempData["Error"]';
+
+            if (successMessage) {
+                Swal.fire({
+                    icon: 'success',
+                    title: 'Success',
+                    text: successMessage,
+                    timer: 3000,
+                    showConfirmButton: false
+                });
+            }
+
+            if (errorMessage) {
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Oops...',
+                    text: errorMessage,
+                    timer: 3000,
+                    showConfirmButton: false
+                });
+            }
+        });
+    </script>
+}

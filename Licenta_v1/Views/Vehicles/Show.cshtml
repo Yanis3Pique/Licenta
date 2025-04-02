@@ -113,12 +113,6 @@
                         <td id="light-blue-elements-background-id">@($"{ Model.WeightTons:F2} tons")</td>
                     </tr>
                     <tr>
-                        <th id="light-blue-elements-background-id">Maximum Axle Load</th>
-                        <td id="light-blue-elements-background-id">
-                            @(Model.MaxAxleLoadTons.HasValue ? $"{Model.MaxAxleLoadTons.Value:F2} tons" : "N/A")
-                        </td>
-                    </tr>
-                    <tr>
                         <th id="light-blue-elements-background-id">Consumption rate</th>
 						@if (Model.FuelType == FuelType.Electric)
 						{

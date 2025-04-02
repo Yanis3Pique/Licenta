@@ -14,6 +14,9 @@ using Humanizer;
 using System.Globalization;
 using System.Net;
 using System.Collections.Concurrent;
+using System.Drawing;
+using Microsoft.Data.SqlClient;
+using Microsoft.EntityFrameworkCore.Storage;
 
 namespace Licenta_v1.Services
 {
@@ -105,59 +108,88 @@ namespace Licenta_v1.Services
 		}
 
 		// Metoda principala, apelata o data pe zi de catre Admin pentru toate regiunile/Dispecer pentru regiunea sa
-		public async Task RunDailyOptimization(int? userRegionId = null)
+		public async Task RunDailyOptimization(string startedByUserId, int? userRegionId = null)
 		{
 			using var scope = scopeFactory.CreateScope();
 			var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
 
-			// Verific daca sunt vehicule disponibile
-			var vehicles = db.Vehicles
-				.Where(v => (!userRegionId.HasValue || v.RegionId == userRegionId.Value) &&
-							v.Status == VehicleStatus.Available)
-				.ToList();
-
-			if (!vehicles.Any())
+			if (userRegionId.HasValue)
 			{
-				Debug.WriteLine("Exiting optimization: No available vehicles.");
-				return;
-			}
+				// CAZUL - Dispecer
+				await using var transaction = await db.Database.BeginTransactionAsync();
 
-			// Actualizez comenzile in functie de vehiculele grele din regiuni
-			await UpdateOrderRestrictionsForHeavyVehicles(userRegionId);
+				// Incerc un lock global partajat pentru a ma asigura ca Admin-ul nu ruleaza optimizarea globala
+				if (!await AcquireAppLockAsync(db, "Optimization_AllRegions", "Shared"))
+					throw new InvalidOperationException("Global optimization in progress. Try again later.");
 
-			// Iau comenzile care sunt inca neasignate
-			var orders = db.Orders
-				.Where(o => o.Status == OrderStatus.Placed &&
-							o.DeliveryId == null &&
-							(!userRegionId.HasValue || o.RegionId == userRegionId.Value))
-				.ToList();
+				// Apoi incerc un lock exclusiv pentru regiunea respectiva
+				if (!await AcquireAppLockAsync(db, $"Optimization_Region_{userRegionId}", "Exclusive"))
+					throw new InvalidOperationException($"Region {userRegionId} is currently being optimized.");
 
-			if (!orders.Any())
-			{
-				Debug.WriteLine("Exiting optimization: No orders available.");
-				return;
-			}
-
-			Debug.WriteLine($"Pre-flight check passed: {orders.Count} orders and {vehicles.Count} vehicles found.");
-
-			// Grupez comenzile pe regiuni si optimizez livrarile
-			var groupedOrders = orders.GroupBy(o => o.RegionId ?? 0);
-			foreach (var regionGroup in groupedOrders)
-			{
-				int regionId = regionGroup.Key;
-				var regionOrders = regionGroup.ToList();
-				var regionVehicles = db.Vehicles
-					.Where(v => v.RegionId == regionId && v.Status == VehicleStatus.Available)
+				await UpdateOrderRestrictionsForHeavyVehicles(userRegionId);
+				var orders = db.Orders
+					.Where(o => o.Status == OrderStatus.Placed &&
+								o.DeliveryId == null &&
+								o.RegionId == userRegionId)
 					.ToList();
 
-				if (!regionOrders.Any() || !regionVehicles.Any())
+				if (!orders.Any())
 				{
-					Debug.WriteLine($"Region {regionId}: Exiting optimization – missing orders or vehicles.");
-					continue;
+					Debug.WriteLine("No orders found for optimization.");
+					await transaction.CommitAsync(); // Fac commit pentru a elibera lock-ul
+					return;
 				}
 
-				Debug.WriteLine($"Region {regionId}: Starting optimization with {regionOrders.Count} orders and {regionVehicles.Count} vehicles.");
-				await OptimizeRegionDeliveries(regionId, regionOrders);
+				Debug.WriteLine($"Starting optimization for Region {userRegionId} with {orders.Count} orders.");
+				await OptimizeRegionDeliveries(userRegionId.Value, orders);
+
+				await transaction.CommitAsync();
+			}
+			else
+			{
+				// CAZUL - Admin = toate regiunile
+				await using var transaction = await db.Database.BeginTransactionAsync();
+
+				// Iau un lock global pentru a ma asigura ca nu ruleaza alte optimizari globale
+				if (!await AcquireAppLockAsync(db, "Optimization_AllRegions", "Exclusive"))
+					throw new InvalidOperationException("Another global optimization is in progress.");
+
+				var orders = db.Orders
+					.Where(o => o.Status == OrderStatus.Placed && o.DeliveryId == null)
+					.ToList();
+
+				if (!orders.Any())
+				{
+					Debug.WriteLine("No orders found for global optimization.");
+					await transaction.CommitAsync(); // Fac commit pentru a elibera lock-ul
+					return;
+				}
+
+				var regionIds = orders.Select(o => o.RegionId ?? 0).Distinct().ToList();
+
+				foreach (var regionId in regionIds)
+				{
+					// Fac lock pe fiecare regiune in parte pentru a evita concurenta chiar si in cadrul optimizarii globale
+					if (!await AcquireAppLockAsync(db, $"Optimization_Region_{regionId}", "Exclusive"))
+					{
+						Debug.WriteLine($"[SKIPPED] Could not acquire lock for Region {regionId}.");
+						continue;
+					}
+
+					await UpdateOrderRestrictionsForHeavyVehicles(regionId);
+
+					var regionOrders = orders.Where(o => (o.RegionId ?? 0) == regionId).ToList();
+					if (!regionOrders.Any())
+					{
+						Debug.WriteLine($"[SKIPPED] No orders for Region {regionId}");
+						continue;
+					}
+
+					Debug.WriteLine($"Starting optimization for Region {regionId} with {regionOrders.Count} orders.");
+					await OptimizeRegionDeliveries(regionId, regionOrders);
+				}
+
+				await transaction.CommitAsync();
 			}
 		}
 
@@ -255,10 +287,10 @@ namespace Licenta_v1.Services
 			return (routeDurationSeconds + totalServiceTime) <= MaxWorkingSeconds;
 		}
 
-		private async Task<HttpResponseMessage> SendApiRequestWithRetriesAsync(HttpClient client, string requestUrl, HttpContent content, int maxRetries = 10)
+		private async Task<HttpResponseMessage> SendApiRequestWithRetriesAsync(HttpClient client, string requestUrl, HttpContent content, int maxRetries = 3)
 		{
 			int retry = 0;
-			int delay = 1000; // delay initial de 1 secunda
+			int delay = 5000; // 5 secunde
 			HttpResponseMessage response = null;
 
 			while (retry < maxRetries)
@@ -266,25 +298,34 @@ namespace Licenta_v1.Services
 				await orsSemaphore.WaitAsync();
 				try
 				{
+					string bodyPreview = await content.ReadAsStringAsync();
+					Debug.WriteLine($"[Request Body] {bodyPreview}");
 					response = await client.PostAsync(requestUrl, content);
 				}
 				finally
 				{
 					orsSemaphore.Release();
 				}
-
 				if (response.StatusCode == HttpStatusCode.OK)
 					return response;
 
 				string detailedResponse = await response.Content.ReadAsStringAsync();
 				Debug.WriteLine($"Attempt {retry + 1}: Status {response.StatusCode}. Response: {detailedResponse}");
 
-				if (response.StatusCode == (HttpStatusCode)429)
+				// Eroare 429 (Rate Limit)
+				if ((int)response.StatusCode == 429)
 				{
-					Debug.WriteLine($"429 Rate limit reached for ORS. Waiting 64 seconds before retry.");
-					await Task.Delay(TimeSpan.FromSeconds(64)); // limita ORS-ului de 64 secunde pt retry
+					Debug.WriteLine("429 Rate limit hit. Retrying after 64 seconds...");
+					await Task.Delay(TimeSpan.FromSeconds(64));
 					retry++;
 					continue;
+				}
+
+				// Eroare 502 (Bad Gateway)
+				if (response.StatusCode == HttpStatusCode.BadGateway)
+				{
+					Debug.WriteLine("502 Bad Gateway. ORS might be down. Skipping further retries.");
+					break;
 				}
 
 				await Task.Delay(delay);
@@ -292,7 +333,7 @@ namespace Licenta_v1.Services
 				retry++;
 			}
 
-			throw new Exception("Maximum retry attempts exceeded due to API rate limiting.");
+			return response;
 		}
 
 		// Metoda care verifica accesul vehiculelor grele la comenzi si actualizeaza statusul comenzilor
@@ -388,8 +429,16 @@ namespace Licenta_v1.Services
 			var queryString = string.Join("&", queryParams);
 			var requestUrl = $"{baseUrl}?{queryString}";
 
-			using var client = new HttpClient();
-			var apiKeys = new List<string> { PtvApiKey, PtVApiKeyReserve, PtVApiKeyEmergency };
+			using var client = new HttpClient
+			{
+				Timeout = TimeSpan.FromSeconds(60) // cresc timeout-ul pentru raspunsurile ORS lente
+			};
+			var apiKeys = new List<string> { CurrentPtvApiKey };
+
+			// Adaug celelalte chei daca sunt diferite de CurrentPtvApiKey
+			if (CurrentPtvApiKey != PtvApiKey) apiKeys.Add(PtvApiKey);
+			if (CurrentPtvApiKey != PtVApiKeyReserve) apiKeys.Add(PtVApiKeyReserve);
+			if (CurrentPtvApiKey != PtVApiKeyEmergency) apiKeys.Add(PtVApiKeyEmergency);
 
 			foreach (var apiKey in apiKeys)
 			{
@@ -519,14 +568,32 @@ namespace Licenta_v1.Services
 				client.DefaultRequestHeaders.Add("Authorization", OpenRouteServiceApiKey);
 				var content = new StringContent(jsonBody, Encoding.UTF8, "application/json");
 
-				var response = await client.PostAsync(requestUrl, content);
+				var response = await SendApiRequestWithRetriesAsync(client, requestUrl, content);
 				var responseString = await response.Content.ReadAsStringAsync();
 				Debug.WriteLine($"ORS Optimization Response (subset): {responseString}");
 
 				if (!response.IsSuccessStatusCode)
 				{
 					Debug.WriteLine($"ORS Optimization Error (subset): {response.StatusCode} - {responseString}");
-					// Sterg vehiculele din lista si incerc cu urmatorul subset
+
+					// Fallback la PTV pentru fiecare vehicul din subset
+					foreach (var fallbackVehicle in subset)
+					{
+						var ptvRoute = await TryFallbackToPTVOptimization(remainingOrders, depot, fallbackVehicle);
+						if (ptvRoute != null)
+						{
+							Debug.WriteLine($"[PTV Fallback] Successfully created fallback route for vehicle {fallbackVehicle.Id}");
+							combinedResults.Add(ptvRoute);
+
+							// Actualizez comenzile asignate si sterg vehiculul folosit
+							var assignedOrderIds = ptvRoute.Orders.Select(o => o.Id).ToHashSet();
+							remainingOrders.RemoveAll(o => assignedOrderIds.Contains(o.Id));
+							sortedVehicles.RemoveAll(v => v.Id == fallbackVehicle.Id);
+							break;
+						}
+					}
+
+					// Daca niciun fallback nu a functionat, trec la urmatorul subset
 					sortedVehicles.RemoveAll(v => subset.Contains(v));
 					continue;
 				}
@@ -535,6 +602,7 @@ namespace Licenta_v1.Services
 				if (optimizationResponse?.Routes != null)
 				{
 					bool anyRouteFound = false;
+					var routeVehicleMap = vehicles.ToDictionary(v => v.Id);
 					foreach (var route in optimizationResponse.Routes)
 					{
 						var orderedOrders = new List<Order>();
@@ -576,7 +644,13 @@ namespace Licenta_v1.Services
 										break;
 
 									// Apoi recalculez durata pentru setul de comenzi redus ca sa vad daca se incadreaza in timp
-									routeDurationSeconds = await GetRouteDurationFromORS(orderedOrders, depot);
+									if (!routeVehicleMap.TryGetValue(route.Vehicle, out var vehicle))
+									{
+										Debug.WriteLine($"[ERROR] Vehicle {route.Vehicle} not found in context.");
+										continue;
+									}
+									string profile = GetProfileForVehicle(vehicle);
+									routeDurationSeconds = await GetRouteDurationFromORS(orderedOrders, depot, profile);
 
 									if (IsRouteWithinTimeLimit(routeDurationSeconds, orderedOrders.Count))
 									{
@@ -616,21 +690,78 @@ namespace Licenta_v1.Services
 			return combinedResults;
 		}
 
-		private async Task<int> GetRouteDurationFromORS(List<Order> orders, Depot2 depot)
+		private async Task<RouteResult> TryFallbackToPTVOptimization(List<Order> orders, Depot2 depot, Vehicle vehicle)
+		{
+			if (!orders.Any()) return null;
+
+			string baseUrl = "https://api.myptv.com/routing/v1/routes";
+			var queryParams = new List<string>();
+
+			// Start
+			queryParams.Add($"waypoints={depot.Latitude.ToString(CultureInfo.InvariantCulture)},{depot.Longitude.ToString(CultureInfo.InvariantCulture)}");
+
+			// Orders
+			foreach (var order in orders)
+			{
+				queryParams.Add($"waypoints={order.Latitude},{order.Longitude}");
+			}
+
+			// Inapoi la headquarter
+			queryParams.Add($"waypoints={depot.Latitude.ToString(CultureInfo.InvariantCulture)},{depot.Longitude.ToString(CultureInfo.InvariantCulture)}");
+
+			// Profilul vehiculului
+			queryParams.Add("profile=EUR_TRAILER_TRUCK");
+
+			var queryString = string.Join("&", queryParams);
+			var requestUrl = $"{baseUrl}?{queryString}";
+
+			using var client = new HttpClient();
+			client.DefaultRequestHeaders.Add("apiKey", CurrentPtvApiKey);
+
+			try
+			{
+				var response = await client.GetAsync(requestUrl);
+				if (!response.IsSuccessStatusCode)
+				{
+					Debug.WriteLine($"[PTV Fallback] Error {response.StatusCode}: {await response.Content.ReadAsStringAsync()}");
+					return null;
+				}
+
+				var responseContent = await response.Content.ReadAsStringAsync();
+				dynamic ptvResponse = JsonConvert.DeserializeObject(responseContent);
+				var duration = (int)(ptvResponse?.travelTime ?? int.MaxValue); // secunde
+
+				if (IsRouteWithinTimeLimit(duration, orders.Count))
+				{
+					return new RouteResult
+					{
+						VehicleId = vehicle.Id,
+						Orders = orders
+					};
+				}
+			}
+			catch (Exception ex)
+			{
+				Debug.WriteLine($"[PTV Fallback Exception] {ex.Message}");
+			}
+			return null;
+		}
+
+		private async Task<int> GetRouteDurationFromORS(List<Order> orders, Depot2 depot, string profile)
 		{
 			var coordinates = new List<double[]> { new double[] { depot.Longitude, depot.Latitude } };
 			coordinates.AddRange(orders.Select(o => new double[] { o.Longitude ?? 0.0, o.Latitude ?? 0.0 }));
 			coordinates.Add(new double[] { depot.Longitude, depot.Latitude });
 
 			var directionsRequest = new { coordinates };
-			string requestUrl = "https://api.openrouteservice.org/v2/directions/driving-hgv";
+			string requestUrl = $"https://api.openrouteservice.org/v2/directions/driving-hgv";
 			string jsonBody = JsonConvert.SerializeObject(directionsRequest);
 
 			using (var client = new HttpClient())
 			{
 				client.DefaultRequestHeaders.Add("Authorization", OpenRouteServiceApiKey);
 				var content = new StringContent(jsonBody, Encoding.UTF8, "application/json");
-				var response = await client.PostAsync(requestUrl, content);
+				var response = await SendApiRequestWithRetriesAsync(client, requestUrl, content);
 				var responseJson = await response.Content.ReadAsStringAsync();
 
 				if (response.IsSuccessStatusCode)
@@ -643,7 +774,7 @@ namespace Licenta_v1.Services
 				}
 
 				Debug.WriteLine("Failed to recalculate duration from ORS.");
-				return int.MaxValue; // Daca nu am primit raspuns de la ORS, returnez un nr mare
+				return int.MaxValue;  // Daca nu am primit raspuns de la ORS, returnez un nr mare
 			}
 		}
 
@@ -795,7 +926,7 @@ namespace Licenta_v1.Services
 			{
 				client.DefaultRequestHeaders.Add("Authorization", OpenRouteServiceApiKey);
 				var content = new StringContent(jsonBody, Encoding.UTF8, "application/json");
-				var response = await client.PostAsync(requestUrl, content);
+				var response = await SendApiRequestWithRetriesAsync(client, requestUrl, content);
 				if (response.IsSuccessStatusCode)
 				{
 					var responseJson = await response.Content.ReadAsStringAsync();
@@ -928,7 +1059,7 @@ namespace Licenta_v1.Services
 			{
 				client.DefaultRequestHeaders.Add("Authorization", OpenRouteServiceApiKey);
 				var content = new StringContent(jsonBody, Encoding.UTF8, "application/json");
-				var response = await client.PostAsync(requestUrl, content);
+				var response = await SendApiRequestWithRetriesAsync(client, requestUrl, content);
 				if (response.IsSuccessStatusCode)
 				{
 					var responseString = await response.Content.ReadAsStringAsync();
@@ -1037,6 +1168,29 @@ namespace Licenta_v1.Services
 				Debug.WriteLine($"ORS Cache invalidated for Order {key.orderId} and Vehicle {key.vehicleId}");
 			}
 		}
+
+		private async Task<bool> AcquireAppLockAsync(ApplicationDbContext db, string resourceName, string mode = "Exclusive", int timeoutMs = 10000)
+		{
+			using var cmd = db.Database.GetDbConnection().CreateCommand();
+			cmd.CommandText = "sp_getapplock";
+			cmd.CommandType = System.Data.CommandType.StoredProcedure;
+			cmd.Transaction = db.Database.CurrentTransaction?.GetDbTransaction();
+
+			cmd.Parameters.Add(new SqlParameter("@Resource", resourceName));
+			cmd.Parameters.Add(new SqlParameter("@LockMode", mode));
+			cmd.Parameters.Add(new SqlParameter("@LockOwner", "Transaction"));
+			cmd.Parameters.Add(new SqlParameter("@LockTimeout", timeoutMs));
+			var returnParameter = new SqlParameter("@Result", System.Data.SqlDbType.Int) { Direction = System.Data.ParameterDirection.ReturnValue };
+			cmd.Parameters.Add(returnParameter);
+
+			if (cmd.Connection.State != System.Data.ConnectionState.Open)
+				await cmd.Connection.OpenAsync();
+
+			await cmd.ExecuteNonQueryAsync();
+
+			int result = (int)returnParameter.Value;
+			return result >= 0;
+		}
 	}
 
 	// Clasa pentru Depozit (Headquarter)
@@ -1044,5 +1198,28 @@ namespace Licenta_v1.Services
 	{
 		public double Latitude { get; set; }
 		public double Longitude { get; set; }
+	}
+	public class ORSRouteResponse
+	{
+		public List<Route> routes { get; set; }
+	}
+
+	public class Route
+	{
+		public Summary summary { get; set; }
+		public string geometry { get; set; }
+		public List<Segment> segments { get; set; }
+	}
+
+	public class Segment
+	{
+		public double distance { get; set; }
+		public double duration { get; set; }
+	}
+
+	public class Summary
+	{
+		public double distance { get; set; }
+		public double duration { get; set; }
 	}
 }

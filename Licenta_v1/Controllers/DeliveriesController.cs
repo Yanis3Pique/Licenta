@@ -210,6 +210,7 @@ namespace Licenta_v1.Controllers
 				deliveriesQuery = deliveriesQuery.Where(d => d.Status.ToLower() == lowerStatus);
 			}
 
+			ViewBag.IsOptimizationRunning = await IsAnyOptimizationInProgress();
 			ViewBag.RegionId = regionId;
 			ViewBag.Regions = new SelectList(db.Regions, "Id", "County");
 			ViewBag.SearchString = searchString;
@@ -223,7 +224,7 @@ namespace Licenta_v1.Controllers
 		}
 
 		[Authorize(Roles = "Admin,Dispecer,Sofer")]
-		public IActionResult Show(int id)
+		public async Task<IActionResult> ShowAsync(int id)
 		{
 			var user = db.ApplicationUsers.FirstOrDefault(u => u.UserName == User.Identity.Name);
 
@@ -247,6 +248,7 @@ namespace Licenta_v1.Controllers
 			if (delivery == null)
 				return NotFound();
 
+			ViewBag.IsOptimizationRunning = await IsAnyOptimizationInProgress();
 			ViewBag.CurrentUserId = user.Id;
 			ViewBag.VehicleTotalKMBefore = delivery.Vehicle.TotalDistanceTraveledKM;
 
@@ -952,6 +954,22 @@ namespace Licenta_v1.Controllers
 			double totalWeight = orders.Sum(o => o.Weight ?? 0);
 			double totalVolume = orders.Sum(o => o.Volume ?? 0);
 			return totalWeight <= vehicle.MaxWeightCapacity && totalVolume <= vehicle.MaxVolumeCapacity;
+		}
+
+		private async Task<bool> IsAnyOptimizationInProgress()
+		{
+			using var command = db.Database.GetDbConnection().CreateCommand();
+			command.CommandText = @"
+				SELECT COUNT(*) 
+				FROM sys.dm_tran_locks 
+				WHERE resource_type = 'APPLICATION' 
+				AND resource_description LIKE 'Optimization_%'";
+
+			if (command.Connection.State != System.Data.ConnectionState.Open)
+				await command.Connection.OpenAsync();
+
+			var count = (int)await command.ExecuteScalarAsync();
+			return count > 0;
 		}
 	}
 }

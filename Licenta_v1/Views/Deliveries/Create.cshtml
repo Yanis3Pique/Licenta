@@ -103,18 +103,32 @@
         <input type="hidden" name="vehicleId" id="selectedVehicleId" />
     </div>
 
+    <div id="orderDataContainer" style="display:none;">
+        @foreach (var order in availableOrders)
+        {
+            var inaccessible = string.Join(",", order.InaccessibleHeavyVehicleIds ?? new List<int>());
+            var manual = string.Join(",", order.ManuallyRestrictedVehicleIds ?? new List<int>());
+            <input type="hidden"
+                   class="order-data"
+                   data-id="@order.Id"
+                   data-address="@order.Address"
+                   data-weight="@order.Weight"
+                   data-volume="@order.Volume"
+                   data-latitude="@order.Latitude"
+                   data-longitude="@order.Longitude"
+                   data-inaccessible="@inaccessible"
+                   data-manual="@manual" />
+        }
+    </div>
+
     <div class="mb-3">
         <h4>Available Orders</h4>
-        <button class="btn btn-outline-secondary" type="button" id="toggleOrdersPanel">
-            Browse & Select Orders
-        </button>
-        
         <div id="selectedOrdersListWrapper"
              class="mt-3 border rounded bg-light p-2"
              style="overflow-y: auto; display: block; height: auto;">
             <h6 class="mb-2">Selected Orders</h6>
 
-            <!-- Mesaj default cand nu am comenzi selectate -->
+            <!-- Mesaj default când nu sunt comenzi selectate -->
             <div id="selectedOrdersListPlaceholder"
                  class="d-flex align-items-center justify-content-center text-muted small border rounded bg-white d-none"
                  style="height: 80px;">
@@ -122,41 +136,6 @@
             </div>
 
             <div id="selectedOrdersList" class="d-flex flex-column gap-2"></div>
-        </div>
-
-        <div id="ordersOverlay" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.3); z-index: 999;"></div>
-        <div id="ordersPanel" class="border p-3 bg-light shadow" style="display: none; position: fixed; right: 0; top: 0; bottom: 0; width: 400px; overflow-y: auto; z-index: 1000;">
-            <div class="d-flex justify-content-between align-items-center mb-2">
-                <h5>Select Orders</h5>
-                <button type="button" class="btn-close" id="closeOrdersPanel" aria-label="Close"></button>
-            </div>
-
-            <input type="text" id="orderSearch" class="form-control mb-3" placeholder="Search orders...">
-
-            <div id="orderListContainer" class="list-group">
-                @foreach (var order in availableOrders)
-                {
-                    var inaccessible = string.Join(",", order.InaccessibleHeavyVehicleIds ?? new List<int>());
-                    var manual = string.Join(",", order.ManuallyRestrictedVehicleIds ?? new List<int>());
-                    <div class="list-group-item">
-                        <input type="checkbox"
-                               class="form-check-input order-checkbox"
-                               data-id="@order.Id"
-                               data-address="@order.Address"
-                               data-weight="@order.Weight"
-                               data-volume="@order.Volume"
-                               data-latitude="@order.Latitude"
-                               data-longitude="@order.Longitude"
-                               data-inaccessible="@inaccessible"
-                               data-manual="@manual"
-                               id="order_@order.Id">
-                        <label class="form-check-label ms-2" for="order_@order.Id">
-                            <strong>Order #@order.Id</strong> - @order.Address<br />
-                            <small>@order.Weight kg, @order.Volume m³</small>
-                        </label>
-                    </div>
-                }
-            </div>
         </div>
     </div>
 

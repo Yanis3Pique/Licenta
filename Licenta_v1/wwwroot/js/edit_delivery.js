@@ -3,8 +3,8 @@ var totalVolume = 1;
 var map, orderMarkers = {};
 
 const ICON_URLS = {
-    selected: "https://cdn-icons-png.flaticon.com/512/1828/1828665.png", // red
-    normal: "https://cdn-icons-png.flaticon.com/512/1828/1828643.png",   // blue
+    selected: "https://cdn-icons-png.flaticon.com/512/1828/1828665.png", // rosu
+    normal: "https://cdn-icons-png.flaticon.com/512/1828/1828643.png",   // albastru
 };
 
 document.addEventListener("DOMContentLoaded", function () {
@@ -35,7 +35,22 @@ document.addEventListener("DOMContentLoaded", function () {
 
             const marker = L.marker([lat, lng], {
                 icon: L.icon({ iconUrl, iconSize: [25, 41], iconAnchor: [12, 41] })
-            }).addTo(map).bindPopup("Order #" + orderId);
+            }).addTo(map).bindPopup(() => {
+                const cb = document.querySelector(`.order-checkbox[data-id="${orderId}"]`);
+                const address = cb.getAttribute("data-address");
+                const weight = cb.getAttribute("data-weight");
+                const volume = cb.getAttribute("data-volume");
+                const isChecked = cb.checked;
+
+                return `
+                    <strong>Order #${orderId}</strong><br>
+                    ${address}<br>
+                    <small>${weight} kg, ${volume} m³</small><br>
+                    <button class="btn btn-sm btn-${isChecked ? 'danger' : 'success'} mt-2" onclick="toggleEditOrderSelection('${orderId}')">
+                        ${isChecked ? 'Deselect' : 'Select'}
+                    </button>
+                `;
+            });
 
             orderMarkers[orderId] = marker;
             bounds.extend(marker.getLatLng());
@@ -142,31 +157,15 @@ document.addEventListener("DOMContentLoaded", function () {
     });
 
     updateCapacityVisuals();
-
-    // Afisarea comenzilor in panoul lateral
-    const panel = document.getElementById("ordersPanel");
-    const overlay = document.getElementById("ordersOverlay");
-
-    document.getElementById("toggleOrdersPanel")?.addEventListener("click", () => {
-        panel.style.display = "block";
-        overlay.style.display = "block";
-    });
-
-    document.getElementById("closeOrdersPanel")?.addEventListener("click", () => {
-        panel.style.display = "none";
-        overlay.style.display = "none";
-    });
-
-    overlay?.addEventListener("click", () => {
-        panel.style.display = "none";
-        overlay.style.display = "none";
-    });
-
-    document.getElementById("orderSearch")?.addEventListener("input", e => {
-        const term = e.target.value.toLowerCase();
-        document.querySelectorAll("#orderListContainer .list-group-item").forEach(item => {
-            const match = item.innerText.toLowerCase().includes(term);
-            item.style.display = match ? "block" : "none";
-        });
-    });
 });
+
+window.toggleEditOrderSelection = function (orderId) {
+    const cb = document.querySelector(`.order-checkbox[data-id="${orderId}"]`);
+    const marker = orderMarkers[orderId];
+    if (!cb || !marker) return;
+
+    cb.checked = !cb.checked;
+    cb.dispatchEvent(new Event("change"));
+
+    marker.closePopup();
+};

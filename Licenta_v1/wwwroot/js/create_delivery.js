@@ -51,22 +51,64 @@ document.addEventListener("DOMContentLoaded", function () {
         attribution: '© OpenStreetMap contributors'
     }).addTo(map);
 
-    const orderCheckboxes = document.querySelectorAll(".order-checkbox");
+    const orderElements = document.querySelectorAll(".order-data");
     const bounds = L.latLngBounds();
 
-    orderCheckboxes.forEach(cb => {
-        const lat = parseFloat(cb.getAttribute("data-latitude"));
-        const lng = parseFloat(cb.getAttribute("data-longitude"));
-        const orderId = cb.getAttribute("data-id");
+    orderElements.forEach(el => {
+        const lat = parseFloat(el.getAttribute("data-latitude"));
+        const lng = parseFloat(el.getAttribute("data-longitude"));
+        const orderId = el.getAttribute("data-id");
+        const address = el.getAttribute("data-address");
+        const weight = el.getAttribute("data-weight");
+        const volume = el.getAttribute("data-volume");
+        const inaccessible = el.getAttribute("data-inaccessible")?.split(',').map(Number) || [];
+        const manual = el.getAttribute("data-manual")?.split(',').map(Number) || [];
 
         if (!isNaN(lat) && !isNaN(lng)) {
+            let iconUrl = ICON_URLS.normal;
+            const vehicleId = parseInt(vehicleIdInput.value);
+            const isRestricted = vehicleId && (inaccessible.includes(vehicleId) || manual.includes(vehicleId));
+            if (isRestricted) {
+                iconUrl = ICON_URLS.restricted;
+            }
+
             const marker = L.marker([lat, lng], {
                 icon: L.icon({
-                    iconUrl: ICON_URLS.normal,
+                    iconUrl: iconUrl,
                     iconSize: [25, 41],
                     iconAnchor: [12, 41]
                 })
-            }).addTo(map).bindPopup("Order #" + orderId);
+            }).addTo(map);
+
+            marker.orderData = {
+                id: orderId,
+                address,
+                weight,
+                volume,
+                inaccessible,
+                manual,
+                selected: false
+            };
+
+            marker.bindPopup(() => {
+                const currentVehicleId = parseInt(vehicleIdInput.value);
+                const isRestricted = currentVehicleId &&
+                    (marker.orderData.inaccessible.includes(currentVehicleId) ||
+                        marker.orderData.manual.includes(currentVehicleId));
+                const isSelected = marker.orderData.selected;
+
+                return `
+                    <strong>Order #${marker.orderData.id}</strong><br>
+                    ${marker.orderData.address}<br>
+                    <small>${marker.orderData.weight} kg, ${marker.orderData.volume} m³</small><br>
+                    ${isRestricted
+                            ? `<div class="text-danger mt-2">Not available for selected vehicle</div>`
+                            : `<button class="btn btn-sm btn-${isSelected ? 'danger' : 'success'} mt-2" onclick="toggleOrderSelection('${marker.orderData.id}')">
+                            ${isSelected ? 'Deselect' : 'Select'}
+                        </button>`
+                        }
+                `;
+            });
 
             orderMarkers[orderId] = marker;
             bounds.extend(marker.getLatLng());
@@ -84,29 +126,16 @@ document.addEventListener("DOMContentLoaded", function () {
         return inaccessible.includes(vehicleId) || manual.includes(vehicleId);
     }
 
-    function updateMapMarkers() {
-        const selected = new Set();
-        document.querySelectorAll(".order-checkbox:checked").forEach(cb => selected.add(cb.getAttribute("data-id")));
-
-        Object.entries(orderMarkers).forEach(([id, marker]) => {
-            const cb = document.querySelector(`.order-checkbox[data-id="${id}"]`);
-            const iconUrl = cb.disabled
-                ? ICON_URLS.restricted
-                : selected.has(id)
-                    ? ICON_URLS.selected
-                    : ICON_URLS.normal;
-
-            const icon = L.icon({ iconUrl, iconSize: [25, 41], iconAnchor: [12, 41] });
-            marker.setIcon(icon);
-        });
-    }
-
     function updateCapacityVisuals() {
         let usedWeight = 0, usedVolume = 0;
+        const selectedOrders = [];
 
-        document.querySelectorAll(".order-checkbox:checked").forEach(cb => {
-            usedWeight += parseFloat(cb.getAttribute("data-weight")) || 0;
-            usedVolume += parseFloat(cb.getAttribute("data-volume")) || 0;
+        Object.values(orderMarkers).forEach(marker => {
+            if (marker.orderData.selected) {
+                usedWeight += parseFloat(marker.orderData.weight);
+                usedVolume += parseFloat(marker.orderData.volume);
+                selectedOrders.push(marker.orderData);
+            }
         });
 
         const weightPerc = Math.min((usedWeight / totalWeight) * 100, 100);
@@ -119,68 +148,43 @@ document.addEventListener("DOMContentLoaded", function () {
 
         document.getElementById("weightProgress").classList.toggle("bg-danger", usedWeight > totalWeight);
         document.getElementById("volumeProgress").classList.toggle("bg-danger", usedVolume > totalVolume);
-
         createButton.disabled = (usedWeight > totalWeight || usedVolume > totalVolume);
 
-        // Lista de comenzi selectate + actualizarea ei
+        // Update lista vizuala + inputuri
         selectedOrdersList.innerHTML = "";
-        document.querySelectorAll(".order-checkbox:checked").forEach(cb => {
-            const id = cb.getAttribute("data-id");
-            const addr = cb.getAttribute("data-address");
-            const w = cb.getAttribute("data-weight");
-            const v = cb.getAttribute("data-volume");
 
+        selectedOrders.forEach(order => {
             const container = document.createElement("div");
             container.className = "d-flex justify-content-between align-items-start border rounded p-1 bg-light";
             container.innerHTML = `
-                <input type="hidden" name="selectedOrderIds" value="${id}" />
-                <div class="pe-2">
-                    <strong>Order #${id}</strong><br>
-                    <small>${addr}</small><br>
-                    <small>${w} kg, ${v} m³</small>
-                </div>
-                <button type="button" class="btn-close ms-2" aria-label="Remove" data-id="${id}"></button>
-            `;
+            <input type="hidden" name="selectedOrderIds" value="${order.id}" />
+            <div class="pe-2">
+                <strong>Order #${order.id}</strong><br>
+                <small>${order.address}</small><br>
+                <small>${order.weight} kg, ${order.volume} m³</small>
+            </div>
+            <button type="button" class="btn-close ms-2" aria-label="Remove" onclick="toggleOrderSelection('${order.id}')"></button>
+        `;
             selectedOrdersList.appendChild(container);
         });
 
-        document.querySelectorAll("#selectedOrdersList .btn-close").forEach(btn => {
-            btn.addEventListener("click", () => {
-                const idToRemove = btn.getAttribute("data-id");
-                const checkbox = document.querySelector(`.order-checkbox[data-id="${idToRemove}"]`);
-                if (checkbox) checkbox.checked = false;
-                updateCapacityVisuals();
-            });
-        });
-
-        const wrapper = document.getElementById("selectedOrdersListWrapper");
         const placeholder = document.getElementById("selectedOrdersListPlaceholder");
-        const selectedCount = selectedOrdersList.querySelectorAll(".d-flex").length;
-
-        placeholder.classList.toggle("d-none", selectedCount > 0);
-
-        const firstCard = selectedOrdersList.querySelector("div");
-        if (firstCard) {
-            const cardHeight = firstCard.offsetHeight;
-            selectedOrdersList.style.maxHeight = `${cardHeight}px`;
-            wrapper.style.height = `${cardHeight + 55}px`;
-        } else {
-            wrapper.style.height = `${70 + 55}px`;
-            selectedOrdersList.style.maxHeight = "none";
-        }
-
-        updateMapMarkers();
+        placeholder.classList.toggle("d-none", selectedOrders.length > 0);
     }
 
     function updateOrderAvailability() {
         const vehicleId = parseInt(vehicleIdInput.value);
         if (!vehicleId) return;
 
-        document.querySelectorAll(".order-checkbox").forEach(cb => {
-            const restricted = isOrderRestricted(cb);
-            cb.disabled = restricted;
-            cb.checked = restricted ? false : cb.checked;
-            cb.closest("label")?.classList.toggle("text-muted", restricted);
+        Object.values(orderMarkers).forEach(marker => {
+            const isRestricted = marker.orderData.inaccessible.includes(vehicleId) || marker.orderData.manual.includes(vehicleId);
+            const iconUrl = isRestricted
+                ? ICON_URLS.restricted
+                : marker.orderData.selected
+                    ? ICON_URLS.selected
+                    : ICON_URLS.normal;
+
+            marker.setIcon(L.icon({ iconUrl, iconSize: [25, 41], iconAnchor: [12, 41] }));
         });
 
         updateCapacityVisuals();
@@ -216,4 +220,24 @@ document.addEventListener("DOMContentLoaded", function () {
             item.style.display = match ? "block" : "none";
         });
     });
+
+    window.toggleOrderSelection = function (orderId) {
+        const marker = orderMarkers[orderId];
+        const vehicleId = parseInt(document.getElementById("selectedVehicleId").value);
+
+        if (!marker || !vehicleId) return;
+
+        const restricted = marker.orderData.inaccessible.includes(vehicleId) || marker.orderData.manual.includes(vehicleId);
+        if (restricted) return;
+
+        marker.orderData.selected = !marker.orderData.selected;
+
+        // Update UI
+        const iconUrl = marker.orderData.selected ? ICON_URLS.selected : ICON_URLS.normal;
+        marker.setIcon(L.icon({ iconUrl, iconSize: [25, 41], iconAnchor: [12, 41] }));
+
+        updateCapacityVisuals();
+        marker.closePopup();
+    };
+
 });

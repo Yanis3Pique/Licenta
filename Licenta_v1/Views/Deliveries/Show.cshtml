@@ -170,9 +170,15 @@
     <div class="text-center">
         @if (User.IsInRole("Dispecer") && (Model.Status == "Planned" || Model.Status == "Up for Taking"))
         {
-            <a asp-action="Edit" asp-route-id="@Model.Id" class="btn btn-primary mt-4">
+            <a asp-action="Edit" asp-route-id="@Model.Id"
+               class="btn btn-primary mt-4 @(ViewBag.IsOptimizationRunning ? "disabled" : "")"
+               selected="@(ViewBag.IsOptimizationRunning ? "tabindex='-1' aria-disabled='true'" : "")">
                 Edit Delivery
             </a>
+            @if (ViewBag.IsOptimizationRunning)
+            {
+                <small class="text-danger d-block mt-1">Optimization in progress. Editing is temporarily disabled.</small>
+            }
         }
     </div>
 

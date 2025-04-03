@@ -94,6 +94,7 @@ public class TaskuriAutomate : BackgroundService
 			{
 				order.DeliveryId = null;
 				order.DeliverySequence = null; // Sterg DeliverySequence-ul curent(e expirat)
+				order.EstimatedDeliveryDate = null;
 				dbContext.Orders.Update(order);
 			}
 

@@ -82,7 +82,15 @@
     @if (User.IsInRole("Dispecer"))
     {
         <a asp-action="OptimizeRegion" class="btn btn-secondary me-2">Optimize My Region</a>
-        <a asp-action="Create" class="btn btn-info">Create Delivery</a>
+        <a asp-action="Create"
+           class="btn btn-info @(ViewBag.IsOptimizationRunning ? "disabled" : "")"
+           selected="@(ViewBag.IsOptimizationRunning ? "tabindex='-1' aria-disabled='true'" : "")">
+            Create Delivery
+        </a>
+        @if (ViewBag.IsOptimizationRunning)
+        {
+            <small class="text-danger d-block mt-1">Optimization is in progress. Please wait...</small>
+        }
     }
 </div>
 

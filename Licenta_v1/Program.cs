@@ -36,8 +36,10 @@ builder.Services.AddHttpClient("ApiClient", client =>
 builder.Services.AddSingleton<OrderDeliveryOptimizer2>(provider =>
 {
 	var scopeFactory = provider.GetRequiredService<IServiceScopeFactory>();
-	return new OrderDeliveryOptimizer2(scopeFactory, openRouteServiceApiKey, ptvApiKey, ptvApiKeyReserve, ptvApiKeyEmergency);
+	var httpClientFactory = provider.GetRequiredService<IHttpClientFactory>();
+	return new OrderDeliveryOptimizer2(scopeFactory, httpClientFactory, openRouteServiceApiKey, ptvApiKey, ptvApiKeyReserve, ptvApiKeyEmergency);
 });
+
 
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection") ??
 	throw new InvalidOperationException("Connection string 'DefaultConnection' not found.");

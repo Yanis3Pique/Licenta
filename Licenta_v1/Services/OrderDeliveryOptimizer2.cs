@@ -23,6 +23,7 @@ namespace Licenta_v1.Services
 	public class OrderDeliveryOptimizer2
 	{
 		private readonly IServiceScopeFactory scopeFactory; // Ca sa creez mai multe instante de DbContext
+		private readonly IHttpClientFactory httpCF; // Ca sa refolosesc instantele de HttpClient
 		private readonly string OpenRouteServiceApiKey;
 		private readonly string PtvApiKey;
 		private readonly string PtVApiKeyReserve;
@@ -31,16 +32,23 @@ namespace Licenta_v1.Services
 		private const int MaxWorkingSeconds = 6 * 3600; // 6 ore
 		private const int ServiceTimePerOrderSeconds = 300; // 5 minute pe comanda
 
-		// Semafor pentru a limita apelurile Directions ORS API
+		// Semafor pentru a limita apelurile Directions ORS API si PTV API
 		private static SemaphoreSlim orsSemaphore = new SemaphoreSlim(5);
 
 		// Cache-uri pentru a evita apelurile multiple pentru aceeasi comanda si vehicul
 		private static ConcurrentDictionary<(int orderId, int vehicleId), bool> ptvCheckCache = new();
 		private static ConcurrentDictionary<(int orderId, int vehicleId), bool> orsCheckCache = new();
 
-		public OrderDeliveryOptimizer2(IServiceScopeFactory serviceScopeFactory, string openRouteServiceApiKey, string ptvApiKey, string ptVApiKeyReserve, string ptVApiKeyEmergency)
+		public OrderDeliveryOptimizer2(
+			IServiceScopeFactory serviceScopeFactory,
+			IHttpClientFactory httpClientFactory,
+			string openRouteServiceApiKey,
+			string ptvApiKey,
+			string ptVApiKeyReserve,
+			string ptVApiKeyEmergency)
 		{
 			scopeFactory = serviceScopeFactory;
+			httpCF = httpClientFactory;
 			OpenRouteServiceApiKey = openRouteServiceApiKey;
 			PtvApiKey = ptvApiKey;
 			PtVApiKeyReserve = ptVApiKeyReserve;
@@ -298,14 +306,19 @@ namespace Licenta_v1.Services
 			return (routeDurationSeconds + totalServiceTime) <= MaxWorkingSeconds;
 		}
 
-		private async Task<HttpResponseMessage> SendApiRequestWithRetriesAsync(HttpClient client, string requestUrl, HttpContent content, int maxRetries = 3)
+		private async Task<HttpResponseMessage> SendApiRequestWithRetriesAsync(string requestUrl, HttpContent content, int maxRetries = 3)
 		{
 			int retry = 0;
-			int delay = 5000; // 5 secunde
+			int delay = 5000; // 5 seconds
 			HttpResponseMessage response = null;
 
 			while (retry < maxRetries)
 			{
+				// Creez un client nou din IHttpClientFactory si setez header-ul Authorization
+				var client = httpCF.CreateClient();
+				client.DefaultRequestHeaders.Remove("Authorization");
+				client.DefaultRequestHeaders.Add("Authorization", OpenRouteServiceApiKey);
+
 				await orsSemaphore.WaitAsync();
 				try
 				{
@@ -317,13 +330,14 @@ namespace Licenta_v1.Services
 				{
 					orsSemaphore.Release();
 				}
+
 				if (response.StatusCode == HttpStatusCode.OK)
 					return response;
 
 				string detailedResponse = await response.Content.ReadAsStringAsync();
 				Debug.WriteLine($"Attempt {retry + 1}: Status {response.StatusCode}. Response: {detailedResponse}");
 
-				// Eroare 429 (Rate Limit)
+				// ORS API - 429 = rate limiting
 				if ((int)response.StatusCode == 429)
 				{
 					Debug.WriteLine("429 Rate limit hit. Retrying after 64 seconds...");
@@ -332,7 +346,7 @@ namespace Licenta_v1.Services
 					continue;
 				}
 
-				// Eroare 502 (Bad Gateway)
+				// ORS API - 502 = Bad Gateway
 				if (response.StatusCode == HttpStatusCode.BadGateway)
 				{
 					Debug.WriteLine("502 Bad Gateway. ORS might be down. Skipping further retries.");
@@ -353,9 +367,7 @@ namespace Licenta_v1.Services
 			using var scope = scopeFactory.CreateScope();
 			var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
 
-			var updatedOrders = new List<Order>();
-
-			// Dau log pentru comenzile care au restrictii manuale
+			// Logez comenzile care au restrictii manuale
 			foreach (var order in orders)
 			{
 				if (db.OrderVehicleRestrictions.Any(r => r.OrderId == order.Id && r.Source == "Manual"))
@@ -365,9 +377,11 @@ namespace Licenta_v1.Services
 			}
 
 			int batchSize = 5;
+			List<Task> batchTasks = new List<Task>();
+
 			foreach (var heavyVehicle in heavyVehicles)
 			{
-				// Verific daca vehiculul are restrictii manuale pentru comanda respectiva
+				// Only process orders not manually restricted for this vehicle
 				var ordersToCheck = orders.Where(o =>
 					!db.OrderVehicleRestrictions.Any(r => r.OrderId == o.Id && r.VehicleId == heavyVehicle.Id && r.Source == "Manual")
 				).ToList();
@@ -378,10 +392,10 @@ namespace Licenta_v1.Services
 				for (int i = 0; i < ordersToCheck.Count; i += batchSize)
 				{
 					var batch = ordersToCheck.Skip(i).Take(batchSize).ToList();
-					foreach (var order in batch)
+					var tasks = batch.Select(async order =>
 					{
 						if (!order.Latitude.HasValue || !order.Longitude.HasValue)
-							continue;
+							return;
 
 						var cacheKey = (order.Id, heavyVehicle.Id);
 						bool accessible;
@@ -397,7 +411,7 @@ namespace Licenta_v1.Services
 							ptvCheckCache[cacheKey] = accessible;
 						}
 
-						// Tin mereu rezultatul in baza de date, chiar daca este cached
+						// Always persist the result in the database
 						var existingRecord = db.OrderVehicleRestrictions
 							.FirstOrDefault(r => r.OrderId == order.Id && r.VehicleId == heavyVehicle.Id && r.Source == "PTV");
 
@@ -415,17 +429,19 @@ namespace Licenta_v1.Services
 						}
 						else
 						{
-							// Updatez doar daca s-a schimbat statusul
 							existingRecord.IsAccessible = accessible;
 							existingRecord.Reason = accessible ? "Accessible" : "PTV restriction: vehicle inaccessible";
 						}
-					}
-					await Task.Delay(1000);
+					});
+					batchTasks.Add(Task.WhenAll(tasks));
+					// Reduced delay from 1000 ms to 200 ms
+					await Task.Delay(200);
 				}
 			}
 
+			await Task.WhenAll(batchTasks);
 			await db.SaveChangesAsync();
-			return updatedOrders;
+			return new List<Order>(); // Return an empty list (the calling code doesn’t use the return value)
 		}
 
 		// Fallback in caz ca toate cheile PTV sunt folosite sau daca PTV returneaza eroare
@@ -546,7 +562,7 @@ namespace Licenta_v1.Services
 			using var orsClient = new HttpClient();
 			orsClient.DefaultRequestHeaders.Add("Authorization", OpenRouteServiceApiKey);
 			var orsContent = new StringContent(orsJsonBody, Encoding.UTF8, "application/json");
-			var orsResponse = await SendApiRequestWithRetriesAsync(orsClient, orsRequestUrl, orsContent);
+			var orsResponse = await SendApiRequestWithRetriesAsync(orsRequestUrl, orsContent);
 
 			bool orsAccessible = orsResponse.IsSuccessStatusCode;
 			orsCheckCache[cacheKey] = orsAccessible;
@@ -735,7 +751,7 @@ namespace Licenta_v1.Services
 				client.DefaultRequestHeaders.Add("Authorization", OpenRouteServiceApiKey);
 				var content = new StringContent(jsonBody, Encoding.UTF8, "application/json");
 
-				var response = await SendApiRequestWithRetriesAsync(client, requestUrl, content);
+				var response = await SendApiRequestWithRetriesAsync(requestUrl, content);
 				var responseString = await response.Content.ReadAsStringAsync();
 				Debug.WriteLine($"ORS Optimization Response (subset): {responseString}");
 
@@ -928,7 +944,7 @@ namespace Licenta_v1.Services
 			{
 				client.DefaultRequestHeaders.Add("Authorization", OpenRouteServiceApiKey);
 				var content = new StringContent(jsonBody, Encoding.UTF8, "application/json");
-				var response = await SendApiRequestWithRetriesAsync(client, requestUrl, content);
+				var response = await SendApiRequestWithRetriesAsync(requestUrl, content);
 				var responseJson = await response.Content.ReadAsStringAsync();
 
 				if (response.IsSuccessStatusCode)
@@ -1093,7 +1109,7 @@ namespace Licenta_v1.Services
 			{
 				client.DefaultRequestHeaders.Add("Authorization", OpenRouteServiceApiKey);
 				var content = new StringContent(jsonBody, Encoding.UTF8, "application/json");
-				var response = await SendApiRequestWithRetriesAsync(client, requestUrl, content);
+				var response = await SendApiRequestWithRetriesAsync(requestUrl, content);
 				if (response.IsSuccessStatusCode)
 				{
 					var responseJson = await response.Content.ReadAsStringAsync();
@@ -1226,7 +1242,7 @@ namespace Licenta_v1.Services
 			{
 				client.DefaultRequestHeaders.Add("Authorization", OpenRouteServiceApiKey);
 				var content = new StringContent(jsonBody, Encoding.UTF8, "application/json");
-				var response = await SendApiRequestWithRetriesAsync(client, requestUrl, content);
+				var response = await SendApiRequestWithRetriesAsync(requestUrl, content);
 				if (response.IsSuccessStatusCode)
 				{
 					var responseString = await response.Content.ReadAsStringAsync();

@@ -112,7 +112,7 @@ namespace Licenta_v1.Services
 			using var scope = scopeFactory.CreateScope();
 			var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
 
-			await LoadRestrictionCacheAsync();
+			//await LoadRestrictionCacheAsync();
 
 			if (userRegionId.HasValue)
 			{
@@ -1355,7 +1355,7 @@ namespace Licenta_v1.Services
 				ptvCheckCache[(item.OrderId, item.VehicleId)] = item.IsAccessible;
 			}
 
-			Debug.WriteLine($"Loaded {aggregated.Count()} aggregated restrictions into cache.");
+			Debug.WriteLine($"[CACHE INIT] Loaded {aggregated.Count()} aggregated restrictions into cache.");
 		}
 
 		public void InvalidateCacheForVehicle(int vehicleId)

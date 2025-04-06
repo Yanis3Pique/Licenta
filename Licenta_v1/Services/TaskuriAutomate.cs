@@ -16,16 +16,21 @@ public class TaskuriAutomate : BackgroundService
 {
 	private readonly IServiceProvider _serviceProvider;
 	private readonly IEmailSender _emailSender;
+	private readonly OrderDeliveryOptimizer2 _optimizer;
 	private DateTime _lastDeliveryCleanup = DateTime.MinValue;
 
-	public TaskuriAutomate(IServiceProvider serviceProvider, IEmailSender emailSender)
+	public TaskuriAutomate(IServiceProvider serviceProvider, IEmailSender emailSender, OrderDeliveryOptimizer2 optimizer)
 	{
 		_serviceProvider = serviceProvider;
 		_emailSender = emailSender;
+		_optimizer = optimizer;
 	}
 
 	protected override async Task ExecuteAsync(CancellationToken stoppingToken)
 	{
+		// PRELOAD cache la startup
+		await _optimizer.LoadRestrictionCacheAsync();
+
 		var lastUserCheck = DateTime.MinValue;
 
 		while (!stoppingToken.IsCancellationRequested)

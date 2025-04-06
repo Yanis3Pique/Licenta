@@ -66,6 +66,7 @@ namespace Licenta_v1.Models
 		public virtual Region? Region { get; set; }
 		public virtual ICollection<Delivery>? Deliveries { get; set; }
 		public virtual ICollection<Maintenance>? MaintenanceRecords { get; set; }
+		public virtual ICollection<OrderVehicleRestriction> OrderVehicleRestrictions { get; set; } = new List<OrderVehicleRestriction>();
 
 
 		// Urmarire mentenanta - ultima data sau distanta la care fiecare tip de revizie a fost facut

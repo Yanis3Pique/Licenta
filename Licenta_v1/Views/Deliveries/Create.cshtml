@@ -106,8 +106,12 @@
     <div id="orderDataContainer" style="display:none;">
         @foreach (var order in availableOrders)
         {
-            var inaccessible = string.Join(",", order.InaccessibleHeavyVehicleIds ?? new List<int>());
-            var manual = string.Join(",", order.ManuallyRestrictedVehicleIds ?? new List<int>());
+            var inaccessible = string.Join(",", order.OrderVehicleRestrictions
+                .Where(r => r.Source == "PTV" || r.Source == "ORS")
+                .Select(r => r.VehicleId));
+            var manual = string.Join(",", order.OrderVehicleRestrictions
+                .Where(r => r.Source == "Manual")
+                .Select(r => r.VehicleId));
             <input type="hidden"
                    class="order-data"
                    data-id="@order.Id"

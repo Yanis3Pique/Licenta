@@ -20,6 +20,7 @@ namespace Licenta_v1.Data
 		public DbSet<Delivery> Deliveries { get; set; }
 		public DbSet<Maintenance> Maintenances { get; set; }
 		public DbSet<RouteHistory> RouteHistories { get; set; }
+		public DbSet<OrderVehicleRestriction> OrderVehicleRestrictions { get; set; }
 
 		protected override void OnModelCreating(ModelBuilder modelBuilder)
 		{
@@ -107,6 +108,22 @@ namespace Licenta_v1.Data
 				.HasOne(rh => rh.Delivery)
 				.WithOne(d => d.RouteHistory)
 				.HasForeignKey<RouteHistory>(rh => rh.DeliveryId)
+				.OnDelete(DeleteBehavior.Cascade);
+
+			// Relatie OrderVehicleRestriction - Order (m-to-1) si Vehicle (m-to-1)
+			modelBuilder.Entity<OrderVehicleRestriction>()
+				.HasKey(r => new { r.OrderId, r.VehicleId, r.Source });
+
+			modelBuilder.Entity<OrderVehicleRestriction>()
+				.HasOne(r => r.Order)
+				.WithMany(o => o.OrderVehicleRestrictions)
+				.HasForeignKey(r => r.OrderId)
+				.OnDelete(DeleteBehavior.Cascade);
+
+			modelBuilder.Entity<OrderVehicleRestriction>()
+				.HasOne(r => r.Vehicle)
+				.WithMany(v => v.OrderVehicleRestrictions)
+				.HasForeignKey(r => r.VehicleId)
 				.OnDelete(DeleteBehavior.Cascade);
 		}
 	}

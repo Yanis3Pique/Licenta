@@ -4,6 +4,7 @@ using Licenta_v1.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Licenta_v1.Data.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20250405102031_BD_8.1")]
+    partial class BD_81
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -315,6 +318,10 @@ namespace Licenta_v1.Data.Migrations
                     b.Property<string>("EstimatedDeliveryInterval")
                         .HasColumnType("nvarchar(max)");
 
+                    b.PrimitiveCollection<string>("InaccessibleHeavyVehicleIds")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<int?>("LastNotifiedStatus")
                         .HasColumnType("int");
 
@@ -323,6 +330,10 @@ namespace Licenta_v1.Data.Migrations
 
                     b.Property<double>("Longitude")
                         .HasColumnType("float");
+
+                    b.PrimitiveCollection<string>("ManuallyRestrictedVehicleIds")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<DateTime>("PlacedDate")
                         .HasColumnType("datetime2");
@@ -355,26 +366,32 @@ namespace Licenta_v1.Data.Migrations
 
             modelBuilder.Entity("Licenta_v1.Models.OrderVehicleRestriction", b =>
                 {
-                    b.Property<int>("OrderId")
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
                         .HasColumnType("int");
 
-                    b.Property<int>("VehicleId")
-                        .HasColumnType("int");
-
-                    b.Property<string>("Source")
-                        .HasColumnType("nvarchar(450)");
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
-                    b.Property<bool>("IsAccessible")
-                        .HasColumnType("bit");
+                    b.Property<int>("OrderId")
+                        .HasColumnType("int");
 
                     b.Property<string>("Reason")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
-                    b.HasKey("OrderId", "VehicleId", "Source");
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("VehicleId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrderId");
 
                     b.HasIndex("VehicleId");
 
@@ -787,13 +804,13 @@ namespace Licenta_v1.Data.Migrations
             modelBuilder.Entity("Licenta_v1.Models.OrderVehicleRestriction", b =>
                 {
                     b.HasOne("Licenta_v1.Models.Order", "Order")
-                        .WithMany("OrderVehicleRestrictions")
+                        .WithMany()
                         .HasForeignKey("OrderId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
                     b.HasOne("Licenta_v1.Models.Vehicle", "Vehicle")
-                        .WithMany("OrderVehicleRestrictions")
+                        .WithMany()
                         .HasForeignKey("VehicleId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
@@ -897,8 +914,6 @@ namespace Licenta_v1.Data.Migrations
             modelBuilder.Entity("Licenta_v1.Models.Order", b =>
                 {
                     b.Navigation("Feedback");
-
-                    b.Navigation("OrderVehicleRestrictions");
                 });
 
             modelBuilder.Entity("Licenta_v1.Models.Region", b =>
@@ -915,8 +930,6 @@ namespace Licenta_v1.Data.Migrations
                     b.Navigation("Deliveries");
 
                     b.Navigation("MaintenanceRecords");
-
-                    b.Navigation("OrderVehicleRestrictions");
                 });
 #pragma warning restore 612, 618
         }

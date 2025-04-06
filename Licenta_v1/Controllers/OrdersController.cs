@@ -1,5 +1,6 @@
 ﻿using Licenta_v1.Data;
 using Licenta_v1.Models;
+using Licenta_v1.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
@@ -7,6 +8,7 @@ using Microsoft.AspNetCore.Mvc.Rendering;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using SendGrid.Helpers.Mail;
+using System.Diagnostics;
 using System.Drawing;
 using System.Security.Claims;
 
@@ -17,16 +19,19 @@ namespace Licenta_v1.Controllers
 		private readonly ApplicationDbContext db;
 		private readonly UserManager<ApplicationUser> _userManager;
 		private readonly RoleManager<IdentityRole> _roleManager;
+		private readonly OrderDeliveryOptimizer2 opt;
 
 		public OrdersController(
 			ApplicationDbContext context,
 			UserManager<ApplicationUser> userManager,
-			RoleManager<IdentityRole> roleManager
+			RoleManager<IdentityRole> roleManager,
+			OrderDeliveryOptimizer2 optimizer
 			)
 		{
 			db = context;
 			_userManager = userManager;
 			_roleManager = roleManager;
+			opt = optimizer;
 		}
 
 		[NonAction]
@@ -203,7 +208,7 @@ namespace Licenta_v1.Controllers
 
 			if(!IsValidAddressInRomania(order.Address))
 			{
-				TempData["Error"] = "The address must contain at least 4 parts and end with 'Romania'.";
+				TempData["Error"] = "Invalid Address. Too remote.";
 				ViewBag.RegionId = new SelectList(db.Regions.ToList(), "Id", "County", order.RegionId);
 				ViewBag.ClientId = client.Id;
 				return View(order);
@@ -213,6 +218,19 @@ namespace Licenta_v1.Controllers
 			{
 				db.Orders.Add(order);
 				await db.SaveChangesAsync();
+
+				// Folosesc Task.Run pentru a rula in background dupa modelul fire-and-forget
+				_ = Task.Run(async () =>
+				{
+					try
+					{
+						await opt.ValidateRestrictionsForNewOrderAsync(order);
+					}
+					catch (Exception ex)
+					{
+						Debug.WriteLine("Error validating restrictions in background: " + ex.Message);
+					}
+				});
 
 				TempData["Success"] = "Order " + order.Id + " created successfully.";
 

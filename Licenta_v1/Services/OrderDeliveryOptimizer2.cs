@@ -92,15 +92,6 @@ namespace Licenta_v1.Services
 
 				var modifiedOrders = await PreValidateHeavyVehicleAccessAsync(regionOrders, depot, heavyVehicles);
 
-				foreach (var order in modifiedOrders)
-				{
-					var existingOrder = await db.Orders.FindAsync(order.Id);
-					if (existingOrder != null)
-					{
-						existingOrder.InaccessibleHeavyVehicleIds = order.InaccessibleHeavyVehicleIds.ToList();
-						db.Entry(existingOrder).Property(o => o.InaccessibleHeavyVehicleIds).IsModified = true;
-					}
-				}
 				await db.SaveChangesAsync();
 			}
 
@@ -112,6 +103,8 @@ namespace Licenta_v1.Services
 		{
 			using var scope = scopeFactory.CreateScope();
 			var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+
+			await LoadRestrictionCacheAsync();
 
 			if (userRegionId.HasValue)
 			{
@@ -261,8 +254,26 @@ namespace Licenta_v1.Services
 			foreach (var heavyVehicle in heavyVehicles)
 			{
 				var heavyAllowedOrders = remainingOrders
-					.Where(o => !o.ManuallyRestrictedVehicleIds.Contains(heavyVehicle.Id) &&
-								!o.InaccessibleHeavyVehicleIds.Contains(heavyVehicle.Id))
+					.Where(o =>
+					{
+						// Iau toate restrictiile pentru comanda respectiva
+						var restrictions = db.OrderVehicleRestrictions
+							.Where(r => r.OrderId == o.Id &&
+										r.VehicleId == heavyVehicle.Id &&
+										(r.Source == "PTV" || r.Source == "ORS" || r.Source == "Manual"))
+							.ToList();
+
+						// Daca nu exista restrictii, atunci comanda este permisa
+						if (!restrictions.Any())
+							return true;
+
+						// Daca exista restrictii manuale, atunci nu este permisa
+						if (restrictions.Any(r => r.Source == "Manual"))
+							return false;
+
+						// Altfel, daca toate restrictiile sunt false, atunci este permisa
+						return restrictions.All(r => r.IsAccessible);
+					})
 					.ToList();
 
 				if (!heavyAllowedOrders.Any())
@@ -339,22 +350,27 @@ namespace Licenta_v1.Services
 		// Metoda care verifica accesul vehiculelor grele la comenzi si actualizeaza statusul comenzilor
 		private async Task<List<Order>> PreValidateHeavyVehicleAccessAsync(List<Order> orders, Depot2 depot, List<Vehicle> heavyVehicles)
 		{
+			using var scope = scopeFactory.CreateScope();
+			var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+
 			var updatedOrders = new List<Order>();
 
+			// Dau log pentru comenzile care au restrictii manuale
 			foreach (var order in orders)
 			{
-				if (order.ManuallyRestrictedVehicleIds.Any())
+				if (db.OrderVehicleRestrictions.Any(r => r.OrderId == order.Id && r.Source == "Manual"))
 				{
-					Debug.WriteLine($"[MANUAL BLOCK] Order {order.Id} already manually restricted for some vehicles.");
+					Debug.WriteLine($"[MANUAL BLOCK] Order {order.Id} already manually restricted.");
 				}
 			}
 
 			int batchSize = 5;
 			foreach (var heavyVehicle in heavyVehicles)
 			{
-				var ordersToCheck = orders
-					.Where(o => !o.ManuallyRestrictedVehicleIds.Contains(heavyVehicle.Id))
-					.ToList();
+				// Verific daca vehiculul are restrictii manuale pentru comanda respectiva
+				var ordersToCheck = orders.Where(o =>
+					!db.OrderVehicleRestrictions.Any(r => r.OrderId == o.Id && r.VehicleId == heavyVehicle.Id && r.Source == "Manual")
+				).ToList();
 
 				if (!ordersToCheck.Any())
 					continue;
@@ -362,15 +378,16 @@ namespace Licenta_v1.Services
 				for (int i = 0; i < ordersToCheck.Count; i += batchSize)
 				{
 					var batch = ordersToCheck.Skip(i).Take(batchSize).ToList();
-
 					foreach (var order in batch)
 					{
 						if (!order.Latitude.HasValue || !order.Longitude.HasValue)
 							continue;
 
 						var cacheKey = (order.Id, heavyVehicle.Id);
-						if (ptvCheckCache.TryGetValue(cacheKey, out bool accessible))
+						bool accessible;
+						if (ptvCheckCache.TryGetValue(cacheKey, out bool cachedResult))
 						{
+							accessible = cachedResult;
 							Debug.WriteLine($"[CACHE HIT] PTV: Order {order.Id}, Vehicle {heavyVehicle.Id} => {accessible}");
 						}
 						else
@@ -380,17 +397,34 @@ namespace Licenta_v1.Services
 							ptvCheckCache[cacheKey] = accessible;
 						}
 
-						if (!accessible && !order.InaccessibleHeavyVehicleIds.Contains(heavyVehicle.Id))
+						// Tin mereu rezultatul in baza de date, chiar daca este cached
+						var existingRecord = db.OrderVehicleRestrictions
+							.FirstOrDefault(r => r.OrderId == order.Id && r.VehicleId == heavyVehicle.Id && r.Source == "PTV");
+
+						if (existingRecord == null)
 						{
-							order.InaccessibleHeavyVehicleIds.Add(heavyVehicle.Id);
-							updatedOrders.Add(order);
-							Debug.WriteLine($"[RESTRICTED] Order {order.Id} marked inaccessible for Vehicle {heavyVehicle.Id}");
+							db.OrderVehicleRestrictions.Add(new OrderVehicleRestriction
+							{
+								OrderId = order.Id,
+								VehicleId = heavyVehicle.Id,
+								Reason = accessible ? "Accessible" : "PTV restriction: vehicle inaccessible",
+								Source = "PTV",
+								CreatedAt = DateTime.Now,
+								IsAccessible = accessible
+							});
+						}
+						else
+						{
+							// Updatez doar daca s-a schimbat statusul
+							existingRecord.IsAccessible = accessible;
+							existingRecord.Reason = accessible ? "Accessible" : "PTV restriction: vehicle inaccessible";
 						}
 					}
 					await Task.Delay(1000);
 				}
 			}
 
+			await db.SaveChangesAsync();
 			return updatedOrders;
 		}
 
@@ -518,7 +552,140 @@ namespace Licenta_v1.Services
 			orsCheckCache[cacheKey] = orsAccessible;
 			Debug.WriteLine($"[ORS CHECK DONE] Order {order.Id}, Vehicle {heavyVehicle.Id}, Accessible: {orsAccessible}");
 
+			using (var scope = scopeFactory.CreateScope())
+			{
+				var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+				var existingRecord = db.OrderVehicleRestrictions
+					 .FirstOrDefault(r => r.OrderId == order.Id && r.VehicleId == heavyVehicle.Id && r.Source == "ORS");
+				if (existingRecord == null)
+				{
+					db.OrderVehicleRestrictions.Add(new OrderVehicleRestriction
+					{
+						OrderId = order.Id,
+						VehicleId = heavyVehicle.Id,
+						Reason = orsAccessible ? "Accessible" : "ORS restriction: vehicle inaccessible",
+						Source = "ORS",
+						CreatedAt = DateTime.Now,
+						IsAccessible = orsAccessible
+					});
+				}
+				else
+				{
+					existingRecord.IsAccessible = orsAccessible;
+					existingRecord.Reason = orsAccessible ? "Accessible" : "ORS restriction: vehicle inaccessible";
+				}
+				await db.SaveChangesAsync();
+			}
+
 			return orsAccessible;
+		}
+
+		public async Task ValidateRestrictionsForNewOrderAsync(Order newOrder)
+		{
+			using var scope = scopeFactory.CreateScope();
+			var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+
+			// Iau headquarter-ul pentru regiunea comenzii
+			var headquarter = db.Headquarters.FirstOrDefault(h => h.RegionId == newOrder.RegionId);
+			if (headquarter == null)
+			{
+				Debug.WriteLine($"No headquarter found for region {newOrder.RegionId}");
+				return;
+			}
+			var depot = new Depot2
+			{
+				Latitude = headquarter.Latitude ?? 0,
+				Longitude = headquarter.Longitude ?? 0
+			};
+
+			// Iau vehiculele grele disponibile in regiunea comenzii
+			var heavyVehicles = db.Vehicles
+				.Where(v => v.RegionId == newOrder.RegionId &&
+							v.Status == VehicleStatus.Available &&
+							(v.VehicleType == VehicleType.HeavyTruck || v.VehicleType == VehicleType.SmallTruck))
+				.ToList();
+
+			foreach (var heavyVehicle in heavyVehicles)
+			{
+				bool accessible = await IsHeavyVehicleAccessibleAsync(newOrder, depot, heavyVehicle);
+				// Adaug sau updatez restrictia pentru aceasta comanda si vehicul (sursa "PTV")
+				var existingRecord = db.OrderVehicleRestrictions
+					.FirstOrDefault(r => r.OrderId == newOrder.Id && r.VehicleId == heavyVehicle.Id && r.Source == "PTV");
+				if (existingRecord == null)
+				{
+					db.OrderVehicleRestrictions.Add(new OrderVehicleRestriction
+					{
+						OrderId = newOrder.Id,
+						VehicleId = heavyVehicle.Id,
+						Source = "PTV",
+						Reason = accessible ? "Accessible" : "PTV restriction: vehicle inaccessible",
+						IsAccessible = accessible,
+						CreatedAt = DateTime.Now
+					});
+				}
+				else
+				{
+					existingRecord.IsAccessible = accessible;
+					existingRecord.Reason = accessible ? "Accessible" : "PTV restriction: vehicle inaccessible";
+				}
+			}
+			await db.SaveChangesAsync();
+		}
+
+		public async Task ValidateRestrictionsForVehicleAsync(Vehicle heavyVehicle)
+		{
+			// Procesez doar vehiculele grele
+			if (!(heavyVehicle.VehicleType == VehicleType.HeavyTruck || heavyVehicle.VehicleType == VehicleType.SmallTruck))
+				return;
+
+			using var scope = scopeFactory.CreateScope();
+			var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+
+			// Iau headquarter-ul pentru regiunea vehiculului
+			var headquarter = db.Headquarters.FirstOrDefault(h => h.RegionId == heavyVehicle.RegionId);
+			if (headquarter == null)
+			{
+				Debug.WriteLine($"No headquarter found for region {heavyVehicle.RegionId}");
+				return;
+			}
+			var depot = new Depot2
+			{
+				Latitude = headquarter.Latitude ?? 0,
+				Longitude = headquarter.Longitude ?? 0
+			};
+
+			// Iau comenzile care sunt inca neasignate
+			var orders = db.Orders
+				.Where(o => o.RegionId == heavyVehicle.RegionId &&
+							o.Status == OrderStatus.Placed &&
+							o.DeliveryId == null)
+				.ToList();
+
+			foreach (var order in orders)
+			{
+				bool accessible = await IsHeavyVehicleAccessibleAsync(order, depot, heavyVehicle);
+				// Adaug sau updatez restrictia pentru aceasta comanda si vehicul (sursa "PTV")
+				var existingRecord = db.OrderVehicleRestrictions
+					.FirstOrDefault(r => r.OrderId == order.Id && r.VehicleId == heavyVehicle.Id && r.Source == "PTV");
+				if (existingRecord == null)
+				{
+					db.OrderVehicleRestrictions.Add(new OrderVehicleRestriction
+					{
+						OrderId = order.Id,
+						VehicleId = heavyVehicle.Id,
+						Source = "PTV",
+						Reason = accessible ? "Accessible" : "PTV restriction: vehicle inaccessible",
+						IsAccessible = accessible,
+						CreatedAt = DateTime.Now
+					});
+				}
+				else
+				{
+					existingRecord.IsAccessible = accessible;
+					existingRecord.Reason = accessible ? "Accessible" : "PTV restriction: vehicle inaccessible";
+				}
+			}
+			await db.SaveChangesAsync();
 		}
 
 		// Metoda imparte vehiculele disponibile in submultimi (de cel mult 3 vehicule)
@@ -1144,28 +1311,64 @@ namespace Licenta_v1.Services
 				: "driving-car";
 		}
 
+		public async Task LoadRestrictionCacheAsync()
+		{
+			using var scope = scopeFactory.CreateScope();
+			var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+
+			// Incarca toate restrictiile de la orice sursa (PTV, ORS, Manual)
+			var restrictions = await db.OrderVehicleRestrictions
+				.Where(r => r.Source == "PTV" || r.Source == "ORS" || r.Source == "Manual")
+				.ToListAsync();
+
+			// Grupati dupa perechea (OrderId, VehicleId)
+			var aggregated = restrictions
+				.GroupBy(r => (r.OrderId, r.VehicleId))
+				.Select(g => new
+				{
+					OrderId = g.Key.OrderId,
+					VehicleId = g.Key.VehicleId,
+					// Daca toate restrictiile sunt accesibile, atunci Order-ul e accesibil
+					// Daca cel putin una e false, rezultatul final este false
+					IsAccessible = g.All(r => r.IsAccessible)
+				});
+
+			// Populez cache-ul
+			foreach (var item in aggregated)
+			{
+				ptvCheckCache[(item.OrderId, item.VehicleId)] = item.IsAccessible;
+			}
+
+			Debug.WriteLine($"Loaded {aggregated.Count()} aggregated restrictions into cache.");
+		}
+
 		public void InvalidateCacheForVehicle(int vehicleId)
 		{
-			// Sterg din cache PTV toate cheile care contin vehicleId dat
-			var ptvKeysToRemove = ptvCheckCache.Keys
-				.Where(key => key.vehicleId == vehicleId)
-				.ToList();
-
+			// Sterg cache-urile pentru vehiculul dat
+			var ptvKeysToRemove = ptvCheckCache.Keys.Where(key => key.vehicleId == vehicleId).ToList();
 			foreach (var key in ptvKeysToRemove)
 			{
 				ptvCheckCache.Remove(key, out _);
 				Debug.WriteLine($"PTV Cache invalidated for Order {key.orderId} and Vehicle {key.vehicleId}");
 			}
-
-			// Sterg din cache ORS toate cheile care contin vehicleId dat
-			var orsKeysToRemove = orsCheckCache.Keys
-				.Where(key => key.vehicleId == vehicleId)
-				.ToList();
-
+			var orsKeysToRemove = orsCheckCache.Keys.Where(key => key.vehicleId == vehicleId).ToList();
 			foreach (var key in orsKeysToRemove)
 			{
 				orsCheckCache.Remove(key, out _);
 				Debug.WriteLine($"ORS Cache invalidated for Order {key.orderId} and Vehicle {key.vehicleId}");
+			}
+
+			// Sterg restrictiile vechi din baza de date
+			using (var scope = scopeFactory.CreateScope())
+			{
+				var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+				var staleRestrictions = db.OrderVehicleRestrictions.Where(r => r.VehicleId == vehicleId);
+				if (staleRestrictions.Any())
+				{
+					db.OrderVehicleRestrictions.RemoveRange(staleRestrictions);
+					db.SaveChanges();
+					Debug.WriteLine($"Removed {staleRestrictions.Count()} restriction records for Vehicle {vehicleId}");
+				}
 			}
 		}
 

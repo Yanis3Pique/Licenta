@@ -100,7 +100,10 @@ namespace Licenta_v1.Controllers
 			// Verific daca vehiculul este restrictionat pentru una dintre comenzi
 			foreach (var order in orders)
 			{
-				if (order.InaccessibleHeavyVehicleIds.Contains(vehicle.Id) || order.ManuallyRestrictedVehicleIds.Contains(vehicle.Id))
+				bool isRestricted = db.OrderVehicleRestrictions
+					.Any(r => r.OrderId == order.Id && r.VehicleId == vehicle.Id &&
+							  (r.Source == "Manual" || !r.IsAccessible));
+				if (isRestricted)
 				{
 					TempData["Error"] = $"Order #{order.Id} is not accessible by the selected vehicle.";
 					return RedirectToAction("Create");
@@ -377,8 +380,7 @@ namespace Licenta_v1.Controllers
 
 			ViewBag.AvailableOrders = db.Orders
 				.Where(o => o.Status == OrderStatus.Placed && o.DeliveryId == null && o.RegionId == user.RegionId)
-				.Where(o => !o.InaccessibleHeavyVehicleIds.Contains(deliveryVehicleId) &&
-							!o.ManuallyRestrictedVehicleIds.Contains(deliveryVehicleId))
+				.Where(o => !db.OrderVehicleRestrictions.Any(r => r.OrderId == o.Id && r.VehicleId == deliveryVehicleId))
 				.ToList();
 
 			return View(delivery);
@@ -415,14 +417,16 @@ namespace Licenta_v1.Controllers
 			// Verific daca vehiculul este restrictionat pentru vreuna din comenzi
 			foreach (var order in newOrders)
 			{
-				if ((order.InaccessibleHeavyVehicleIds?.Contains(vehicle.Id) ?? false) ||
-					(order.ManuallyRestrictedVehicleIds?.Contains(vehicle.Id) ?? false))
+				bool isRestricted = db.OrderVehicleRestrictions
+					.Any(r => r.OrderId == order.Id && r.VehicleId == vehicle.Id &&
+							  (r.Source == "Manual" || !r.IsAccessible));
+				if (isRestricted)
 				{
 					TempData["Error"] = $"Order #{order.Id} is not accessible by the selected vehicle.";
 					return RedirectToAction("Edit", new { id });
 				}
 			}
- 
+
 			// Sterg comenzile care nu sunt in lista
 			var ordersToRemove = delivery.Orders.Where(o => !keepOrderIds.Contains(o.Id)).ToList();
 			foreach (var order in ordersToRemove)

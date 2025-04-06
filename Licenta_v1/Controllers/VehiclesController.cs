@@ -10,6 +10,7 @@ using Microsoft.EntityFrameworkCore;
 using SendGrid;
 using SendGrid.Helpers.Mail;
 using System.ComponentModel.DataAnnotations;
+using System.Diagnostics;
 using System.Linq;
 using System.Reflection;
 
@@ -401,7 +402,7 @@ namespace Licenta_v1.Controllers
 				vehicle.MaxVolumeCapacity = updatedVehicle.MaxVolumeCapacity;
 				vehicle.MaxWeightCapacity = updatedVehicle.MaxWeightCapacity;
 				vehicle.TotalDistanceTraveledKM = updatedVehicle.TotalDistanceTraveledKM;
-				vehicle.ImagePath = vehicle.ImagePath;
+				//vehicle.ImagePath = vehicle.ImagePath;
 				vehicle.RegionId = updatedVehicle.RegionId;
 				vehicle.HeightMeters = updatedVehicle.HeightMeters;
 				vehicle.WidthMeters = updatedVehicle.WidthMeters;
@@ -416,6 +417,22 @@ namespace Licenta_v1.Controllers
 					if (shouldInvalidateCache)
 					{
 						opt.InvalidateCacheForVehicle(vehicle.Id);
+					}
+
+					// Daca masina e grea, verific restrictiile in background
+					if (vehicle.VehicleType == VehicleType.HeavyTruck || vehicle.VehicleType == VehicleType.SmallTruck)
+					{
+						_ = Task.Run(async () =>
+						{
+							try
+							{
+								await opt.ValidateRestrictionsForVehicleAsync(vehicle);
+							}
+							catch (Exception ex)
+							{
+								Debug.WriteLine($"Error validating restrictions for vehicle {vehicle.Id}: {ex.Message}");
+							}
+						});
 					}
 
 					TempData["Success"] = "Vehicle updated successfully!";
@@ -523,41 +540,41 @@ namespace Licenta_v1.Controllers
 
 			// Iau toate tipurile de mentenanta la care vehiculul are drept in functie de tipul de combustibil
 			var maintenanceTypes = Enum.GetValues(typeof(MaintenanceTypes))
-						   .Cast<MaintenanceTypes>()
-						   .Where(mt =>
-						   {
-							   switch (vehicle.FuelType)
-							   {
-								   case FuelType.Electric: // Electric
-									   return mt == MaintenanceTypes.BatteryHealthCheck ||
-											  mt == MaintenanceTypes.BatteryCoolantChange ||
-											  mt == MaintenanceTypes.TireReplacement ||
-											  mt == MaintenanceTypes.BrakePadReplacement ||
-											  mt == MaintenanceTypes.SuspensionService ||
-											  mt == MaintenanceTypes.GeneralInspection;
+				.Cast<MaintenanceTypes>()
+				.Where(mt =>
+				{
+					switch (vehicle.FuelType)
+					{
+						case FuelType.Electric: // Electric
+							return mt == MaintenanceTypes.BatteryHealthCheck ||
+									mt == MaintenanceTypes.BatteryCoolantChange ||
+									mt == MaintenanceTypes.TireReplacement ||
+									mt == MaintenanceTypes.BrakePadReplacement ||
+									mt == MaintenanceTypes.SuspensionService ||
+									mt == MaintenanceTypes.GeneralInspection;
 
-								   case FuelType.Hybrid: // ICE + Electric = Hybrid
-									   return mt == MaintenanceTypes.EngineOilFilter ||
-											  mt == MaintenanceTypes.BatteryHealthCheck ||
-											  mt == MaintenanceTypes.BatteryCoolantChange ||
-											  mt == MaintenanceTypes.TireReplacement ||
-											  mt == MaintenanceTypes.BrakePadReplacement ||
-											  mt == MaintenanceTypes.SuspensionService ||
-											  mt == MaintenanceTypes.GeneralInspection;
+						case FuelType.Hybrid: // ICE + Electric = Hybrid
+							return mt == MaintenanceTypes.EngineOilFilter ||
+									mt == MaintenanceTypes.BatteryHealthCheck ||
+									mt == MaintenanceTypes.BatteryCoolantChange ||
+									mt == MaintenanceTypes.TireReplacement ||
+									mt == MaintenanceTypes.BrakePadReplacement ||
+									mt == MaintenanceTypes.SuspensionService ||
+									mt == MaintenanceTypes.GeneralInspection;
 
-								   default: // ICE
-									   return mt == MaintenanceTypes.EngineOilFilter ||
-											  mt == MaintenanceTypes.TireReplacement ||
-											  mt == MaintenanceTypes.BrakePadReplacement ||
-											  mt == MaintenanceTypes.SuspensionService ||
-											  mt == MaintenanceTypes.GeneralInspection;
-							   }
-						   })
-						   .Select(mt => new SelectListItem
-						   {
-							   Text = mt.GetDisplayName(),
-							   Value = mt.ToString()
-						   }).ToList();
+						default: // ICE
+							return mt == MaintenanceTypes.EngineOilFilter ||
+									mt == MaintenanceTypes.TireReplacement ||
+									mt == MaintenanceTypes.BrakePadReplacement ||
+									mt == MaintenanceTypes.SuspensionService ||
+									mt == MaintenanceTypes.GeneralInspection;
+					}
+				})
+				.Select(mt => new SelectListItem
+				{
+					Text = mt.GetDisplayName(),
+					Value = mt.ToString()
+				}).ToList();
 
 			ViewBag.MaintenanceTypes = maintenanceTypes;
 

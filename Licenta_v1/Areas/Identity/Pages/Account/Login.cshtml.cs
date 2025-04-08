@@ -119,9 +119,11 @@ namespace Licenta_v1.Areas.Identity.Pages.Account
 				user = await _userManager.FindByNameAsync(Input.Login);
 			}
 
-			if (user == null)
+			if (user == null || user.IsDeleted)
 			{
-				ModelState.AddModelError(string.Empty, "Invalid login attempt.");
+				ModelState.AddModelError(string.Empty, user?.IsDeleted == true
+					? "Your account has been deleted and cannot be used to log in."
+					: "Invalid login attempt.");
 				return Page();
 			}
 

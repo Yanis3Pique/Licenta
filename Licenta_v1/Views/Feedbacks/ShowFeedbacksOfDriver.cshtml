@@ -46,7 +46,7 @@
 </div>
 
 <div class="container">
-    <div class="table-responsive">
+    <div class="d-none d-md-block table-responsive">
         <table class="table table-bordered table-striped">
             <thead class="table-dark">
                 <tr>
@@ -69,7 +69,20 @@
                     @foreach (var feedback in Model)
                     {
                         <tr>
-                            <td>@(feedback.Client?.UserName ?? "Unknown")</td>
+                            <td>
+                                @if (feedback.Client == null)
+                                {
+                                    @:Unknown
+                                }
+                                else if (feedback.Client.IsDeleted)
+                                {
+                                    <span class="text-muted">[Deleted User]</span>
+                                }
+                                else
+                                {
+                                    @feedback.Client.UserName
+                                }
+                            </td>
                             <td>@feedback.OrderId</td>
                             <td>
                                 <div class="stars-container d-flex">
@@ -107,8 +120,20 @@
                 <div class="card-body">
                     <h5 class="card-title">Order #@feedback.OrderId</h5>
                     <p class="card-text">
-                        <strong>Client:</strong> @(feedback.Client?.UserName ?? "Unknown")<br />
-                        <strong>Driver:</strong> @(feedback.Driver?.UserName ?? "Unknown")<br />
+                        <strong>Client:</strong>
+                        @if (feedback.Client == null)
+                        {
+                            <span>Unknown</span>
+                        }
+                        else if (feedback.Client.IsDeleted)
+                        {
+                            <span class="text-muted">[Deleted User]</span>
+                        }
+                        else
+                        {
+                            @feedback.Client.UserName
+                        }
+                        <br />
                         <strong>Rating:</strong>
                         @for (int i = 0; i < feedback.Rating; i++)
                         {

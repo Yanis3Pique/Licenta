@@ -1,5 +1,7 @@
 ﻿using Licenta_v1.Data;
 using Licenta_v1.Models;
+using Licenta_v1.Services;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
@@ -14,16 +16,19 @@ namespace Licenta_v1.Controllers
 		private readonly ApplicationDbContext db;
 		private readonly UserManager<ApplicationUser> _userManager;
 		private readonly RoleManager<IdentityRole> _roleManager;
+		private readonly SignInManager<ApplicationUser> _signInManager;
 
 		public UsersController(
 			ApplicationDbContext context,
 			UserManager<ApplicationUser> userManager,
-			RoleManager<IdentityRole> roleManager
+			RoleManager<IdentityRole> roleManager,
+			SignInManager<ApplicationUser> signInManager
 			)
 		{
 			db = context;
 			_userManager = userManager;
 			_roleManager = roleManager;
+			_signInManager = signInManager;
 		}
 
 		[NonAction]
@@ -53,12 +58,11 @@ namespace Licenta_v1.Controllers
 			int pageNumber,
 			int pageSize)
 		{
-			var users = db.Users.Include(u => u.Region).AsQueryable();
+			var users = db.Users.Include(u => u.Region).Where(u => !u.IsDeleted).AsQueryable();
 
 			// Filtrez userii dupa rol
 			if (!string.IsNullOrEmpty(roleFilter))
 			{
-				// Aflu ce useri au rolul respectiv si le iau id-urile
 				var usersInRole = await (from ur in db.UserRoles
 										 join r in db.Roles on ur.RoleId equals r.Id
 										 where r.Name == roleFilter
@@ -66,7 +70,6 @@ namespace Licenta_v1.Controllers
 				users = users.Where(u => usersInRole.Contains(u.Id));
 			}
 
-			// Caut userii dupa nume, prenume sau username
 			if (!string.IsNullOrEmpty(searchString))
 			{
 				users = users.Where(u => u.FirstName.Contains(searchString)
@@ -74,13 +77,11 @@ namespace Licenta_v1.Controllers
 									  || u.UserName.Contains(searchString));
 			}
 
-			// Filtrez userii dupa judet
 			if (regionId.HasValue)
 			{
 				users = users.Where(u => u.RegionId == regionId.Value);
 			}
 
-			// Sortarea propriu-zisa dupa nume sau data angajarii
 			users = sortOrder switch
 			{
 				"name_desc" => users.OrderByDescending(u => u.LastName).ThenByDescending(u => u.FirstName),
@@ -89,6 +90,7 @@ namespace Licenta_v1.Controllers
 				"date" => users.OrderBy(u => u.DateHired),
 				_ => users.OrderBy(u => u.UserName),
 			};
+
 			var count = await users.CountAsync();
 			var pagedUsers = await users.Skip((pageNumber - 1) * pageSize).Take(pageSize).ToListAsync();
 
@@ -369,6 +371,7 @@ namespace Licenta_v1.Controllers
 		{
 			if (id == null) return NotFound();
 
+
 			var loggedInUserId = _userManager.GetUserId(User); // Iau id-ul userului logat
 			var loggedInUserRoles = await _userManager.GetRolesAsync(await _userManager.FindByIdAsync(loggedInUserId)); // Iau rolul userului logat
 
@@ -381,6 +384,11 @@ namespace Licenta_v1.Controllers
 									 .FirstOrDefaultAsync(u => u.Id == id);
 
 			if (userToView == null) return NotFound();
+			if (userToView.IsDeleted)
+			{
+				TempData["Error"] = "This user has been deleted.";
+				return RedirectToAction("Index");
+			}
 
 			var rolesOfUserToView = await _userManager.GetRolesAsync(userToView); // Iau rolul userului caruia tre sa-i afisez detaliile
 			var roleOfUserToView = rolesOfUserToView.FirstOrDefault();
@@ -463,6 +471,11 @@ namespace Licenta_v1.Controllers
 							   .Include(u => u.FeedbacksReceived)
 							   .FirstOrDefaultAsync(u => u.Id == userId);
 			if (user == null) return NotFound();
+			if (user.IsDeleted)
+			{
+				TempData["Error"] = "This user has been deleted.";
+				return RedirectToAction("Index");
+			}
 
 			var roles = await _userManager.GetRolesAsync(user);
 			ViewBag.UserRole = roles.FirstOrDefault();
@@ -832,83 +845,165 @@ namespace Licenta_v1.Controllers
 			if (id == null) return NotFound();
 
 			var user = await db.ApplicationUsers
-					   .Include(u => u.Orders)
-			  .Include(u => u.Deliveries)
-			  .Include(u => u.FeedbacksGiven)
-			  .Include(u => u.FeedbacksReceived)
-			  .FirstOrDefaultAsync(u => u.Id == id);
+				.Include(u => u.Orders)
+				.Include(u => u.Deliveries)
+				.Include(u => u.FeedbacksGiven)
+				.Include(u => u.FeedbacksReceived)
+				.FirstOrDefaultAsync(u => u.Id == id);
 
 			if (user == null) return NotFound();
 
-			// Luam rolul userului separat ca sa ne fie usor la scris
 			var role = await _userManager.GetRolesAsync(user);
 			if (role == null) return NotFound();
 
-			// Daca e sofer sau dispecer, pot fi stersi doar daca DismissalNoticeDate != NULL si e mai vechi de 30 de zile
-			if (role.Contains("Sofer") || role.Contains("Dispecer"))
-			{
-				if (user.DismissalNoticeDate == null)
-				{
-					TempData["Error"] = "This user cannot be deleted because he doesn't have a dismissal notice date!";
-					return RedirectToAction("Index");
-				}
-				var daysSinceDismissalNotice = (DateTime.Now - user.DismissalNoticeDate.Value).Days;
-				if (daysSinceDismissalNotice < 30)
-				{
-					TempData["Error"] = "This user cannot be deleted because the dismissal notice date is less than 30 days old!";
-					return RedirectToAction("Index");
-				}
-			}
-			// Nu pot sterge un admin sau un client
-			else if(role.Contains("Admin"))
+			if (role.Contains("Admin"))
 			{
 				TempData["Error"] = "You cannot delete an admin!";
 				return RedirectToAction("Index");
 			}
-			else if(role.Contains("Client"))
-			{
-				TempData["Error"] = "You cannot delete a client!";
-				return RedirectToAction("Index");
-			}
 
-			// Sterg poza userului
-			if (!string.IsNullOrEmpty(user.PhotoPath))
+			if (role.Contains("Sofer") || role.Contains("Dispecer"))
 			{
-				var oldFilePath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", user.PhotoPath);
-				if (System.IO.File.Exists(oldFilePath))
+				if (user.DismissalNoticeDate == null)
 				{
-					System.IO.File.Delete(oldFilePath);
+					TempData["Error"] = "This user needs a dismissal notice before deletion.";
+					return RedirectToAction("Index");
+				}
+
+				var daysSinceNotice = (DateTime.Now - user.DismissalNoticeDate.Value).Days;
+				if (daysSinceNotice < 30)
+				{
+					TempData["Error"] = "You can only delete this user after 30 days of the dismissal notice.";
+					return RedirectToAction("Index");
 				}
 			}
 
-			// Handle-uiesc feeback-urile pe care le-a dat userul
-			if (user.FeedbacksGiven?.Count > 0)
+			if (role.Contains("Client"))
 			{
-				db.Feedbacks.RemoveRange(user.FeedbacksGiven);
+				bool hasActiveOrders = user.Orders.Any(o =>
+					o.Status == OrderStatus.Placed ||
+					o.Status == OrderStatus.InProgress ||
+					o.Status == OrderStatus.FailedDelivery);
+
+				if (hasActiveOrders)
+				{
+					TempData["Error"] = "Client cannot be deleted because they have active or failed orders.";
+					return RedirectToAction("IndexClients");
+				}
 			}
 
-			// Handle-uiesc feeback-urile pe care le-a primit userul in cazul in care e sofer
-			if (user.FeedbacksReceived?.Count > 0)
+			// Soft Delete + Anonimizare date conform GDPR
+			user.IsDeleted = true;
+			user.IsAvailable = false;
+			user.DeletedAt = DateTime.UtcNow;
+			user.FirstName = "[Deleted]";
+			user.LastName = "[User]";
+			user.UserName = $"deleted_user_{Guid.NewGuid()}";
+			user.Email = $"deleted_{Guid.NewGuid()}@example.com";
+			user.PhoneNumber = string.Empty;
+			user.HomeAddress = "Anonymized";
+			user.Latitude = null;
+			user.Longitude = null;
+			user.NormalizedEmail = user.Email;
+			user.NormalizedUserName = user.UserName;
+
+			if (!string.IsNullOrEmpty(user.PhotoPath))
 			{
-				db.Feedbacks.RemoveRange(user.FeedbacksReceived);
+				var path = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", user.PhotoPath);
+				if (System.IO.File.Exists(path)) System.IO.File.Delete(path);
+				user.PhotoPath = null;
 			}
 
-			// Handle-uiesc comenzile userului in cazul in care e client
-			if (user.Orders?.Count > 0)
+			await db.SaveChangesAsync();
+			TempData["Success"] = "User was successfully soft-deleted and anonymized.";
+			return RedirectToAction("Index");
+		}
+
+		[Authorize]
+		[HttpPost]
+		public async Task<IActionResult> DeleteAccount()
+		{
+			var userId = _userManager.GetUserId(User);
+			var user = await db.ApplicationUsers
+				.Include(u => u.Orders)
+				.Include(u => u.Deliveries)
+				.FirstOrDefaultAsync(u => u.Id == userId);
+
+			if (user == null) return NotFound();
+
+			var roles = await _userManager.GetRolesAsync(user);
+			var role = roles.FirstOrDefault();
+
+			if (role == "Admin")
 			{
-				db.Orders.RemoveRange(user.Orders);
+				// Adminii se pot sterge oricand
+			}
+			else if (role == "Dispecer")
+			{
+				bool hasOngoingDeliveries = db.Deliveries
+					.Any(d => d.Vehicle.RegionId == user.RegionId && d.Status != "Completed");
+
+				if (hasOngoingDeliveries)
+				{
+					TempData["Error"] = "You cannot delete your account while your region has active deliveries.";
+					return RedirectToAction("Profile");
+				}
+			}
+			else if (role == "Sofer")
+			{
+				bool hasActiveDeliveries = user.Deliveries.Any(d =>
+					d.Status == "Planned" ||
+					d.Status == "In Progress");
+
+				if (hasActiveDeliveries)
+				{
+					TempData["Error"] = "You cannot delete your account while you have deliveries to complete.";
+					return RedirectToAction("Profile");
+				}
+			}
+			else if (role == "Client")
+			{
+				bool hasPendingOrders = user.Orders.Any(o =>
+					o.Status == OrderStatus.Placed ||
+					o.Status == OrderStatus.InProgress ||
+					o.Status == OrderStatus.FailedDelivery);
+
+				if (hasPendingOrders)
+				{
+					TempData["Error"] = "You cannot delete your account while you have orders that need delivery.";
+					return RedirectToAction("Profile");
+				}
 			}
 
-			// Handle-uiesc livrarile userului in cazul in care e sofer
-			if (user.Deliveries?.Count > 0)
+			// Soft Delete + Anonimizare date conform GDPR
+			user.IsDeleted = true;
+			user.IsAvailable = false;
+			user.DeletedAt = DateTime.UtcNow;
+			user.FirstName = "[Deleted]";
+			user.LastName = "[User]";
+			user.UserName = $"deleted_user_{Guid.NewGuid()}";
+			user.Email = $"deleted_{Guid.NewGuid()}@example.com";
+			user.PhoneNumber = string.Empty;
+			user.HomeAddress = "Anonymized";
+			user.Latitude = null;
+			user.Longitude = null;
+			user.NormalizedEmail = user.Email;
+			user.NormalizedUserName = user.UserName;
+
+			if (!string.IsNullOrEmpty(user.PhotoPath))
 			{
-				db.Deliveries.RemoveRange(user.Deliveries);
+				var path = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", user.PhotoPath);
+				if (System.IO.File.Exists(path)) System.IO.File.Delete(path);
+				user.PhotoPath = null;
 			}
 
-			db.ApplicationUsers.Remove(user); // Intr-un final, sterg userul
 			await db.SaveChangesAsync();
 
-			return RedirectToAction("Index");
+			// Dam Sign out la User
+			await HttpContext.SignOutAsync();
+
+			TempData["Success"] = "Your account was successfully deleted.";
+			return RedirectToAction("Index", "Home");
 		}
 
 		[NonAction]
@@ -950,7 +1045,7 @@ namespace Licenta_v1.Controllers
 		[NonAction]
 		private void PopulateEditViewData(ApplicationUser user, string selectedRole, int? selectedRegionId)
 		{
-			// Repopulate roles
+			// Repopulez rolurile
 			ViewBag.AllRoles = db.Roles.Select(r => new SelectListItem
 			{
 				Value = r.Id,
@@ -958,7 +1053,7 @@ namespace Licenta_v1.Controllers
 				Selected = r.Id == selectedRole
 			}).ToList();
 
-			// Repopulate regions
+			// Repopulez regiunile
 			ViewBag.Regions = db.Regions.Select(r => new SelectListItem
 			{
 				Value = r.Id.ToString(),
@@ -966,7 +1061,7 @@ namespace Licenta_v1.Controllers
 				Selected = r.Id == selectedRegionId
 			}).ToList();
 
-			// Repopulate coordinates
+			// Repopulez coordonatele
 			ViewBag.Latitude = user.Latitude;
 			ViewBag.Longitude = user.Longitude;
 		}

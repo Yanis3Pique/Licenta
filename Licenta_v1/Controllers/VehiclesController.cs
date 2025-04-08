@@ -483,43 +483,6 @@ namespace Licenta_v1.Controllers
 			return View(updatedVehicle);
 		}
 
-		// Get - Vehicles/Delete/id	
-		[Authorize(Roles = "Admin")]
-		[HttpPost]
-		public async Task<IActionResult> Delete(int id)
-		{
-			var vehicle = await db.Vehicles.FindAsync(id);
-
-			if (vehicle == null)
-			{
-				TempData["Error"] = "Vehicle not found!";
-				return RedirectToAction("Index");
-			}
-
-			// Daca masina nu are status-ul "Retired", nu o pot sterge
-			if (vehicle.Status != VehicleStatus.Retired)
-			{
-				TempData["Error"] = "Only retired vehicles can be deleted!";
-				return RedirectToAction("Index");
-			}
-
-			// Sterg poza din wwwroot/Images
-			if (!string.IsNullOrEmpty(vehicle.ImagePath))
-			{
-				var filePath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", vehicle.ImagePath);
-				if (System.IO.File.Exists(filePath))
-				{
-					System.IO.File.Delete(filePath);
-				}
-			}
-
-			db.Vehicles.Remove(vehicle);
-			await db.SaveChangesAsync();
-
-			TempData["Success"] = "Vehicle deleted successfully!";
-			return RedirectToAction("Index");
-		}
-
 		// Get - Vehicles/ScheduleMaintenance/id
 		[Authorize(Roles = "Admin,Dispecer")]
 		public async Task<IActionResult> ScheduleMaintenance(int id)

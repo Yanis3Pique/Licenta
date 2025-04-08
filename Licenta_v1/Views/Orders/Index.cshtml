@@ -115,7 +115,22 @@
                     <div class="card-body">
                         <h5 class="card-title">Order ID: @order.Id</h5>
                         <p class="card-text">
-                            <strong>Client:</strong> @order.Client?.UserName<br />
+                            <strong>Client:</strong>
+                            @if (order.Client == null)
+                            {
+                                <span>N/A</span>
+                            }
+                            else if (order.Client.IsDeleted)
+                            {
+                                <span class="text-muted">
+                                    [Deleted User]
+                                </span>
+                            }
+                            else
+                            {
+                                @order.Client.UserName
+                            }
+                            <br />
                             <strong>Address:</strong> @order.Address<br />
                             <strong>Priority:</strong>
                             <span style="color: @(order.Priority.ToString() == "High" ? "red" : "grey")">

@@ -35,15 +35,7 @@
             <!-- Filter dupa Region -->
             <div class="col-12 col-md-2 d-flex flex-column">
                 <label for="regionId" class="form-label">Region</label>
-                <select id="regionId" name="regionId" class="form-select">
-                    <option value="">All Regions</option>
-                    @foreach (var region in (SelectList)ViewBag.Regions)
-                    {
-                        <option value="@region.Value" selected="@(ViewBag.RegionId?.ToString() == region.Value ? "selected" : "")">
-                            @region.Text
-                        </option>
-                    }
-                </select>
+                @Html.DropDownList("regionId", (SelectList)ViewBag.Regions, "All Regions", new { @class = "form-select", @value = ViewBag.RegionId })
             </div>
 
             <!-- Filter dupa Status -->
@@ -119,7 +111,18 @@ else
                 {
                     <tr>
                         <td id="light-blue-elements-background-id">
-                            <a asp-controller="Users" asp-action="Show" asp-route-id="@item.Driver?.Id">@item.Driver?.UserName</a>
+                            @if (item.Driver == null)
+                            {
+                                <span>Not Assigned</span>
+                            }
+                            else if (item.Driver.IsDeleted)
+                            {
+                                <span class="text-muted">[Deleted Driver]</span>
+                            }
+                            else
+                            {
+                                <a asp-controller="Users" asp-action="Show" asp-route-id="@item.Driver.Id">@item.Driver.UserName</a>
+                            }
                         </td>
                         <td id="light-blue-elements-background-id">@item.Vehicle?.Brand @item.Vehicle?.Model (@item.Vehicle?.RegistrationNumber)</td>
                         <td id="light-blue-elements-background-id">@(item.Orders.Any() ? item.Orders.First().Region?.County : "N/A")</td>
@@ -145,7 +148,24 @@ else
                 <h5 class="card-title">Delivery - @item.Id</h5>
                 <p class="card-text">
                     <strong>Driver:</strong>
-                    <a asp-controller="Users" asp-action="Show" asp-route-id="@item.Driver?.Id">@item.Driver?.UserName</a> <br />
+                    @if (item.Driver == null)
+                    {
+                        <span>Not Assigned</span>
+
+                        <br />
+                    }
+                    else if (item.Driver.IsDeleted)
+                    {
+                        <span class="text-muted">[Deleted Driver]</span>
+
+                        <br />
+                    }
+                    else
+                    {
+                        <a asp-controller="Users" asp-action="Show" asp-route-id="@item.Driver.Id">@item.Driver.UserName</a>
+
+                        <br />
+                    }
                     <strong>Vehicle:</strong> @item.Vehicle?.Brand @item.Vehicle?.Model (@item.Vehicle?.RegistrationNumber) <br />
                     <strong>Region:</strong> @(item.Orders.Any() ? item.Orders.First().Region?.County : "N/A") <br />
                     <strong>Planned Start:</strong> @item.PlannedStartDate.ToString("d") <br />
@@ -157,6 +177,65 @@ else
         </div>
     }
 </div>
+
+<!-- Paginare -->
+@{
+    string query = $"&searchString={ViewBag.SearchString ?? ""}" +
+                   $"&plannedStartDate={ViewBag.PlannedStartDate ?? ""}" +
+                   $"&actualEndDate={ViewBag.ActualEndDate ?? ""}" +
+                   $"&regionId={ViewBag.RegionId ?? ""}" +
+                   $"&status={ViewBag.Status ?? ""}";
+    int totalPages = ViewBag.TotalPages ?? 1;
+    int pageNumber = ViewBag.PageNumber ?? 1;
+    int range = 1;
+    int startPage = Math.Max(1, pageNumber - range);
+    int endPage = Math.Min(totalPages, pageNumber + range);
+}
+
+<nav aria-label="Page navigation">
+    <ul class="pagination justify-content-center">
+        <!-- Previous Page -->
+        <li class="page-item @(pageNumber == 1 ? "disabled" : "")">
+            <a class="page-link" href="?pageNumber=@(pageNumber - 1)@query" tabindex="-1">Previous</a>
+        </li>
+
+        <!-- Mereu afisez prima pagina -->
+        @if (startPage > 1)
+        {
+            <li class="page-item @(pageNumber == 1 ? "active" : "")">
+                <a class="page-link" href="?pageNumber=1@query">1</a>
+            </li>
+            @if (startPage > 2)
+            {
+                <li class="page-item disabled"><span class="page-link">...</span></li>
+            }
+        }
+
+        @for (int i = startPage; i <= endPage; i++)
+        {
+            <li class="page-item @(i == pageNumber ? "active" : "")">
+                <a class="page-link" href="?pageNumber=@i@query">@i</a>
+            </li>
+        }
+
+        <!-- Mereu afisez ultima pagina -->
+        @if (endPage < totalPages)
+        {
+            @if (endPage < totalPages - 1)
+            {
+                <li class="page-item disabled"><span class="page-link">...</span></li>
+            }
+            <li class="page-item @(pageNumber == totalPages ? "active" : "")">
+                <a class="page-link" href="?pageNumber=@totalPages@query">@totalPages</a>
+            </li>
+        }
+
+        <!-- Next Page -->
+        <li class="page-item @(pageNumber == totalPages ? "disabled" : "")">
+            <a class="page-link" href="?pageNumber=@(pageNumber + 1)@query">Next</a>
+        </li>
+    </ul>
+</nav>
 
 @section Scripts {
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>

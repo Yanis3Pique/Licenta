@@ -36,6 +36,7 @@ namespace Licenta_v1.Controllers
 				var allFeedbacks = await db.Feedbacks
 					.Include(f => f.Driver)
 					.Include(f => f.Client)
+					.Where(f => f.Client != null && !f.Client.IsDeleted)
 					.ToListAsync();
 
 				// Grupez feedback-urile dupa client si iau cel mai bun feedback per client
@@ -50,6 +51,7 @@ namespace Licenta_v1.Controllers
 				return groupedFeedbacks.OrderBy(x => Guid.NewGuid()).Take(2).ToList();
 			}) ?? new List<Feedback>();
 		}
+
 
 		public IActionResult Privacy()
         {

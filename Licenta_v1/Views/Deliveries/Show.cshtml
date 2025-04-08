@@ -51,7 +51,20 @@
                     </tr>
                     <tr>
                         <th id="light-blue-elements-background-id">Driver</th>
-                        <td id="light-blue-elements-background-id">@(Model?.Driver?.UserName ?? "Not Assigned")</td>
+                        <td id="light-blue-elements-background-id">
+                            @if (Model.Driver == null)
+                            {
+                                <span>Not Assigned</span>
+                            }
+                            else if (Model.Driver.IsDeleted)
+                            {
+                                <span class="text-muted">[Deleted Driver]</span>
+                            }
+                            else
+                            {
+                                @Model.Driver.UserName
+                            }
+                        </td>
                     </tr>
                     <tr>
                         <th id="light-blue-elements-background-id">Vehicle</th>
@@ -209,8 +222,26 @@
                 <li class="list-group-item d-flex justify-content-between align-items-center order-item" id="light-blue-elements-background-id">
                     <span>
                         <strong>Order #@order.Id</strong> - @order.Address <br />
-                        <strong>Client:</strong> @order.Client?.FirstName @order.Client?.LastName <br />
-                        <strong>Phone:</strong> <a href="tel:@order.Client?.PhoneNumber">@order.Client?.PhoneNumber</a> <br />
+                        <strong>Client:</strong>
+                        @if (order.Client == null)
+                        {
+                            <span>N/A</span>
+
+                            <br />
+                        }
+                        else if (order.Client.IsDeleted)
+                        {
+                            <span class="text-muted">[Deleted User]</span>
+
+                            <br />
+                        }
+                        else
+                        {
+                            @order.Client.FirstName @order.Client.LastName <br />
+                            <strong>Phone:</strong> <a href="tel:@order.Client.PhoneNumber">@order.Client.PhoneNumber</a>
+
+                            <br />
+                        }
                         <strong>Weight:</strong> &asymp; @order.Weight kg<br />
                         <strong>Volume:</strong> &asymp; @order.Volume m<sup>3</sup>
                     </span>
@@ -293,8 +324,26 @@ else if (User.IsInRole("Admin") || User.IsInRole("Dispecer"))
                 <li class="list-group-item d-flex justify-content-between align-items-center order-item" id="light-blue-elements-background-id">
                     <span>
                         <strong>Order #@order.Id</strong> - @order.Address <br />
-                        <strong>Client:</strong> @order.Client?.FirstName @order.Client?.LastName <br />
-                        <strong>Phone:</strong> <a href="tel:@order.Client?.PhoneNumber">@order.Client?.PhoneNumber</a> <br />
+                        <strong>Client:</strong>
+                        @if (order.Client == null)
+                        {
+                            <span>N/A</span>
+
+                            <br />
+                        }
+                        else if (order.Client.IsDeleted)
+                        {
+                            <span class="text-muted">[Deleted User]</span>
+
+                            <br />
+                        }
+                        else
+                        {
+                            @order.Client.FirstName @order.Client.LastName <br />
+                            <strong>Phone:</strong> <a href="tel:@order.Client.PhoneNumber">@order.Client.PhoneNumber</a>
+
+                            <br />
+                        }
                         <strong>Weight:</strong> &asymp; @order.Weight kg<br />
                         <strong>Volume:</strong> &asymp; @order.Volume m<sup>3</sup>
                     </span>

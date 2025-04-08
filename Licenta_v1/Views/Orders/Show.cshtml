@@ -96,7 +96,22 @@
                     {
                         <tr>
                             <th id="light-blue-elements-background-id">Client</th>
-                            <td id="light-blue-elements-background-id">@(Model.Client?.UserName ?? "N/A")</td>
+                            <td id="light-blue-elements-background-id">
+                                @if (Model.Client == null)
+                                {
+                                    <span>N/A</span>
+                                }
+                                else if (Model.Client.IsDeleted)
+                                {
+                                    <span class="text-muted">
+                                        [Deleted User - Deleted on @(Model.Client.DeletedAt?.ToString("dd/MM/yyyy") ?? "Unknown date")]
+                                    </span>
+                                }
+                                else
+                                {
+                                    @Model.Client.UserName
+                                }
+                            </td>
                         </tr>
                     }
                 </tbody>

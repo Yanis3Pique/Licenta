@@ -1033,7 +1033,9 @@ namespace Licenta_v1.Services
 							join role in db.Roles on userRole.RoleId equals role.Id
 							where role.Name == "Sofer" &&
 								  user.RegionId == candidateVehicle.RegionId &&
-								  (user.IsAvailable ?? false)
+								  (user.IsAvailable ?? false) &&
+								  !user.IsDeleted &&
+								  (user.DismissalNoticeDate == null || user.DismissalNoticeDate > DateTime.Now.AddDays(7))
 							orderby user.AverageRating descending
 							select user.Id).FirstOrDefault();
 
@@ -1071,6 +1073,26 @@ namespace Licenta_v1.Services
 			db.Vehicles.Update(candidateVehicle);
 
 			await CalculateRouteMetrics(db, delivery, orderedOrders, candidateVehicle, depot);
+			await db.SaveChangesAsync();
+
+			// Salvez RouteHistory daca avem un sofer
+			var routeHistory = new RouteHistory
+			{
+				DeliveryId = delivery.Id,
+				DateLogged = DateTime.Now,
+				DistanceTraveled = delivery.DistanceEstimated ?? 0,
+				FuelConsumed = delivery.ConsumptionEstimated ?? 0,
+				Emissions = delivery.EmissionsEstimated ?? 0,
+				TimeTaken = (int)((delivery.TimeTakenForDelivery ?? 0) * 3600),
+				RouteData = delivery.RouteData,
+				VehicleId = delivery.Vehicle.Id,
+				VehicleDescription = $"{delivery.Vehicle.Brand} {delivery.Vehicle.Model} ({delivery.Vehicle.RegistrationNumber})",
+				OrderIdsJson = JsonConvert.SerializeObject(orderedOrders.Select(o => o.Id)),
+				DriverId = delivery.DriverId, // asta poate sa fie null aici
+				DriverName = driver?.UserName
+			};
+
+			db.RouteHistories.Add(routeHistory);
 			await db.SaveChangesAsync();
 		}
 

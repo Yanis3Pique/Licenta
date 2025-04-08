@@ -69,7 +69,20 @@
                     @foreach (var feedback in Model)
                     {
                         <tr>
-                            <td>@(feedback.Driver?.UserName ?? "Unknown")</td>
+                            <td>
+                                @if (feedback.Driver == null)
+                                {
+                                    @:Unknown
+                                }
+                                else if (feedback.Driver.IsDeleted)
+                                {
+                                    <span class="text-muted">[Deleted User]</span>
+                                }
+                                else
+                                {
+                                    @feedback.Driver.UserName
+                                }
+                            </td>
                             <td>@feedback.OrderId</td>
                             <td>
                                 <div class="stars-container d-flex">
@@ -107,8 +120,20 @@
                 <div class="card-body">
                     <h5 class="card-title">Order #@feedback.OrderId</h5>
                     <p class="card-text">
-                        <strong>Client:</strong> @(feedback.Client?.UserName ?? "Unknown")<br />
-                        <strong>Driver:</strong> @(feedback.Driver?.UserName ?? "Unknown")<br />
+                        <strong>Driver:</strong>
+                        @if (feedback.Driver == null)
+                        {
+                            <span>Unknown</span>
+                        }
+                        else if (feedback.Driver.IsDeleted)
+                        {
+                            <span class="text-muted">[Deleted User]</span>
+                        }
+                        else
+                        {
+                            @feedback.Driver.UserName
+                        }
+                        <br />
                         <strong>Rating:</strong>
                         @for (int i = 0; i < feedback.Rating; i++)
                         {

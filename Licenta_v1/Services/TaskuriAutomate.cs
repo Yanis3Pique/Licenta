@@ -46,6 +46,7 @@ public class TaskuriAutomate : BackgroundService
 				if ((currentTime - lastUserCheck).TotalDays >= 1)
 				{
 					await CheckAndDeleteUsers(db);
+					await AnonymizeOldRouteHistories(db);
 					lastUserCheck = currentTime; // Actualizez timpul la care s-a rulat comanda
 				}
 
@@ -343,5 +344,27 @@ public class TaskuriAutomate : BackgroundService
 		}
 
 		await dbContext.SaveChangesAsync();
+	}
+
+	private async Task AnonymizeOldRouteHistories(ApplicationDbContext dbContext)
+	{
+		var cutoffDate = DateTime.Now.AddMonths(-6);
+
+		// Selectez rutele logate cu mai mult de 6 luni in urma si care inca au date despre sofer
+		var oldHistories = await dbContext.RouteHistories
+			.Where(r => r.DateLogged < cutoffDate && r.DriverId != null)
+			.ToListAsync();
+
+		foreach (var history in oldHistories)
+		{
+			history.DriverId = null;
+			history.DriverName = null;
+			dbContext.RouteHistories.Update(history);
+		}
+
+		if (oldHistories.Any())
+		{
+			await dbContext.SaveChangesAsync();
+		}
 	}
 }

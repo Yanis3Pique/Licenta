@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Rendering;
 using Microsoft.EntityFrameworkCore;
+using Newtonsoft.Json;
 using SendGrid.Helpers.Mail;
 
 namespace Licenta_v1.Controllers
@@ -44,7 +45,11 @@ namespace Licenta_v1.Controllers
 			var availableDrivers = (from u in db.ApplicationUsers
 									join ur in db.UserRoles on u.Id equals ur.UserId
 									join r in db.Roles on ur.RoleId equals r.Id
-									where r.Name == "Sofer" && u.IsAvailable == true && u.RegionId == user.RegionId
+									where r.Name == "Sofer" &&
+										  u.IsAvailable == true &&
+										  u.RegionId == user.RegionId &&
+										  !u.IsDeleted &&
+										  (u.DismissalNoticeDate == null || u.DismissalNoticeDate > DateTime.Now.AddDays(7))
 									select u).ToList();
 
 			// Iau Vehiculele disponibile in regiunea Dispecerului
@@ -85,8 +90,11 @@ namespace Licenta_v1.Controllers
 
 			// Iau Soferul selectat de user
 			var driver = !string.IsNullOrEmpty(driverId)
-						 ? db.ApplicationUsers.FirstOrDefault(u => u.Id == driverId && u.IsAvailable == true)
-						 : null;
+			 ? db.ApplicationUsers.FirstOrDefault(u => u.Id == driverId &&
+													   u.IsAvailable == true &&
+													   !u.IsDeleted &&
+													   (u.DismissalNoticeDate == null || u.DismissalNoticeDate > DateTime.Now.AddDays(7)))
+			 : null;
 
 			// Verific daca comenzile selectate se incadreaza in capacitatea vehiculului
 			double usedWeight = orders.Sum(o => o.Weight ?? 0);
@@ -144,9 +152,28 @@ namespace Licenta_v1.Controllers
 
 			await db.SaveChangesAsync();
 
-			// Recalculez estimarile si DeliverySequence-ul
 			await opt.RecalculateDeliveryMetrics(db, delivery);
 			await db.SaveChangesAsync();
+
+			// Creez RouteHistory record
+			var routeHistory = new RouteHistory
+			{
+				DeliveryId = delivery.Id,
+				DateLogged = DateTime.Now,
+				DistanceTraveled = delivery.DistanceEstimated ?? 0,
+				FuelConsumed = delivery.ConsumptionEstimated ?? 0,
+				Emissions = delivery.EmissionsEstimated ?? 0,
+				TimeTaken = (int)((delivery.TimeTakenForDelivery ?? 0) * 3600),
+				RouteData = delivery.RouteData,
+				VehicleId = delivery.Vehicle.Id,
+				VehicleDescription = $"{delivery.Vehicle.Brand} {delivery.Vehicle.Model} ({delivery.Vehicle.RegistrationNumber})",
+				OrderIdsJson = JsonConvert.SerializeObject(delivery.Orders.Select(o => o.Id)),
+				DriverId = delivery.DriverId, // asta poate sa fie null aici
+				DriverName = driver?.UserName
+			};
+			db.RouteHistories.Add(routeHistory);
+			await db.SaveChangesAsync();
+
 
 			TempData["Success"] = "Delivery created successfully!";
 			return RedirectToAction("Show", new { id = delivery.Id });
@@ -158,16 +185,17 @@ namespace Licenta_v1.Controllers
 			DateTime? plannedStartDate,
 			DateTime? actualEndDate,
 			string regionId,
-			string status)
+			string status,
+			int pageNumber = 1)
 		{
-			// Obtinem utilizatorul curent
+			int pageSize = 10;
+
 			var user = await db.ApplicationUsers.FirstOrDefaultAsync(u => u.UserName == User.Identity.Name);
 			if (user == null)
 			{
-				return Unauthorized(); // Utilizatorul trebuie sa fie autentificat
+				return Unauthorized();
 			}
 
-			// Adminii vad toate livrarile; Dispecerii vad doar livrarile din regiunea lor
 			var deliveriesQuery = db.Deliveries
 				.Include(d => d.Vehicle)
 				.Include(d => d.Driver)
@@ -175,23 +203,31 @@ namespace Licenta_v1.Controllers
 				.ThenInclude(o => o.Region)
 				.AsQueryable();
 
+			// Dispecer - doar regiunea lui
 			if (User.IsInRole("Dispecer"))
 			{
 				deliveriesQuery = deliveriesQuery.Where(d => d.Vehicle.RegionId == user.RegionId);
 			}
+			// Admin - tot
 			else if (User.IsInRole("Admin") && int.TryParse(regionId, out int parsedRegionId))
 			{
 				deliveriesQuery = deliveriesQuery.Where(d => d.Vehicle.RegionId == parsedRegionId);
 			}
 
-			// Search (sofer, marca/model/nr inmatriculare masina)
+			// Functionalitatea de Search
 			if (!string.IsNullOrEmpty(searchString))
 			{
 				string lowerSearch = searchString.ToLower();
 				deliveriesQuery = deliveriesQuery.Where(d =>
-					(d.Driver != null && d.Driver.UserName.ToLower().Contains(lowerSearch)) ||
-					((d.Vehicle.Brand.ToLower() + " " + d.Vehicle.Model.ToLower()).Contains(lowerSearch)) ||
-					d.Vehicle.RegistrationNumber.ToLower().Contains(lowerSearch));
+					(d.Driver != null && d.Driver.UserName != null && d.Driver.UserName.ToLower().Contains(lowerSearch)) ||
+					(d.Vehicle != null &&
+					 (
+						((d.Vehicle.Brand ?? "") + " " + (d.Vehicle.Model ?? "")).ToLower().Contains(lowerSearch) ||
+						((d.Vehicle.Brand ?? "").ToLower().Contains(lowerSearch)) ||
+						((d.Vehicle.Model ?? "").ToLower().Contains(lowerSearch)) ||
+						(d.Vehicle.RegistrationNumber != null && d.Vehicle.RegistrationNumber.ToLower().Contains(lowerSearch))
+					 ))
+				);
 			}
 
 			// Filtrare dupa PlannedStartDate
@@ -206,22 +242,32 @@ namespace Licenta_v1.Controllers
 				deliveriesQuery = deliveriesQuery.Where(d => d.ActualEndDate.HasValue && d.ActualEndDate.Value.Date == actualEndDate.Value.Date);
 			}
 
-			// Filtrare dupa Delivery Status
+			// Filtrare dupa Status (if not "All")
 			if (!string.IsNullOrEmpty(status) && status != "All")
 			{
 				string lowerStatus = status.ToLower();
 				deliveriesQuery = deliveriesQuery.Where(d => d.Status.ToLower() == lowerStatus);
 			}
 
-			ViewBag.IsOptimizationRunning = await IsAnyOptimizationInProgress();
-			ViewBag.RegionId = regionId;
-			ViewBag.Regions = new SelectList(db.Regions, "Id", "County");
+			int totalDeliveries = await deliveriesQuery.CountAsync();
+
+			var deliveries = await deliveriesQuery
+				.OrderByDescending(d => d.PlannedStartDate)
+				.Skip((pageNumber - 1) * pageSize)
+				.Take(pageSize)
+				.ToListAsync();
+
+			ViewBag.PageNumber = pageNumber;
+			ViewBag.TotalPages = (int)Math.Ceiling(totalDeliveries / (double)pageSize);
+
 			ViewBag.SearchString = searchString;
 			ViewBag.PlannedStartDate = plannedStartDate?.ToString("yyyy-MM-dd");
 			ViewBag.ActualEndDate = actualEndDate?.ToString("yyyy-MM-dd");
+			ViewBag.RegionId = regionId;
 			ViewBag.Status = status;
+			ViewBag.Regions = new SelectList(db.Regions, "Id", "County");
 
-			var deliveries = await deliveriesQuery.OrderByDescending(d => d.PlannedStartDate).ToListAsync();
+			ViewBag.IsOptimizationRunning = await IsAnyOptimizationInProgress();
 
 			return View(deliveries);
 		}
@@ -471,6 +517,21 @@ namespace Licenta_v1.Controllers
 			await opt.RecalculateDeliveryMetrics(db, delivery);
 			db.Deliveries.Update(delivery);
 			await db.SaveChangesAsync();
+
+			var routeHistory = db.RouteHistories.FirstOrDefault(r => r.DeliveryId == delivery.Id);
+			if (routeHistory != null)
+			{
+				routeHistory.DateLogged = DateTime.Now;
+				routeHistory.DistanceTraveled = delivery.DistanceEstimated ?? 0;
+				routeHistory.FuelConsumed = delivery.ConsumptionEstimated ?? 0;
+				routeHistory.Emissions = delivery.EmissionsEstimated ?? 0;
+				routeHistory.TimeTaken = (int)((delivery.TimeTakenForDelivery ?? 0) * 3600);
+				routeHistory.RouteData = delivery.RouteData;
+				routeHistory.OrderIdsJson = JsonConvert.SerializeObject(delivery.Orders.Select(o => o.Id));
+
+				db.RouteHistories.Update(routeHistory);
+				await db.SaveChangesAsync();
+			}
 
 			TempData["Success"] = "Delivery updated successfully!";
 			return RedirectToAction("Show", new { id });
@@ -812,16 +873,62 @@ namespace Licenta_v1.Controllers
 				return RedirectToAction("Show", new { id });
 			}
 
+			// Creez RoutrHistry record
+			var existingHistory = db.RouteHistories.FirstOrDefault(r => r.DeliveryId == delivery.Id);
+			if (existingHistory != null)
+			{
+				existingHistory.DateLogged = DateTime.Now;
+				existingHistory.DistanceTraveled = delivery.DistanceEstimated ?? 0;
+				existingHistory.FuelConsumed = delivery.ConsumptionEstimated ?? 0;
+				existingHistory.Emissions = delivery.EmissionsEstimated ?? 0;
+				existingHistory.TimeTaken = (int)((delivery.TimeTakenForDelivery ?? 0) * 3600); // secunde
+				existingHistory.RouteData = delivery.RouteData;
+				existingHistory.VehicleId = delivery.Vehicle.Id;
+				existingHistory.VehicleDescription = $"{delivery.Vehicle.Brand} {delivery.Vehicle.Model} ({delivery.Vehicle.RegistrationNumber})";
+				existingHistory.OrderIdsJson = JsonConvert.SerializeObject(delivery.Orders.Select(o => o.Id));
+				existingHistory.DriverId = user.Id;
+				existingHistory.DriverName = user.UserName;
+
+				db.RouteHistories.Update(existingHistory);
+			}
+			else
+			{
+				var routeHistory = new RouteHistory
+				{
+					DeliveryId = delivery.Id,
+					DateLogged = DateTime.Now,
+					DistanceTraveled = delivery.DistanceEstimated ?? 0,
+					FuelConsumed = delivery.ConsumptionEstimated ?? 0,
+					Emissions = delivery.EmissionsEstimated ?? 0,
+					TimeTaken = (int)((delivery.TimeTakenForDelivery ?? 0) * 3600),
+					RouteData = delivery.RouteData,
+					VehicleId = delivery.Vehicle.Id,
+					VehicleDescription = $"{delivery.Vehicle.Brand} {delivery.Vehicle.Model} ({delivery.Vehicle.RegistrationNumber})",
+					OrderIdsJson = JsonConvert.SerializeObject(delivery.Orders.Select(o => o.Id)),
+					DriverId = user.Id,
+					DriverName = user.UserName
+				};
+
+				db.RouteHistories.Add(routeHistory);
+			}
+
 			db.SaveChanges();
 			TempData["Success"] = "Delivery completed successfully!";
 			return RedirectToAction("Show", new { id });
 		}
 
+		[HttpPost]
 		[Authorize(Roles = "Sofer")]
 		public IActionResult ClaimDelivery(int id, double? lat, double? lon)
 		{
 			var user = db.ApplicationUsers.FirstOrDefault(u => u.UserName == User.Identity.Name);
 			if (user == null) return Unauthorized();
+
+			if (user.IsDeleted || (user.DismissalNoticeDate != null && user.DismissalNoticeDate <= DateTime.Now.AddDays(7)))
+			{
+				TempData["Error"] = "You are not eligible to claim deliveries at this time.";
+				return RedirectToAction("ShowDeliveriesOfDriver", new { id = user.Id });
+			}
 
 			System.Diagnostics.Debug.WriteLine($"Received ClaimDelivery Request: ID={id}, Lat={lat}, Lon={lon}");
 
@@ -882,6 +989,14 @@ namespace Licenta_v1.Controllers
 			delivery.DriverId = user.Id;
 			delivery.Status = "Planned";
 			user.IsAvailable = false;
+
+			var routeHistory = db.RouteHistories.FirstOrDefault(r => r.DeliveryId == delivery.Id);
+			if (routeHistory != null)
+			{
+				routeHistory.DriverId = user.Id;
+				routeHistory.DriverName = user.UserName;
+				db.RouteHistories.Update(routeHistory);
+			}
 
 			db.SaveChanges();
 			TempData["Success"] = "Delivery successfully claimed!";

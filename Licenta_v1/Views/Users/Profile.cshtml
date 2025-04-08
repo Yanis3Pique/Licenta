@@ -17,19 +17,29 @@
     <h2 class="text-center">@ViewBag.Title</h2>
     <br />
 
+    @if (Model.IsDeleted)
+    {
+        <div class="alert alert-warning text-center">
+            Your account has been deleted and anonymized. Profile editing and changes are no longer possible.
+        </div>
+    }
+
     <div class="row align-items-stretch">
         <!-- Poza :) -->
         <div class="col-lg-4 col-md-6 text-center mb-3 d-flex flex-column align-items-center">
-            <img src="@(Url.Content("~/" + (Model.PhotoPath ?? "Images/Default.jpg")))"
+            <img src="@(Url.Content("~/" + (Model.IsDeleted || string.IsNullOrEmpty(Model.PhotoPath) ? "Images/Default.jpg" : Model.PhotoPath)))"
                  class="img-fluid rounded mb-3"
                  alt="User Photo"
                  style="max-width: 100%; height: auto;">
 
-            <!-- Formular ca sa adaug poza daca vreau -->
-            <form asp-action="UploadProfilePicture" method="post" enctype="multipart/form-data">
-                <input type="file" name="profilePicture" class="form-control mb-2" />
-                <button type="submit" class="btn btn-primary">Upload Picture</button>
-            </form>
+            @if (!Model.IsDeleted)
+            {
+                <!-- Formular poza -->
+                <form asp-action="UploadProfilePicture" method="post" enctype="multipart/form-data">
+                    <input type="file" name="profilePicture" class="form-control mb-2" />
+                    <button type="submit" class="btn btn-primary">Upload Picture</button>
+                </form>
+            }
         </div>
 
         <!-- Tabel cu date pt userrr -->
@@ -37,60 +47,62 @@
             <table class="table table-bordered table-striped align-self-stretch w-100">
                 <tbody>
                     <tr>
-                        <th id="light-blue-elements-background-id">User Name</th>
-                        <td id="light-blue-elements-background-id">@Html.DisplayFor(model => model.UserName)</td>
+                        <th>User Name</th>
+                        <td>@(Model.IsDeleted ? "[Deleted]" : Model.UserName)</td>
                     </tr>
                     <tr>
-                        <th id="light-blue-elements-background-id">First Name</th>
-                        <td id="light-blue-elements-background-id">@Html.DisplayFor(model => model.FirstName)</td>
+                        <th>First Name</th>
+                        <td>@(Model.IsDeleted ? "[Deleted]" : Model.FirstName)</td>
                     </tr>
                     <tr>
-                        <th id="light-blue-elements-background-id">Last Name</th>
-                        <td id="light-blue-elements-background-id">@Html.DisplayFor(model => model.LastName)</td>
+                        <th>Last Name</th>
+                        <td>@(Model.IsDeleted ? "[User]" : Model.LastName)</td>
                     </tr>
                     <tr>
-                        <th id="light-blue-elements-background-id">Home Address</th>
-                        <td id="light-blue-elements-background-id">@Html.DisplayFor(model => model.HomeAddress)</td>
+                        <th>Home Address</th>
+                        <td>@(Model.IsDeleted ? "[Anonymized]" : Model.HomeAddress)</td>
                     </tr>
                     <tr>
-                        <th id="light-blue-elements-background-id">Email</th>
-                        <td id="light-blue-elements-background-id">@Html.DisplayFor(model => model.Email)</td>
+                        <th>Email</th>
+                        <td>@(Model.IsDeleted ? "[Anonymized]" : Model.Email)</td>
                     </tr>
                     <tr>
-                        <th id="light-blue-elements-background-id">Phone Number</th>
-                        <td id="light-blue-elements-background-id">@Html.DisplayFor(model => model.PhoneNumber)</td>
+                        <th>Phone Number</th>
+                        <td>
+                            @(Model.IsDeleted || string.IsNullOrEmpty(Model.PhoneNumber)
+                                ? "[Anonymized]"
+                                : Model.PhoneNumber)
+                        </td>
                     </tr>
                     <tr>
-                        <th id="light-blue-elements-background-id">Region</th>
-                        <td id="light-blue-elements-background-id">@(Model.Region?.County ?? "N/A")</td>
+                        <th>Region</th>
+                        <td>@(Model.Region?.County ?? "N/A")</td>
                     </tr>
                     <tr>
-                        <th id="light-blue-elements-background-id">Date Joined</th>
-                        <td id="light-blue-elements-background-id">@(Model.DateHired.ToString("dd/MM/yyyy") ?? "N/A")</td>
+                        <th>Date Joined</th>
+                        <td>@(Model.DateHired.ToString("dd/MM/yyyy") ?? "N/A")</td>
                     </tr>
                     <tr>
-                        <th id="light-blue-elements-background-id">Role</th>
-                        <td id="light-blue-elements-background-id">@ViewBag.UserRole</td>
+                        <th>Role</th>
+                        <td>@ViewBag.UserRole</td>
                     </tr>
                     @if (ViewBag.UserRole == "Sofer")
                     {
                         <tr>
-                            <th id="light-blue-elements-background-id">Average Rating</th>
-                            <td id="light-blue-elements-background-id">
+                            <th>Average Rating</th>
+                            <td>
                                 <div class="rating">
                                     @for (int i = 0; i < (int)ViewBag.FullStars; i++)
                                     {
-                                        <i class="bi bi-star-fill text-warning"></i> <!-- Stea full -->
+                                        <i class="bi bi-star-fill text-warning"></i>
                                     }
-
                                     @if ((bool)ViewBag.HalfStar)
                                     {
-                                        <i class="bi bi-star-half text-warning"></i> <!-- Jumate de stea -->
+                                        <i class="bi bi-star-half text-warning"></i>
                                     }
-
                                     @for (int i = 0; i < (int)ViewBag.EmptyStars; i++)
                                     {
-                                        <i class="bi bi-star text-muted"></i> <!-- Stea goala -->
+                                        <i class="bi bi-star text-muted"></i>
                                     }
                                 </div>
                             </td>
@@ -99,8 +111,8 @@
                     @if (ViewBag.UserRole == "Dispecer" || ViewBag.UserRole == "Sofer")
                     {
                         <tr>
-                            <th id="light-blue-elements-background-id">Notice of Termination</th>
-                            <td id="light-blue-elements-background-id">@(Model.DismissalNoticeDate.HasValue ? Model.DismissalNoticeDate.Value.ToString("dd/MM/yyyy") : "N/A")</td>
+                            <th>Notice of Termination</th>
+                            <td>@(Model.DismissalNoticeDate?.ToString("dd/MM/yyyy") ?? "N/A")</td>
                         </tr>
                     }
                 </tbody>
@@ -108,22 +120,30 @@
         </div>
     </div>
 
-    <!-- Butoanele-s aci -->
+    <!-- Butoane -->
     <div class="mt-4">
         <div class="d-flex flex-wrap justify-content-center align-items-center">
-            <a href="@Url.Action("EditMyself", "Users", new { id = Model.Id })" 
-               class="btn btn-warning mx-2 mb-2"
-               style="min-width: 100px;">
-               Edit
-           </a>
             <a href="@Url.Action("Index", "Home")"
                class="btn btn-secondary mx-2 mb-2"
                style="min-width: 100px;">
                 Back
             </a>
+
+            @if (!Model.IsDeleted)
+            {
+                <a href="@Url.Action("EditMyself", "Users", new { id = Model.Id })"
+                   class="btn btn-warning mx-2 mb-2"
+                   style="min-width: 100px;">
+                    Edit
+                </a>
+
+                <form asp-action="DeleteAccount" asp-controller="Users" method="post" class="mx-2 mb-2">
+                    <button type="submit" class="btn btn-danger" style="min-width: 100px;"
+                            onclick="return confirm('Are you sure you want to delete your account? This action is irreversible.')">
+                        Delete Account
+                    </button>
+                </form>
+            }
         </div>
     </div>
 </div>
-
-
-

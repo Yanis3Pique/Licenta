@@ -72,8 +72,35 @@
                 @foreach (var feedback in Model)
                 {
                     <tr>
-                        <td>@(feedback.Client?.UserName ?? "Unknown")</td>
-                        <td>@(feedback.Driver?.UserName ?? "Unknown")</td>
+                        <td>
+                            @if (feedback.Client == null)
+                            {
+                                @:Unknown
+                            }
+                            else if (feedback.Client.IsDeleted)
+                            {
+                                <span class="text-muted">[Deleted User]</span>
+                            }
+                            else
+                            {
+                                @feedback.Client.UserName
+                            }
+                        </td>
+
+                        <td>
+                            @if (feedback.Driver == null)
+                            {
+                                @:Unknown
+                            }
+                            else if (feedback.Driver.IsDeleted)
+                            {
+                                <span class="text-muted">[Deleted User]</span>
+                            }
+                            else
+                            {
+                                @feedback.Driver.UserName
+                            }
+                        </td>
                         <td>@feedback.OrderId</td>
                         <td>
                             <div class="stars-container">

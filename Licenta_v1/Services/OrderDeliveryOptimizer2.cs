@@ -220,7 +220,9 @@ namespace Licenta_v1.Services
 				.Where(v => v.RegionId == regionId &&
 							v.Status == VehicleStatus.Available &&
 							!db.Maintenances.Any(m => m.VehicleId == v.Id && m.ScheduledDate.Date == tomorrow))
-				.OrderBy(v => v.FuelType == FuelType.Electric ? 0 : 1)
+				.OrderBy(v => v.FuelType == FuelType.Electric ? 0 :
+							  v.FuelType == FuelType.Hybrid ? 1 :
+							  v.FuelType == FuelType.Diesel ? 2 : 3)
 				.ThenBy(v => v.MaxWeightCapacity)
 				.ThenBy(v => v.MaxVolumeCapacity)
 				.ToList();
@@ -246,46 +248,40 @@ namespace Licenta_v1.Services
 				foreach (var route in standardRoutes)
 				{
 					await AssignOrdersToDeliveriesAsync(route.Orders, standardVehicles, usedVehicleIds, depot, route.VehicleId);
+					var assignedIds = route.Orders.Select(o => o.Id).ToHashSet();
+					lightVehicleCandidateOrders.RemoveAll(o => assignedIds.Contains(o.Id));
 				}
 			}
 
 			// Apoi incerc sa optimizez comenzile ramase(in functie de restrictii) cu masinile grele
 			var deliveredOrderIds = standardRoutes.SelectMany(r => r.Orders.Select(o => o.Id)).ToHashSet();
+
+			var heavyRoutes = new List<RouteResult>();
 			var remainingOrders = orders
-				.Where(o => !deliveredOrderIds.Contains(o.Id))
+				.Where(o => !standardRoutes.SelectMany(r => r.Orders).Select(x => x.Id).Contains(o.Id))
 				.OrderBy(o => o.PlacedDate)
 				.ThenBy(o => o.Priority == OrderPriority.High ? 0 : 1)
 				.ToList();
-
-			var heavyRoutes = new List<RouteResult>();
 
 			foreach (var heavyVehicle in heavyVehicles)
 			{
 				var heavyAllowedOrders = remainingOrders
 					.Where(o =>
 					{
-						// Iau toate restrictiile pentru comanda respectiva
 						var restrictions = db.OrderVehicleRestrictions
 							.Where(r => r.OrderId == o.Id &&
 										r.VehicleId == heavyVehicle.Id &&
-										(r.Source == "PTV" || r.Source == "ORS" || r.Source == "Manual"))
+										(r.Source == "PTV" || r.Source == "ORS" || r.Source == "Manual") &&
+										db.Vehicles.Any(v => v.Id == r.VehicleId && v.Status == VehicleStatus.Available))
 							.ToList();
 
-						// Daca nu exista restrictii, atunci comanda este permisa
-						if (!restrictions.Any())
-							return true;
-
-						// Daca exista restrictii manuale, atunci nu este permisa
-						if (restrictions.Any(r => r.Source == "Manual"))
-							return false;
-
-						// Altfel, daca toate restrictiile sunt false, atunci este permisa
+						if (!restrictions.Any()) return true;
+						if (restrictions.Any(r => r.Source == "Manual")) return false;
 						return restrictions.All(r => r.IsAccessible);
 					})
 					.ToList();
 
-				if (!heavyAllowedOrders.Any())
-					continue;
+				if (!heavyAllowedOrders.Any()) continue;
 
 				var routes = await OptimizeRoutesWithORSForCluster(heavyAllowedOrders, new List<Vehicle> { heavyVehicle }, depot);
 				heavyRoutes.AddRange(routes);
@@ -293,6 +289,9 @@ namespace Licenta_v1.Services
 				foreach (var route in routes)
 				{
 					await AssignOrdersToDeliveriesAsync(route.Orders, heavyVehicles, usedVehicleIds, depot, route.VehicleId);
+
+					var assignedIds = route.Orders.Select(o => o.Id).ToHashSet();
+					remainingOrders.RemoveAll(o => assignedIds.Contains(o.Id));
 				}
 			}
 
@@ -711,10 +710,15 @@ namespace Licenta_v1.Services
 			List<RouteResult> combinedResults = new List<RouteResult>();
 
 			// Sortez vehiculele descrescator dupa consum, greutate maxima si volum maxim admis
-			var sortedVehicles = vehicles.OrderByDescending(v => v.MaxVolumeCapacity)
-										 .ThenByDescending(v => v.MaxWeightCapacity)
-										 .ThenByDescending(v => v.ConsumptionRate)
-										 .ToList();
+			var sortedVehicles = vehicles
+				.OrderBy(v => v.FuelType == FuelType.Electric ? 0 :
+							  v.FuelType == FuelType.Hybrid ? 1 :
+							  v.FuelType == FuelType.Diesel ? 2 : 3)
+				.ThenByDescending(v => v.MaxVolumeCapacity)
+				.ThenByDescending(v => v.MaxWeightCapacity)
+				.ThenByDescending(v => v.ConsumptionRate)
+				.ToList();
+
 
 			// Fac o copie a comenzilor ca sa stiu ce comenzi raman neasignate
 			List<Order> remainingOrders = new List<Order>(orders);
@@ -1073,7 +1077,7 @@ namespace Licenta_v1.Services
 			db.Vehicles.Update(candidateVehicle);
 
 			await CalculateRouteMetrics(db, delivery, orderedOrders, candidateVehicle, depot);
-			await db.SaveChangesAsync();
+			await db.SaveChangesAsync();	
 
 			// Salvez RouteHistory daca avem un sofer
 			var routeHistory = new RouteHistory
@@ -1123,6 +1127,12 @@ namespace Licenta_v1.Services
 				coordinates = locations,
 			};
 
+			Debug.WriteLine("Coordinates sent to ORS:");
+			foreach (var loc in locations)
+			{
+				Debug.WriteLine($"Lon: {loc[0]}, Lat: {loc[1]}");
+			}
+
 			string profile = GetProfileForVehicle(vehicle);
 			string requestUrl = $"https://api.openrouteservice.org/v2/directions/{profile}";
 			string jsonBody = JsonConvert.SerializeObject(directionsRequest);
@@ -1135,6 +1145,7 @@ namespace Licenta_v1.Services
 				if (response.IsSuccessStatusCode)
 				{
 					var responseJson = await response.Content.ReadAsStringAsync();
+					Debug.WriteLine($"[ORS RESPONSE] Raw JSON: {responseJson}");
 					// Deserializam raspunsul
 					var directionsResponse = JsonConvert.DeserializeObject<ORSRouteResponse>(responseJson);
 					if (directionsResponse?.routes?.Any() == true)
@@ -1382,24 +1393,34 @@ namespace Licenta_v1.Services
 
 		public void InvalidateCacheForVehicle(int vehicleId)
 		{
-			// Sterg cache-urile pentru vehiculul dat
-			var ptvKeysToRemove = ptvCheckCache.Keys.Where(key => key.vehicleId == vehicleId).ToList();
-			foreach (var key in ptvKeysToRemove)
+			using var scope = scopeFactory.CreateScope();
+			var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+
+			// Mai intai vedem de ce tip e vehiculul
+			var vehicle = db.Vehicles.Find(vehicleId);
+			if (vehicle == null)
 			{
-				ptvCheckCache.Remove(key, out _);
-				Debug.WriteLine($"PTV Cache invalidated for Order {key.orderId} and Vehicle {key.vehicleId}");
-			}
-			var orsKeysToRemove = orsCheckCache.Keys.Where(key => key.vehicleId == vehicleId).ToList();
-			foreach (var key in orsKeysToRemove)
-			{
-				orsCheckCache.Remove(key, out _);
-				Debug.WriteLine($"ORS Cache invalidated for Order {key.orderId} and Vehicle {key.vehicleId}");
+				Debug.WriteLine($"Vehicle {vehicleId} not found.");
+				return;
 			}
 
-			// Sterg restrictiile vechi din baza de date
-			using (var scope = scopeFactory.CreateScope())
+			// Doar pt masini mari se invalideaza
+			if (vehicle.VehicleType == VehicleType.HeavyTruck || vehicle.VehicleType == VehicleType.SmallTruck)
 			{
-				var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+				var ptvKeysToRemove = ptvCheckCache.Keys.Where(key => key.vehicleId == vehicleId).ToList();
+				foreach (var key in ptvKeysToRemove)
+				{
+					ptvCheckCache.Remove(key, out _);
+					Debug.WriteLine($"PTV Cache invalidated for Order {key.orderId} and Vehicle {key.vehicleId}");
+				}
+
+				var orsKeysToRemove = orsCheckCache.Keys.Where(key => key.vehicleId == vehicleId).ToList();
+				foreach (var key in orsKeysToRemove)
+				{
+					orsCheckCache.Remove(key, out _);
+					Debug.WriteLine($"ORS Cache invalidated for Order {key.orderId} and Vehicle {key.vehicleId}");
+				}
+
 				var staleRestrictions = db.OrderVehicleRestrictions.Where(r => r.VehicleId == vehicleId);
 				if (staleRestrictions.Any())
 				{
@@ -1407,6 +1428,10 @@ namespace Licenta_v1.Services
 					db.SaveChanges();
 					Debug.WriteLine($"Removed {staleRestrictions.Count()} restriction records for Vehicle {vehicleId}");
 				}
+			}
+			else
+			{
+				Debug.WriteLine($"No cache invalidation required for non-heavy vehicle {vehicleId}.");
 			}
 		}
 

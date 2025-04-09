@@ -223,80 +223,140 @@ public class TaskuriAutomate : BackgroundService
 
 	private async Task NotifyClientOfOrderStatus(ApplicationDbContext db)
 	{
-		// Iau toate comenzile care au fost abia plasate(Status == Placed && LastNotifiedStatus is null)
-		// sau care si-au schimbat statusul (Status != LastNotifiedStatus)
 		var ordersToNotify = await db.Orders
-			.Where(o => o.ClientId != null &&
-						(o.LastNotifiedStatus == null || o.LastNotifiedStatus != o.Status))
+			.Where(o => o.ClientId != null)
 			.Include(o => o.Client)
 			.ToListAsync();
 
 		foreach (var order in ordersToNotify)
 		{
 			if (order.Client == null || string.IsNullOrEmpty(order.Client.Email))
-				continue; // Daca clientul nu gasesc mail-ul, sar peste notificare
+				continue;
 
+			bool sendEmail = false;
 			string subject = $"Order #{order.Id} - Status Update";
-			string messageBody = GenerateOrderStatusEmail(order);
+			string messageBody = "";
 
-			await _emailSender.SendEmailAsync(order.Client.Email, subject, messageBody);
+			// Comanda plasata in aplicatie
+			if (order.Status == OrderStatus.Placed && order.LastNotifiedStatus == null)
+			{
+				messageBody = GenerateOrderPlacedEmail(order);
+				sendEmail = true;
+				order.LastNotifiedStatus = OrderStatus.Placed;
+			}
+			// Comanda asignata unei livrari
+			else if (order.Status == OrderStatus.Placed &&
+					 order.DeliveryId != null &&
+					 order.EstimatedDeliveryDate != null &&
+					 order.LastDeliveryAssignmentNotified == null)
+			{
+				messageBody = GenerateOrderAssignedToDeliveryEmail(order);
+				sendEmail = true;
+				order.LastDeliveryAssignmentNotified = DateTime.Now;
+			}
+			// Comanda in curs de livrare
+			else if (order.Status == OrderStatus.InProgress && order.LastNotifiedStatus != OrderStatus.InProgress)
+			{
+				messageBody = GenerateOrderInProgressEmail(order);
+				sendEmail = true;
+				order.LastNotifiedStatus = OrderStatus.InProgress;
+			}
+			// Comanda livrata
+			else if (order.Status == OrderStatus.Delivered && order.LastNotifiedStatus != OrderStatus.Delivered)
+			{
+				messageBody = GenerateOrderDeliveredEmail(order);
+				sendEmail = true;
+				order.LastNotifiedStatus = OrderStatus.Delivered;
+			}
 
-			// Actualizez LastNotifiedStatus ca sa nu spamez clientii cu mail-uri
-			order.LastNotifiedStatus = order.Status;
+			if (sendEmail)
+			{
+				await _emailSender.SendEmailAsync(order.Client.Email, subject, messageBody);
+			}
 		}
 
 		await db.SaveChangesAsync();
 	}
 
-	private string GenerateOrderStatusEmail(Order order)
-	{
-		string displayStatus = "";
-		switch (order.Status)
-		{
-			case OrderStatus.Placed:
-				displayStatus = "Placed";
-				break;
-			case OrderStatus.InProgress:
-				displayStatus = "In Progress";
-				break;
-			case OrderStatus.Delivered:
-				displayStatus = "Delivered";
-				break;
-			case OrderStatus.FailedDelivery:
-				displayStatus = "Failed to Deliver";
-				break;
-			default:
-				displayStatus = order.Status.ToString();
-				break;
-		}
+	private string GenerateOrderPlacedEmail(Order order) =>
+		$@"
+		<div style='font-family: Arial, sans-serif; line-height: 1.6; max-width: 600px; margin: auto;'>
+			<div style='text-align: center; padding: 20px; background-color: #f4f4f4; border-bottom: 1px solid #ddd;'>
+				<img src='https://cdn.pixabay.com/photo/2024/04/01/14/43/ai-generated-8669101_1280.png' alt='EcoDelivery' style='max-width: 150px;'>
+				<h2 style='color: #333;'>EcoDelivery - Order Received</h2>
+			</div>
+			<div style='padding: 20px; background-color: #ffffff;'>
+				<h3 style='color: #555;'>Order #{order.Id} - Placed</h3>
+				<p style='color: #666;'>Thank you for your order! Our team has received it and is currently reviewing the details.</p>
+				<p style='color: #666;'>You will receive a new update once your order is scheduled for delivery.</p>
+				<p><strong>Delivery Address:</strong> {order.Address}</p>
+				<p><strong>Estimated Delivery Date:</strong> To be scheduled</p>
+				<p>Thank you for choosing EcoDelivery!</p>
+			</div>
+			<div style='text-align: center; padding: 10px; background-color: #f4f4f4; border-top: 1px solid #ddd;'>
+				<p style='color: #888; font-size: 12px;'>EcoDelivery | All Rights Reserved</p>
+			</div>
+		</div>";
 
-		string statusMessage = order.Status switch
-		{
-			OrderStatus.Placed => "Your order has been successfully placed. We will notify you once it's out for delivery.",
-			OrderStatus.InProgress => "Your order is on the way! Our driver is working hard to get it to you.",
-			OrderStatus.FailedDelivery => "We're sorry, but we were unable to deliver your order. Please contact us for more information.",
-			OrderStatus.Delivered => "Your order has been delivered successfully! We hope you enjoy your purchase.",
-			_ => "There is an update on your order. Please check your account for details."
-		};
+	private string GenerateOrderAssignedToDeliveryEmail(Order order) =>
+		$@"
+		<div style='font-family: Arial, sans-serif; line-height: 1.6; max-width: 600px; margin: auto;'>
+			<div style='text-align: center; padding: 20px; background-color: #f4f4f4; border-bottom: 1px solid #ddd;'>
+				<img src='https://cdn.pixabay.com/photo/2024/04/01/14/43/ai-generated-8669101_1280.png' alt='EcoDelivery' style='max-width: 150px;'>
+				<h2 style='color: #333;'>EcoDelivery - Delivery Scheduled</h2>
+			</div>
+			<div style='padding: 20px; background-color: #ffffff;'>
+				<h3 style='color: #555;'>Order #{order.Id} - Scheduled</h3>
+				<p style='color: #666;'>Your order has been successfully scheduled for delivery. Our team is preparing your items for dispatch.</p>
+				<p style='color: #666;'>We will notify you again once your delivery is on the way.</p>
+				<p><strong>Delivery Address:</strong> {order.Address}</p>
+				<p><strong>Estimated Delivery Date:</strong> {order.EstimatedDeliveryDate:dd/MM/yyyy}</p>
+				<p><strong>Estimated Time Window:</strong> {order.EstimatedDeliveryInterval ?? "To be determined"}</p>
+				<p>Thank you for choosing EcoDelivery!</p>
+			</div>
+			<div style='text-align: center; padding: 10px; background-color: #f4f4f4; border-top: 1px solid #ddd;'>
+				<p style='color: #888; font-size: 12px;'>EcoDelivery | All Rights Reserved</p>
+			</div>
+		</div>";
 
-		return $@"
-        <div style='font-family: Arial, sans-serif; line-height: 1.6; max-width: 600px; margin: auto;'>
-            <div style='text-align: center; padding: 20px; background-color: #f4f4f4; border-bottom: 1px solid #ddd;'>
-                <img src='https://cdn.pixabay.com/photo/2024/04/01/14/43/ai-generated-8669101_1280.png' alt='EcoDelivery' style='max-width: 150px;'>
-                <h2 style='color: #333;'>EcoDelivery - Order Update</h2>
-            </div>
-            <div style='padding: 20px; background-color: #ffffff;'>
-                <h3 style='color: #555;'>Order #{order.Id} - {displayStatus}</h3>
-                <p style='color: #666;'>{statusMessage}</p>
-                <p><strong>Address:</strong> {order.Address}</p>
-                <p><strong>Estimated Delivery Date:</strong> {order.EstimatedDeliveryDate?.ToString("dd/MM/yyyy") ?? "N/A"}</p>
-                <p>Thank you for choosing EcoDelivery!</p>
-            </div>
-            <div style='text-align: center; padding: 10px; background-color: #f4f4f4; border-top: 1px solid #ddd;'>
-                <p style='color: #888; font-size: 12px;'>EcoDelivery | All Rights Reserved</p>
-            </div>
-        </div>";
-	}
+	private string GenerateOrderInProgressEmail(Order order) =>
+		$@"
+		<div style='font-family: Arial, sans-serif; line-height: 1.6; max-width: 600px; margin: auto;'>
+			<div style='text-align: center; padding: 20px; background-color: #f4f4f4; border-bottom: 1px solid #ddd;'>
+				<img src='https://cdn.pixabay.com/photo/2024/04/01/14/43/ai-generated-8669101_1280.png' alt='EcoDelivery' style='max-width: 150px;'>
+				<h2 style='color: #333;'>EcoDelivery - On the Way</h2>
+			</div>
+			<div style='padding: 20px; background-color: #ffffff;'>
+				<h3 style='color: #555;'>Order #{order.Id} - Out for Delivery</h3>
+				<p style='color: #666;'>Your order is now on its way to you. One of our drivers is en route and will arrive soon.</p>
+				<p><strong>Delivery Date:</strong> {order.EstimatedDeliveryDate:dd/MM/yyyy}</p>
+				<p><strong>Estimated Time Window:</strong> {order.EstimatedDeliveryInterval ?? "N/A"}</p>
+				<p><strong>Delivery Address:</strong> {order.Address}</p>
+				<p>Please make sure someone is available to receive the package.</p>
+			</div>
+			<div style='text-align: center; padding: 10px; background-color: #f4f4f4; border-top: 1px solid #ddd;'>
+				<p style='color: #888; font-size: 12px;'>EcoDelivery | All Rights Reserved</p>
+			</div>
+		</div>";
+
+	private string GenerateOrderDeliveredEmail(Order order) =>
+		$@"
+		<div style='font-family: Arial, sans-serif; line-height: 1.6; max-width: 600px; margin: auto;'>
+			<div style='text-align: center; padding: 20px; background-color: #f4f4f4; border-bottom: 1px solid #ddd;'>
+				<img src='https://cdn.pixabay.com/photo/2024/04/01/14/43/ai-generated-8669101_1280.png' alt='EcoDelivery' style='max-width: 150px;'>
+				<h2 style='color: #333;'>EcoDelivery - Order Delivered</h2>
+			</div>
+			<div style='padding: 20px; background-color: #ffffff;'>
+				<h3 style='color: #555;'>Order #{order.Id} - Delivered</h3>
+				<p style='color: #666;'>We’re happy to let you know that your order has been delivered successfully.</p>
+				<p><strong>Delivery Address:</strong> {order.Address}</p>
+				<p>If anything is wrong or missing, please <a href='#'>contact support</a> right away.</p>
+				<p>We appreciate your trust in EcoDelivery!</p>
+			</div>
+			<div style='text-align: center; padding: 10px; background-color: #f4f4f4; border-top: 1px solid #ddd;'>
+				<p style='color: #888; font-size: 12px;'>EcoDelivery | All Rights Reserved</p>
+			</div>
+		</div>";
 
 	private async Task UpdateVehicles(ApplicationDbContext dbContext)
 	{

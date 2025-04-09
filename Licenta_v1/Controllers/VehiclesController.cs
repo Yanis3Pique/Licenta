@@ -658,7 +658,7 @@ namespace Licenta_v1.Controllers
 		}
 
 		// Post - Vehicles/Retire/id
-		[Authorize(Roles = "Admin")]
+		[Authorize(Roles = "Admin,Dispecer")]
 		[HttpPost]
 		[ValidateAntiForgeryToken]
 		public async Task<IActionResult> Retire(int id)
@@ -668,21 +668,22 @@ namespace Licenta_v1.Controllers
 				TempData["Error"] = "Invalid vehicle ID!";
 				return RedirectToAction("Index");
 			}
+
 			var vehicle = await db.Vehicles.FindAsync(id);
 			if (vehicle == null)
 			{
 				TempData["Error"] = "Vehicle not found!";
 				return RedirectToAction("Index");
 			}
-			// Daca masina are deja statusul "Retired", nu o mai pot retrage
+
 			if (vehicle.Status == VehicleStatus.Retired)
 			{
 				TempData["Error"] = "Vehicle already retired!";
 				return RedirectToAction("Index");
 			}
+
 			vehicle.Status = VehicleStatus.Retired;
 
-			// Sterg toate mentenantele programate pentru masina
 			var maintenances = await db.Maintenances
 				.Where(m => m.VehicleId == id)
 				.ToListAsync();
@@ -690,8 +691,19 @@ namespace Licenta_v1.Controllers
 
 			db.Vehicles.Update(vehicle);
 			await db.SaveChangesAsync();
+
 			TempData["Success"] = "Vehicle retired successfully!";
-			return RedirectToAction("Index");
+
+			if (User.IsInRole("Admin"))
+			{
+				return RedirectToAction("Index");
+			}
+			else
+			{
+				var currentUser = await _userManager.GetUserAsync(User);
+				return RedirectToAction("ShowVehiclesOfDispatcher", "Users", new { id = currentUser.Id });
+			}
 		}
+
 	}
 }

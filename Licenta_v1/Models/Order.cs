@@ -36,6 +36,7 @@ namespace Licenta_v1.Models
 		public string? EstimatedDeliveryInterval { get; set; }
 		public DateTime? DeliveredDate { get; set; }
 		public OrderStatus? LastNotifiedStatus { get; set; } // Folosit pentru mail-urile catre clienti
+		public DateTime? LastDeliveryAssignmentNotified { get; set; } // Foloit pentru mail-urile catre clienti
 		public int? DeliverySequence { get; set; } // Folosit pentru ordinea in Delivery
 		public virtual ICollection<OrderVehicleRestriction> OrderVehicleRestrictions { get; set; } = new List<OrderVehicleRestriction>();
 		public virtual ApplicationUser? Client { get; set; }

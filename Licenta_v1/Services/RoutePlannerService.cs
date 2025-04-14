@@ -4,6 +4,7 @@ using Microsoft.Extensions.Configuration;
 using Newtonsoft.Json;
 using System.Text;
 using System.Diagnostics;
+using System.Collections.Concurrent;
 
 namespace Licenta_v1.Services
 {
@@ -11,20 +12,20 @@ namespace Licenta_v1.Services
 	{
 		private readonly IServiceScopeFactory scopeFactory;
 		private readonly string OpenRouteServiceApiKey;
-		private readonly string OpenWeatherMapApiKey;
-		private readonly string GoogleMapsApiKey;
+		private readonly WeatherService weatherService;
+		private readonly TomTomObstacleService obstacleService;
 
 		public RoutePlannerService(IServiceScopeFactory serviceScopeFactory, IConfiguration configuration)
 		{
 			scopeFactory = serviceScopeFactory;
 			OpenRouteServiceApiKey = Env.GetString("OpenRouteServiceApiKey");
-			OpenWeatherMapApiKey = Env.GetString("OpenWeatherMapApiKey");
-			GoogleMapsApiKey = Env.GetString("Cheie_API_Google_Maps");
+			weatherService = new WeatherService(configuration);
+			obstacleService = new TomTomObstacleService();
 		}
 
 		// Calculeaza ruta optima in functie de Delivery
 		// Ma folosesc de API-ul celor de la OpenRouteService Directions
-		public async Task<RouteResult> CalculateOptimalRouteAsync(Delivery delivery)
+		public async Task<RouteResult> CalculateOptimalRouteAsync(Delivery delivery, double? currentLat = null, double? currentLng = null)
 		{
 			var orders = delivery.Orders?.Where(o => o.Latitude.HasValue && o.Longitude.HasValue).ToList();
 			if (orders == null || orders.Count == 0)
@@ -85,82 +86,31 @@ namespace Licenta_v1.Services
 				};
 			}
 
-			// Body final
-			dynamic requestBody;
-			if (options != null)
-			{
-				requestBody = new
-				{
-					coordinates,
-					instructions = true,
-					options
-				};
-			}
-			else
-			{
-				requestBody = new
-				{
-					coordinates,
-					instructions = true
-				};
-			}
+			// PRIMA CERERE fara avoid_polygons (ca sa putem obtine remainingCoords)
+			dynamic initialRequestBody = options != null
+				? new { coordinates, instructions = true, options }
+				: new { coordinates, instructions = true };
 
+			Debug.WriteLine(JsonConvert.SerializeObject((object)initialRequestBody, Formatting.Indented));
 
-			Debug.WriteLine(JsonConvert.SerializeObject((object)requestBody, Formatting.Indented));
-			Debug.WriteLine(delivery.Vehicle.HeightMeters.ToString(), " ", delivery.Vehicle.WidthMeters, " ",
-							delivery.Vehicle.LengthMeters, " ", delivery.Vehicle.WeightTons);
-
-			var jsonBody = JsonConvert.SerializeObject(requestBody);
-			var content = new StringContent(jsonBody, Encoding.UTF8, "application/json");
+			var initialJson = JsonConvert.SerializeObject(initialRequestBody);
+			var initialContent = new StringContent(initialJson, Encoding.UTF8, "application/json");
 
 			using var client = new HttpClient();
 			client.DefaultRequestHeaders.Add("Authorization", OpenRouteServiceApiKey);
 			string url = $"https://api.openrouteservice.org/v2/directions/{profile}/geojson";
 
-			HttpResponseMessage response = null;
-			string responseJson = null;
+			HttpResponseMessage response = await client.PostAsync(url, initialContent);
+			string responseJson = await response.Content.ReadAsStringAsync();
 
-			try
-			{
-				response = await client.PostAsync(url, content);
-				responseJson = await response.Content.ReadAsStringAsync();
+			if (!response.IsSuccessStatusCode)
+				throw new Exception($"ORS failed (initial): {response.StatusCode} - {responseJson}");
 
-				if (!response.IsSuccessStatusCode)
-					throw new Exception($"ORS failed with avoid_polygons: {response.StatusCode} - {responseJson}");
-			}
-			catch (Exception ex)
-			{
-				Debug.WriteLine($"Fallback response body: {responseJson}");
-				Debug.WriteLine($"Primary ORS routing failed: {ex.Message}");
-				Debug.WriteLine("Retrying without avoid_polygons...");
-
-				// Reincerc sa calculez ruta, dar fara restrictii de evitare a zonelor periculoase
-				var fallbackBody = new
-				{
-					coordinates,
-					instructions = true,
-					profile_params = profileParams
-				};
-
-				var fallbackJson = JsonConvert.SerializeObject(fallbackBody);
-				var fallbackContent = new StringContent(fallbackJson, Encoding.UTF8, "application/json");
-
-				response = await client.PostAsync(url, fallbackContent);
-				responseJson = await response.Content.ReadAsStringAsync();
-
-				if (!response.IsSuccessStatusCode)
-					throw new Exception($"Fallback ORS routing also failed: {response.StatusCode} - {responseJson}");
-			}
-
-			// Deserializez raspunsul primit de la ORS (noul format GEOJSON)
 			var orsResponse = JsonConvert.DeserializeObject<ORSGeoJsonResponse>(responseJson);
 			if (orsResponse?.features == null || !orsResponse.features.Any())
 				throw new Exception("No route found from OpenRouteService.");
 
-			// Extrag prima ruta (de obicei e doar una)
 			var feature = orsResponse.features.First();
-
-			// Extrag rezumatul, segmentele si coordonatele rutei
 			var routeSummary = feature.properties.summary;
 			var routeSegments = feature.properties.segments;
 			var decodedCoordinates = feature.geometry.coordinates
@@ -170,24 +120,143 @@ namespace Licenta_v1.Services
 					Latitude = coord[1]
 				}).ToList();
 
+			List<Coordinate> remainingCoords;
+
+			if (currentLat.HasValue && currentLng.HasValue)
+			{
+				var currentPos = new Coordinate
+				{
+					Latitude = currentLat.Value,
+					Longitude = currentLng.Value
+				};
+
+				// Comenzi nelivrate inca
+				var remainingOrders = delivery.Orders
+					.Where(o => o.Status != OrderStatus.Delivered && o.Status != OrderStatus.FailedDelivery)
+					.OrderBy(o => o.DeliverySequence)
+					.ToList();
+
+				remainingCoords = new List<Coordinate> { currentPos };
+
+				// Adaug comenzile nelivrate inca
+				foreach (var order in remainingOrders)
+				{
+					if (order.Latitude.HasValue && order.Longitude.HasValue)
+					{
+						remainingCoords.Add(new Coordinate
+						{
+							Latitude = order.Latitude.Value,
+							Longitude = order.Longitude.Value
+						});
+					}
+				}
+
+				// Ne intoarcem la depozit mereu
+				remainingCoords.Add(new Coordinate
+				{
+					Latitude = delivery.Vehicle.Region.Headquarters.Latitude.Value,
+					Longitude = delivery.Vehicle.Region.Headquarters.Longitude.Value
+				});
+			}
+			else
+			{
+				remainingCoords = decodedCoordinates;
+			}
+
+			object? avoidPolygons = null;
+			try
+			{
+				var obstacleBounds = GetRegionBoundsFromOrders(remainingCoords);
+				avoidPolygons = await obstacleService.GetAvoidPolygonsAsync(
+					obstacleBounds.MinLat,
+					obstacleBounds.MinLng,
+					obstacleBounds.MaxLat,
+					obstacleBounds.MaxLng
+				);
+			}
+			catch (Exception ex)
+			{
+				Debug.WriteLine($"TomTomObstacleService failed: {ex.Message}");
+			}
+
+			// A DOUA CERERE cu avoid_polygons
+			if (options == null)
+			{
+				options = new { avoid_polygons = avoidPolygons };
+			}
+			else
+			{
+				// Convertesc options in dictionar si adaug avoid_polygons
+				var optionsDict = JsonConvert.DeserializeObject<Dictionary<string, object>>(JsonConvert.SerializeObject(options));
+				optionsDict["avoid_polygons"] = avoidPolygons;
+				options = optionsDict;
+			}
+
+			Debug.WriteLine("Avoid polygons JSON:");
+			Debug.WriteLine(JsonConvert.SerializeObject(avoidPolygons, Formatting.Indented));
+
+			var finalRequestBody = new
+			{
+				coordinates,
+				instructions = true,
+				options
+			};
+
+			Debug.WriteLine(JsonConvert.SerializeObject((object)finalRequestBody, Formatting.Indented));
+
+			var finalJson = JsonConvert.SerializeObject(finalRequestBody);
+			var finalContent = new StringContent(finalJson, Encoding.UTF8, "application/json");
+
+			response = await client.PostAsync(url, finalContent);
+			responseJson = await response.Content.ReadAsStringAsync();
+
+			if (!response.IsSuccessStatusCode)
+				throw new Exception($"ORS failed (final): {response.StatusCode} - {responseJson}");
+
+			// Actualizez coordonatele decodificate
+			orsResponse = JsonConvert.DeserializeObject<ORSGeoJsonResponse>(responseJson);
+			if (orsResponse?.features == null || !orsResponse.features.Any())
+				throw new Exception("No route found from OpenRouteService (final).");
+
+			feature = orsResponse.features.First();
+			routeSummary = feature.properties.summary;
+			routeSegments = feature.properties.segments;
+			decodedCoordinates = feature.geometry.coordinates
+				.Select(coord => new Coordinate
+				{
+					Longitude = coord[0],
+					Latitude = coord[1]
+				}).ToList();
+
 			// Incep procesarea segmentelor si aplicarea penalizarilor
-			var adjustedDuration = routeSummary.duration;
+			var segmentMidpoints = routeSegments.Select((segment, i) =>
+			{
+				double ratio = (double)decodedCoordinates.Count / routeSegments.Count;
+				int midpointIndex = (int)(ratio * (i + 0.5));
+				midpointIndex = Math.Min(midpointIndex, decodedCoordinates.Count - 1);
+				return decodedCoordinates[midpointIndex];
+			}).ToList();
+
+			var segmentWeatherTasks = segmentMidpoints.Select(midpoint => weatherService.AnalyzeWeatherAsync(midpoint));
+			var analysisResults = await Task.WhenAll(segmentWeatherTasks);
+
+			var isDangerousResults = analysisResults.Select(r => r.isDangerous).ToArray();
+			var severityResults = analysisResults.Select(r => r.severity).ToArray();
+			var descriptionResults = analysisResults.Select(r => r.description).ToArray();
+
+			var codeResults = analysisResults.Select(r => r.code).ToArray();
+
 			var adjustedSegments = new List<SegmentResult>();
+			var adjustedDuration = routeSummary.duration;
 
 			for (int i = 0; i < routeSegments.Count; i++)
 			{
 				var segment = routeSegments[i];
-				var midpointIndex = (int)((decodedCoordinates.Count / routeSegments.Count) * (i + 0.5));
-				midpointIndex = Math.Min(midpointIndex, decodedCoordinates.Count - 1);
-				var midpoint = decodedCoordinates[midpointIndex];
-
-				bool isDangerous = await IsSegmentWeatherDangerousAsync(midpoint);
-
+				bool isDangerous = isDangerousResults[i];
 				double penaltyFactor = isDangerous ? 1.2 : 1.0;
-				var segmentDurationAdjusted = segment.duration * penaltyFactor;
-				adjustedDuration += (segmentDurationAdjusted - segment.duration);
+				double segmentDurationAdjusted = segment.duration * penaltyFactor;
 
-				Debug.WriteLine($"Segment #{i + 1}: originalDuration={segment.duration}s, adjustedDuration={segmentDurationAdjusted}s, penaltyApplied={(penaltyFactor != 1)}");
+				adjustedDuration += (segmentDurationAdjusted - segment.duration);
 
 				adjustedSegments.Add(new SegmentResult
 				{
@@ -199,26 +268,75 @@ namespace Licenta_v1.Services
 
 			Debug.WriteLine($"Original total duration: {routeSummary.duration}s, Adjusted total duration: {adjustedDuration}s");
 
-			var dangerousPolygons = adjustedSegments
-				.Select((segment, idx) => new { segment, idx })
-				.Where(x => x.segment.IsWeatherDangerous)
-				.Select(x =>
+			var regionCoordinates = decodedCoordinates; // HQ + comenzi
+			var bounds = GetRegionBoundsFromOrders(regionCoordinates);
+			double step = 0.03;
+			var gridPoints = GetGridPointsNearRoute(decodedCoordinates, step: step, distanceThresholdMeters: 200);
+
+			var weatherSeverities = await GetWeatherSeveritiesAsync(gridPoints);
+
+			var polygonHalfSize = step / 2;
+			var dangerZonesNts = weatherSeverities.Select(ws =>
+			{
+				double lng = ws.coord.Longitude;
+				double lat = ws.coord.Latitude;
+
+				var poly = new[]
 				{
-					var coord = decodedCoordinates[(int)((decodedCoordinates.Count / routeSegments.Count) * (x.idx + 0.5))];
-					return new List<List<double[]>>
-					{
-						new List<double[]>
-						{
-							new[] { coord.Longitude - 0.002, coord.Latitude - 0.002 },
-							new[] { coord.Longitude - 0.002, coord.Latitude + 0.002 },
-							new[] { coord.Longitude + 0.002, coord.Latitude + 0.002 },
-							new[] { coord.Longitude + 0.002, coord.Latitude - 0.002 },
-							new[] { coord.Longitude - 0.002, coord.Latitude - 0.002 }
-						}
+						new NetTopologySuite.Geometries.Coordinate(lng - polygonHalfSize, lat - polygonHalfSize),
+						new NetTopologySuite.Geometries.Coordinate(lng - polygonHalfSize, lat + polygonHalfSize),
+						new NetTopologySuite.Geometries.Coordinate(lng + polygonHalfSize, lat + polygonHalfSize),
+						new NetTopologySuite.Geometries.Coordinate(lng + polygonHalfSize, lat - polygonHalfSize),
+						new NetTopologySuite.Geometries.Coordinate(lng - polygonHalfSize, lat - polygonHalfSize)
 					};
-				}).ToList();
+
+				return (polygon: new NetTopologySuite.Geometries.Polygon(new NetTopologySuite.Geometries.LinearRing(poly)), severity: ws.severity);
+			}).ToList();
+
+			var coloredSegments = new List<ColoredSegment>();
+			for (int i = 0; i < decodedCoordinates.Count - 1; i++)
+			{
+				var a = decodedCoordinates[i];
+				var b = decodedCoordinates[i + 1];
+
+				var line = new NetTopologySuite.Geometries.LineString(new[]
+				{
+					new NetTopologySuite.Geometries.Coordinate(a.Longitude, a.Latitude),
+					new NetTopologySuite.Geometries.Coordinate(b.Longitude, b.Latitude)
+				});
+
+				double maxSeverity = 0.0;
+
+				foreach (var (polygon, severity) in dangerZonesNts)
+				{
+					if (polygon.Intersects(line))
+					{
+						maxSeverity = Math.Max(maxSeverity, severity);
+					}
+				}
+
+				string description = descriptionResults[Math.Min(i, descriptionResults.Length - 1)];
+				int code = codeResults[Math.Min(i, codeResults.Length - 1)];
+
+				coloredSegments.Add(new ColoredSegment
+				{
+					Coordinates = new List<double[]>
+					{
+						new double[] { a.Latitude, a.Longitude },
+						new double[] { b.Latitude, b.Longitude }
+					},
+					Severity = maxSeverity,
+					WeatherDescription = description,
+					WeatherCode = code
+				});
+			}
 
 			// Construiesc rezultatul final ajustat
+			var avoidPolygonJson = JsonConvert.SerializeObject(avoidPolygons);
+			var avoidPolygonJObj = JsonConvert.DeserializeObject<Newtonsoft.Json.Linq.JObject>(avoidPolygonJson);
+
+			var descriptions = avoidPolygonJObj?["descriptions"]?.ToObject<List<string>>() ?? new List<string>();
+
 			var routeResult = new RouteResult
 			{
 				Coordinates = decodedCoordinates,
@@ -226,45 +344,63 @@ namespace Licenta_v1.Services
 				Duration = adjustedDuration,
 				Segments = adjustedSegments,
 				OrderIds = orderIds,
-				DangerousPolygons = dangerousPolygons
+				ColoredRouteSegments = coloredSegments,
+				AvoidPolygons = avoidPolygons is AvoidPolygonGeoJson geoJson
+					? geoJson.coordinates
+					: JsonConvert.DeserializeObject<AvoidPolygonGeoJson>(avoidPolygonJson)?.coordinates,
+				AvoidDescriptions = descriptions
 			};
+
+			Debug.WriteLine("AvoidPolygons count: " + (routeResult.AvoidPolygons?.Count ?? 0));
 
 			return routeResult;
 		}
 
-		// Decodez un traseu(linie) intr-o lista de coordonate
-		private List<Coordinate> DecodePolyline(string polyline)
+		private int FindClosestCoordinateIndex(List<Coordinate> coords, Coordinate target)
 		{
-			var poly = new List<Coordinate>();
-			int index = 0, len = polyline.Length;
-			int lat = 0, lng = 0;
-
-			while (index < len)
+			double MinDistance(Coordinate a, Coordinate b)
 			{
-				int b, shift = 0, result = 0;
-				do
-				{
-					b = polyline[index++] - 63;
-					result |= (b & 0x1f) << shift;
-					shift += 5;
-				} while (b >= 0x20);
-				int dlat = ((result & 1) != 0 ? ~(result >> 1) : (result >> 1));
-				lat += dlat;
-
-				shift = 0;
-				result = 0;
-				do
-				{
-					b = polyline[index++] - 63;
-					result |= (b & 0x1f) << shift;
-					shift += 5;
-				} while (b >= 0x20);
-				int dlng = ((result & 1) != 0 ? ~(result >> 1) : (result >> 1));
-				lng += dlng;
-
-				poly.Add(new Coordinate { Latitude = lat / 1E5, Longitude = lng / 1E5 });
+				double dLat = a.Latitude - b.Latitude;
+				double dLng = a.Longitude - b.Longitude;
+				return dLat * dLat + dLng * dLng;
 			}
-			return poly;
+
+			int index = 0;
+			double minDist = double.MaxValue;
+
+			for (int i = 0; i < coords.Count; i++)
+			{
+				double dist = MinDistance(coords[i], target);
+				if (dist < minDist)
+				{
+					minDist = dist;
+					index = i;
+				}
+			}
+
+			return index;
+		}
+
+		public List<Coordinate> GetGridPointsNearRoute(List<Coordinate> route, double step, double distanceThresholdMeters)
+		{
+			var bounds = GetRegionBoundsFromOrders(route);
+			var allGridPoints = GenerateGrid(bounds.MinLat, bounds.MaxLat, bounds.MinLng, bounds.MaxLng, step);
+			var routeLine = new NetTopologySuite.Geometries.LineString(
+				route.Select(c => new NetTopologySuite.Geometries.Coordinate(c.Longitude, c.Latitude)).ToArray()
+			);
+
+			var closePoints = new List<Coordinate>();
+
+			foreach (var point in allGridPoints)
+			{
+				var pt = new NetTopologySuite.Geometries.Point(point.Longitude, point.Latitude);
+				if (pt.IsWithinDistance(routeLine, distanceThresholdMeters / 111_139.0))
+				{
+					closePoints.Add(point);
+				}
+			}
+
+			return closePoints;
 		}
 
 		private string GetVehicleProfile(VehicleType vehicleType)
@@ -276,62 +412,55 @@ namespace Licenta_v1.Services
 			};
 		}
 
-		private async Task<bool> IsSegmentWeatherDangerousAsync(Coordinate coord)
+		public List<Coordinate> GenerateGrid(double minLat, double maxLat, double minLng, double maxLng, double step = 0.0125)
 		{
-			string url = $"https://api.openweathermap.org/data/2.5/weather?lat={coord.Latitude}&lon={coord.Longitude}&appid={OpenWeatherMapApiKey}&units=metric";
-
-			using var client = new HttpClient();
-			var response = await client.GetStringAsync(url);
-			dynamic weatherData = JsonConvert.DeserializeObject(response);
-
-			int weatherCode = weatherData.weather[0].id;
-			string weatherDescription = weatherData.weather[0].description;
-			double windSpeed = weatherData.wind.speed;
-
-			Debug.WriteLine($"Weather API response for [{coord.Latitude}, {coord.Longitude}]: code={weatherCode}, desc={weatherDescription}, windSpeed={windSpeed} m/s");
-
-			HashSet<int> dangerousCodes = new HashSet<int> {
-				200,201,202,210,211,212,221,230,231,232,
-				302,312,313,314,
-				502,503,504,511,522,531,
-				602,621,622,
-				721,741,771,781,
-				804, 803
-			};
-
-			bool isDangerous = dangerousCodes.Contains((int)weatherCode) || windSpeed >= 15.0;
-
-			Debug.WriteLine($"Segment [{coord.Latitude}, {coord.Longitude}] dangerous: {isDangerous}");
-
-			return isDangerous;
-		}
-
-		private async Task<List<List<List<double[]>>>> GetDangerousPolygonsAsync(List<Coordinate> coordinates)
-		{
-			var polygons = new List<List<List<double[]>>>();
-
-			foreach (var coord in coordinates)
+			var grid = new List<Coordinate>();
+			for (double lat = minLat; lat <= maxLat; lat += step)
 			{
-				if (await IsSegmentWeatherDangerousAsync(coord))
+				for (double lng = minLng; lng <= maxLng; lng += step)
 				{
-					var polygon = new List<List<double[]>>
-					{
-						new List<double[]>
-						{
-							new[] { coord.Longitude - 0.002, coord.Latitude - 0.002 },
-							new[] { coord.Longitude - 0.002, coord.Latitude + 0.002 },
-							new[] { coord.Longitude + 0.002, coord.Latitude + 0.002 },
-							new[] { coord.Longitude + 0.002, coord.Latitude - 0.002 },
-							new[] { coord.Longitude - 0.002, coord.Latitude - 0.002 } // inchid poligonul
-						}
-					};
-
-					polygons.Add(polygon);
+					grid.Add(new Coordinate { Latitude = lat, Longitude = lng });
 				}
 			}
-
-			return polygons;
+			return grid;
 		}
+
+		public async Task<List<(Coordinate coord, double severity)>> GetWeatherSeveritiesAsync(List<Coordinate> gridPoints)
+		{
+			var tasks = gridPoints.Select(async coord =>
+			{
+				var (isDangerous, severity, description, code) = await weatherService.AnalyzeWeatherAsync(coord);
+				return (coord, severity);
+			});
+			return (await Task.WhenAll(tasks)).ToList();
+		}
+
+		public (double MinLat, double MaxLat, double MinLng, double MaxLng) GetRegionBoundsFromOrders(List<Coordinate> coords)
+		{
+			if (coords == null || !coords.Any())
+				throw new ArgumentException("Lista de coordonate e goală.");
+
+			double minLat = coords.Min(c => c.Latitude);
+			double maxLat = coords.Max(c => c.Latitude);
+			double minLng = coords.Min(c => c.Longitude);
+			double maxLng = coords.Max(c => c.Longitude);
+
+			// Adaug un mic buffer pentru siguranță
+			double buffer = 0.05;
+
+			return (
+				MinLat: minLat - buffer,
+				MaxLat: maxLat + buffer,
+				MinLng: minLng - buffer,
+				MaxLng: maxLng + buffer
+			);
+		}
+	}
+
+	public class AvoidPolygonGeoJson
+	{
+		public string type { get; set; } = "MultiPolygon";
+		public List<List<List<double[]>>> coordinates { get; set; }
 	}
 
 	// DTO pentru rezultatul traseului (folosit pentru transmiterea catre view)
@@ -347,8 +476,20 @@ namespace Licenta_v1.Services
 		public List<SegmentResult> Segments { get; set; }
 		// Lista de OrderIds, in ordinea in care sunt parcurse comenzile (pentru primele n segmente)
 		public List<int> OrderIds { get; set; }
-		// Zonele cu vreme rea
-		public List<List<List<double[]>>> DangerousPolygons { get; set; }
+		// Culorile pentru segmentele de ruta
+		public List<ColoredSegment> ColoredRouteSegments { get; set; }
+		// Poligoanele de evitat (obstacole)
+		public List<List<List<double[]>>>? AvoidPolygons { get; set; }
+		// Descrierea fiecarui poligon de evitat
+		public List<string>? AvoidDescriptions { get; set; }
+	}
+
+	public class ColoredSegment
+	{
+		public List<double[]> Coordinates { get; set; }
+		public double Severity { get; set; }
+		public string WeatherDescription { get; set; }
+		public int WeatherCode { get; set; }
 	}
 
 	public class SegmentResult

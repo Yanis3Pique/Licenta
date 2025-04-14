@@ -22,13 +22,7 @@ var ptvApiKeyEmergency = Env.GetString("PTV_ApiKeyEmergency");
 
 // Add services to the container.
 builder.Services.AddScoped<RoutePlannerService>();
-//builder.Services.AddScoped<RoutePlannerService2>();
 
-//builder.Services.AddSingleton<OrderDeliveryOptimizer>(provider =>
-//{
-//	var scopeFactory = provider.GetRequiredService<IServiceScopeFactory>();
-//	return new OrderDeliveryOptimizer(scopeFactory, openRouteServiceApiKey);
-//});
 builder.Services.AddHttpClient("ApiClient", client =>
 {
 	client.Timeout = TimeSpan.FromSeconds(30); // Set global timeout

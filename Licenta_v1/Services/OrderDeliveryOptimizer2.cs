@@ -433,14 +433,13 @@ namespace Licenta_v1.Services
 						}
 					});
 					batchTasks.Add(Task.WhenAll(tasks));
-					// Reduced delay from 1000 ms to 200 ms
 					await Task.Delay(200);
 				}
 			}
 
 			await Task.WhenAll(batchTasks);
 			await db.SaveChangesAsync();
-			return new List<Order>(); // Return an empty list (the calling code doesn’t use the return value)
+			return new List<Order>();
 		}
 
 		// Fallback in caz ca toate cheile PTV sunt folosite sau daca PTV returneaza eroare
@@ -472,7 +471,7 @@ namespace Licenta_v1.Services
 				$"vehicle[height]={Math.Round(heavyVehicle.HeightMeters * 100)}",
 				$"vehicle[width]={Math.Round(heavyVehicle.WidthMeters * 100)}",
 				$"vehicle[length]={Math.Round(heavyVehicle.LengthMeters * 100)}",
-				$"vehicle[totalPermittedWeight]={Math.Round(heavyVehicle.WeightTons * 1000)}"
+				$"vehicle[totalPermittedWeight]={Math.Round((double)(heavyVehicle.WeightTons * 1000 + heavyVehicle.MaxWeightCapacity))}"
 			};
 
 			var queryString = string.Join("&", queryParams);
@@ -551,7 +550,7 @@ namespace Licenta_v1.Services
 							height = heavyVehicle.HeightMeters,
 							width = heavyVehicle.WidthMeters,
 							length = heavyVehicle.LengthMeters,
-							weight = heavyVehicle.WeightTons * 1000
+							weight = Math.Round((double)(heavyVehicle.WeightTons * 1000 + heavyVehicle.MaxWeightCapacity)),
 						}
 					}
 				}

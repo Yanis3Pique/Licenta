@@ -213,54 +213,327 @@ function watchUserPosition() {
 
 // Preiau ruta optima si configurez marker-ele si afisez segmentului curent
 function fetchRouteAndSetup(deliveryId) {
+    const cacheKey = `routeData_${deliveryId}`;
+    const cachedRaw = localStorage.getItem(cacheKey);
+
+    if (cachedRaw) {
+        const cached = JSON.parse(cachedRaw);
+        const now = Date.now();
+
+        if (now - cached.timestamp < 3600000) { // o ora
+            console.log("Using cached route data (still valid)...");
+            setupRouteDisplay(cached.data);
+            return;
+        } else {
+            console.log("Cached route expired. Fetching new data...");
+            localStorage.removeItem(cacheKey);
+        }
+    }
+
     fetch('/Deliveries/GetOptimalRoute?deliveryId=' + deliveryId)
         .then(response => response.json())
         .then(data => {
+            console.log("API Response:", data);
             if (data.error) {
                 alert("Error: " + data.error);
                 return;
             }
 
-            console.log("Ruta primită de la backend:", data);
-            window.routeCoords = data.coordinates.map(coord => [coord.latitude, coord.longitude]);
-            window.stopIndices = data.stopIndices;
-            window.orderIds = data.orderIds;
-            window.segmentsData = data.segments; // Salvez segmentele pentru acces ulterior
+            const payload = {
+                timestamp: Date.now(),
+                data: data
+            };
 
-            console.log("Coordonate ruta:", window.routeCoords);
-            console.log("stopIndices:", window.stopIndices);
-            console.log("orderIds:", window.orderIds);
-            console.log("Date segmente:", window.segmentsData);
-
-            var headquarterLatLng = window.routeCoords[0];
-            L.marker(headquarterLatLng, {
-                icon: L.icon({
-                    iconUrl: 'https://cdn-icons-png.flaticon.com/512/684/684908.png',
-                    iconSize: [32, 32],
-                    iconAnchor: [16, 32],
-                    popupAnchor: [0, -32]
-                })
-            }).addTo(window.map).bindPopup("<b>Headquarter</b>");
-
-            setupFullscreenControl();
-            displayAllSegments();
-            displayDangerPolygons(data.dangerPolygons);
-
-            function displayDangerPolygons(dangerPolygons) {
-                if (!dangerPolygons || dangerPolygons.length === 0) return;
-
-                dangerPolygons.forEach(polyCoords => {
-                    L.polygon(polyCoords.map(c => [c[1], c[0]]), {
-                        color: 'red',
-                        fillOpacity: 0.3
-                    }).addTo(window.map);
-                });
-            }
+            localStorage.setItem(cacheKey, JSON.stringify(payload));
+            setupRouteDisplay(data);
+            console.log("DATA primit în JS:", data);
+            console.log("AvoidPolygons în data:", data.avoidPolygons);
         })
         .catch(error => {
             console.error("Eroare la preluarea rutei:", error);
         });
 }
+
+const MOCK_MODE = localStorage.getItem("mock_mode") === "true";
+
+document.addEventListener("keydown", function (e) {
+    const key = e.key.toLowerCase();
+
+    // Ctrl + M pentru start la mock mode
+    if (e.ctrlKey && !e.shiftKey && key === "m") {
+        const secret = prompt("Secret question: Who's the GOAT of football?('Name Surname')");
+        if (secret && secret.trim().toLowerCase() === "demba ba") {
+            localStorage.setItem("mock_mode", "true");
+            alert("Mock Mode enabled. Reloading...");
+            location.reload();
+        } else {
+            alert("Wrong answer.");
+        }
+    }
+
+    // Ctrl + Shift + M pentru stop la mock mode
+    if (e.ctrlKey && e.shiftKey && key === "m") {
+        localStorage.removeItem("mock_mode");
+        alert("Mock Mode disabled. Reloading...");
+        location.reload();
+    }
+});
+
+if (MOCK_MODE) {
+    const badge = document.createElement("div");
+    badge.textContent = "MOCK MODE";
+    badge.style.cssText = `
+        position: fixed;
+        top: 10px;
+        right: 10px;
+        background: #ffc107;
+        color: #000;
+        padding: 5px 10px;
+        font-weight: bold;
+        z-index: 9999;
+        border-radius: 5px;
+        box-shadow: 0 0 5px rgba(0,0,0,0.2);
+    `;
+    document.body.appendChild(badge);
+}
+
+function setupRouteDisplay(data) {
+    console.log("Ruta folosita:", data);
+
+    if (MOCK_MODE) {
+        window.routeCoords = [
+            [44.8600, 24.8650],
+            [44.8602, 24.8652],
+            [44.8604, 24.8654],
+            [44.8606, 24.8656],
+            [44.8608, 24.8658]
+        ];
+        window.stopIndices = [0, 4];
+        window.coloredRouteSegments = [
+            {
+                severity: 0.2,
+                coordinates: [
+                    [44.8600, 24.8650],
+                    [44.8602, 24.8652]
+                ]
+            },
+            {
+                severity: 0.4,
+                coordinates: [
+                    [44.8602, 24.8652],
+                    [44.8604, 24.8654]
+                ]
+            },
+            {
+                severity: 0.7,
+                coordinates: [
+                    [44.8604, 24.8654],
+                    [44.8606, 24.8656]
+                ]
+            },
+            {
+                severity: 0.95,
+                coordinates: [
+                    [44.8606, 24.8656],
+                    [44.8608, 24.8658]
+                ]
+            }
+        ];
+        window.orderIds = []; // mock
+        window.segmentsData = [{ severity: 0.5 }];
+        window.map.setView([44.8604, 24.8654], 16);
+    } else {
+        window.routeCoords = data.coordinates.map(coord => [coord.latitude, coord.longitude]);
+        window.stopIndices = data.stopIndices;
+        window.orderIds = data.orderIds;
+        window.segmentsData = data.segments;
+        window.coloredRouteSegments = data.coloredRouteSegments;
+    }
+
+    var headquarterLatLng = window.routeCoords[0];
+    L.marker(headquarterLatLng, {
+        icon: L.icon({
+            iconUrl: 'https://cdn-icons-png.flaticon.com/512/684/684908.png',
+            iconSize: [32, 32],
+            iconAnchor: [16, 32],
+            popupAnchor: [0, -32]
+        })
+    }).addTo(window.map).bindPopup("<b>Headquarter</b>");
+
+    setupFullscreenControl();
+
+    displayAllSegments();
+    displayColoredRouteSegments(window.coloredRouteSegments);
+    displayAvoidPolygons(data.avoidPolygons, data.avoidDescriptions);
+//    displayWeatherPolygons(window.coloredRouteSegments);
+}
+
+function displayWeatherPolygons(coloredSegments, step = 0.03) {
+    if (!coloredSegments || coloredSegments.length === 0) return;
+
+    if (window.weatherPolygonsLayerGroup) {
+        window.map.removeLayer(window.weatherPolygonsLayerGroup);
+    }
+    window.weatherPolygonsLayerGroup = L.featureGroup().addTo(window.map);
+
+    const halfStep = step / 2;
+    const gridUsed = new Set();
+
+    coloredSegments.forEach(segment => {
+        const [a, b] = segment.coordinates;
+
+        const midLat = (a[0] + b[0]) / 2;
+        const midLng = (a[1] + b[1]) / 2;
+
+        const key = getGridKey(midLat, midLng, step);
+        if (gridUsed.has(key)) return;
+        gridUsed.add(key);
+
+        const polygon = L.rectangle([
+            [midLat - halfStep, midLng - halfStep],
+            [midLat + halfStep, midLng + halfStep]
+        ], {
+            color: getSeverityColorRGBA(segment.severity),
+            weight: 5,
+            fillOpacity: 0,
+            dashArray: '3, 3'
+        });
+
+        polygon.bindPopup(`Poligon vreme (sev. max): ${segment.severity}`);
+        polygon.addTo(window.weatherPolygonsLayerGroup);
+    });
+}
+
+function getGridKey(lat, lng, step = 0.0125) {
+    const bucketLat = Math.round(lat / step) * step;
+    const bucketLng = Math.round(lng / step) * step;
+    return `${bucketLat.toFixed(5)},${bucketLng.toFixed(5)}`;
+}
+
+function displayColoredRouteSegments(coloredSegments) {
+    if (!coloredSegments || coloredSegments.length === 0) return;
+
+    if (window.coloredSegmentsLayerGroup) {
+        window.map.removeLayer(window.coloredSegmentsLayerGroup);
+    }
+    window.coloredSegmentsLayerGroup = L.featureGroup().addTo(window.map);
+
+    const segmentStart = window.stopIndices[window.currentSegment];
+    const segmentEnd = window.stopIndices[window.currentSegment + 1];
+    const currentSegmentCoords = window.routeCoords.slice(segmentStart, segmentEnd + 1);
+
+    const coordSet = new Set();
+    for (let i = 0; i < currentSegmentCoords.length - 1; i++) {
+        const a = currentSegmentCoords[i];
+        const b = currentSegmentCoords[i + 1];
+        coordSet.add(`${a[0]},${a[1]}|${b[0]},${b[1]}`);
+        coordSet.add(`${b[0]},${b[1]}|${a[0]},${a[1]}`);
+    }
+
+    coloredSegments.forEach((segment) => {
+        const [a, b] = segment.coordinates;
+        const key = `${a[0]},${a[1]}|${b[0]},${b[1]}`;
+        if (!coordSet.has(key)) return;
+
+        const latlngs = segment.coordinates.map(([lat, lng]) => [lat, lng]);
+        const color = getSeverityColorRGBA(segment.severity);
+        const emoji = getWeatherEmoji(segment.weatherCode);
+        const weatherDesc = (segment.severity === 0 ? "Clear" : (segment.weatherDescription || "unknown"))
+            .replace(/\b\w/g, c => c.toUpperCase());
+
+        const polyline = L.polyline(latlngs, {
+            color: color,
+            weight: 5,
+            opacity: 0.7
+        });
+
+        polyline.bindPopup(`
+            <b>⚠️ Severity:</b> ${segment.severity.toFixed(1)}<br>
+            <b>${emoji} Weather:</b> ${weatherDesc}
+        `);
+
+        polyline.addTo(window.coloredSegmentsLayerGroup);
+    });
+}
+
+function getWeatherEmoji(code) {
+    // Thunderstorm
+    if ([200, 201, 230, 231].includes(code)) return '⛈️🌦️'; // thunderstorm with (light) rain or drizzle
+    if ([202, 232].includes(code)) return '⛈️🌧️'; // heavy thunderstorm with rain/drizzle
+    if ([210, 221].includes(code)) return '🌩️'; // light/ragged thunderstorm
+    if ([211].includes(code)) return '⛈️'; // normal thunderstorm
+    if ([212].includes(code)) return '🌩️⚡'; // heavy thunderstorm
+
+    // Drizzle
+    if ([300, 310].includes(code)) return '🌦️'; // light drizzle
+    if ([301, 311, 321].includes(code)) return '🌧️'; // drizzle
+    if ([302, 312, 314].includes(code)) return '🌧️🌧️'; // heavy drizzle
+    if ([313].includes(code)) return '🌧️🌦️'; // shower rain + drizzle
+
+    // Rain
+    if ([500].includes(code)) return '🌦️'; // light rain
+    if ([501].includes(code)) return '🌧️'; // moderate rain
+    if ([502, 503, 504].includes(code)) return '🌧️🌧️'; // heavy/very/extreme rain
+    if ([511].includes(code)) return '🌧️❄️'; // freezing rain
+    if ([520].includes(code)) return '🌦️'; // light shower rain
+    if ([521].includes(code)) return '🌧️'; // shower rain
+    if ([522, 531].includes(code)) return '🌧️🌧️'; // heavy/ragged shower rain
+
+    // Snow
+    if ([600].includes(code)) return '🌨️'; // light snow
+    if ([601].includes(code)) return '❄️'; // snow
+    if ([602, 622].includes(code)) return '❄️🌨️'; // heavy snow
+    if ([611, 612, 613].includes(code)) return '🌧️❄️'; // sleet
+    if ([615, 616].includes(code)) return '🌧️❄️'; // rain & snow
+    if ([620, 621].includes(code)) return '🌨️'; // shower snow
+
+    // Atmosphere
+    if ([701].includes(code)) return '🌫️'; // mist
+    if ([711].includes(code)) return '🚬'; // smoke
+    if ([721].includes(code)) return '🌁'; // haze
+    if ([731, 751, 761].includes(code)) return '🌪️'; // dust/sand
+    if ([741].includes(code)) return '🌫️'; // fog
+    if ([762].includes(code)) return '🌋'; // volcanic ash
+    if ([771].includes(code)) return '💨'; // squall
+    if ([781].includes(code)) return '🌪️'; // tornado
+
+    // Clear & Clouds
+    if (code === 800) return '☀️'; // clear sky
+    if (code === 801) return '🌤️'; // few clouds
+    if (code === 802) return '⛅'; // scattered clouds
+    if (code === 803) return '🌥️'; // broken clouds
+    if (code === 804) return '☁️'; // overcast clouds
+
+    return '❔'; // unknown
+}
+
+function getSeverityColorRGBA(severity) {
+    if (severity >= 0.9) return 'rgba(188, 65, 250, 0.8)'; // mov
+    if (severity >= 0.7) return 'rgba(255, 65, 65, 0.6)'; // rosu
+    if (severity >= 0.5) return 'rgba(255, 165, 76, 0.5)'; // portocaliu
+    if (severity >= 0.3) return 'rgba(255, 215, 0, 0.9)'; // galben
+    return 'rgba(74, 255, 92, 0.3)'; // verde
+}
+
+function getColorNameFromRGBA(rgba) {
+    switch (rgba) {
+        case 'rgba(188, 65, 250, 0.8)': return 'mov';
+        case 'rgba(255, 65, 65, 0.6)': return 'roșu';
+        case 'rgba(255, 165, 76, 0.5)': return 'portocaliu';
+        case 'rgba(255, 215, 0, 0.9)': return 'galben';
+        case 'rgba(74, 255, 92, 0.3)': return 'verde';
+        default: return 'necunoscut';
+    }
+}
+
+function getContrastingColor(severity) {
+    if (severity >= 0.9) return '#ffffff'; // contrast pe mov inchis
+    if (severity >= 0.7) return '#ffffff'; // contrast pe rosu
+    if (severity >= 0.5) return '#000000'; // contrast pe portocaliu
+    if (severity >= 0.3) return '#000000'; // contrast pe galben
+    return '#003300'; // contrast pe verde
+}
+
 // Configurez controlul fullscreen pentru harta
 function setupFullscreenControl() {
     L.Control.Fullscreen = L.Control.extend({
@@ -394,6 +667,10 @@ function setupMarkFailedButtons() {
     });
 }
 
+function almostEqual(a, b, epsilon = 0.0001) {
+    return Math.abs(a - b) < epsilon;
+}
+
 // Afisez toate segmentele din traseu, evidentiind segmentul curent
 function displayAllSegments() {
     if (window.segmentsLayerGroup) {
@@ -407,15 +684,27 @@ function displayAllSegments() {
         let endIdx = window.stopIndices[i + 1];
         let segmentCoords = window.routeCoords.slice(startIdx, endIdx + 1);
         let isCurrent = (i === window.currentSegment);
-        let segment = window.segmentsData[i];  // Date segment primit de la backend
+        let segment = window.segmentsData[i];
+        if (!segment) {
+            console.warn(`Segment ${i} is undefined. Skipping...`);
+            continue;
+        }
 
-        console.log(`Segment ${i + 1}:`, segment);
-
-        let polylineStyle = isCurrent
-            ? { color: 'blue', weight: 6, opacity: 1 }
-            : segment.isWeatherDangerous
-                ? { color: 'orange', weight: 5, opacity: 0.8, dashArray: '10, 5' }
-                : { color: '#ADD8E6', weight: 3, opacity: 0.6, dashArray: '5, 5' };
+        let polylineStyle;
+        if (isCurrent) {
+            polylineStyle = {
+                color: getSeverityColorRGBA(segment.severity), // doar pt segmentul actual
+                weight: 6,
+                opacity: 1
+            };
+        } else {
+            polylineStyle = {
+                color: '#ADD8E6', // albastru deschis
+                weight: 3,
+                opacity: 0.6,
+                dashArray: '5, 5'
+            };
+        }
 
         let polyline = L.polyline(segmentCoords, polylineStyle).addTo(window.segmentsLayerGroup);
 
@@ -427,11 +716,54 @@ function displayAllSegments() {
                     symbol: L.Symbol.arrowHead({
                         pixelSize: 10,
                         polygon: false,
-                        pathOptions: { stroke: true, color: 'aqua', weight: 2 }
+                        pathOptions: {
+                            stroke: true,
+                            color: getContrastingColor(segment.severity),
+                            weight: 4
+                        }
                     })
                 }]
             }).addTo(window.segmentsLayerGroup);
         }
+
+        if (isCurrent) {
+            const segmentStart = window.stopIndices[i];
+            const segmentEnd = window.stopIndices[i + 1];
+            const currentSegmentCoords = window.routeCoords.slice(segmentStart, segmentEnd + 1);
+
+            const usedColors = new Set();
+
+            window.coloredRouteSegments.forEach((seg, idx) => {
+                const [start, end] = seg.coordinates;
+
+                let matched = false;
+                for (let j = 0; j < currentSegmentCoords.length - 1; j++) {
+                    const a = currentSegmentCoords[j];
+                    const b = currentSegmentCoords[j + 1];
+
+                    const sameSegment =
+                        (almostEqual(a[0], start[0]) && almostEqual(a[1], start[1]) &&
+                            almostEqual(b[0], end[0]) && almostEqual(b[1], end[1])) ||
+                        (almostEqual(a[0], end[0]) && almostEqual(a[1], end[1]) &&
+                            almostEqual(b[0], start[0]) && almostEqual(b[1], start[1]));
+
+                    if (sameSegment) {
+                        usedColors.add(getSeverityColorRGBA(seg.severity));
+                        console.log(
+                            `Subsegment ${j}: (${a[0]}, ${a[1]}) -> (${b[0]}, ${b[1]}) | severity=${seg.severity}`
+                        );
+                        matched = true;
+                        break;
+                    }
+                }
+            });
+
+            console.log(
+                "Culori folosite pentru segmentul curent:",
+                Array.from(usedColors).map(getColorNameFromRGBA)
+            );
+        }
+
     }
 
     window.map.fitBounds(window.segmentsLayerGroup.getBounds(), { padding: [50, 50] });
@@ -473,7 +805,7 @@ function clearRouteSegments() {
     });
 }
 
-// Verific statusul livrarii si sterg segmentele daca livrarea este completa
+// Verific statusul livrarii si sterg segmentele daca livrarea este completa    
 function checkDeliveryStatus() {
     var deliveryStatusElement = document.getElementById("deliveryStatus");
     if (!deliveryStatusElement) {
@@ -491,4 +823,30 @@ function checkDeliveryStatus() {
             }
         }, 200);
     }
+}
+
+function displayAvoidPolygons(avoidPolygonsData, descriptions = []) {
+    console.log("Afișez poligoane:", avoidPolygonsData);
+    if (!avoidPolygonsData || !Array.isArray(avoidPolygonsData)) return;
+
+    const layerGroup = L.featureGroup().addTo(window.map);
+
+    avoidPolygonsData.forEach((polygonGroup, index) => {
+        const polygon = polygonGroup[0]; // GeoJSON
+        const latLngs = polygon.map(coord => [coord[1], coord[0]]); // lat, lng
+
+        const polygonLayer = L.polygon(latLngs, {
+            color: 'black',
+            fillColor: '#ff3333',
+            fillOpacity: 0.6,
+            weight: 2,
+            dashArray: '4, 4'
+        });
+
+        const description = descriptions[index] || "🚧 Avoid zone";
+        polygonLayer.bindPopup(`<b>🚧 Incident:</b> ${description}`);
+        polygonLayer.addTo(layerGroup);
+    });
+
+    window.avoidPolygonsLayer = layerGroup;
 }

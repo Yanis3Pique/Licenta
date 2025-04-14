@@ -377,14 +377,15 @@ namespace Licenta_v1.Controllers
 				}
 
 				stopIndices.Sort(); // Ma asigur ca opririle se fac in ordinea corecta
-
 				return Json(new
 				{
-					coordinates = route.Coordinates,		  // Coordonatele rutei
-					stopIndices = stopIndices,				  // Indicii pentru vizualizarea pas cu pas a opririlor
-					segments = route.Segments,				  // Distanta si Timp pe segment
-					orderIds = route.OrderIds,                // Order IDs in ordinea optimizata
-					dangerPolygons = route.DangerousPolygons  // Poligoanele cu vreme rea
+					coordinates = route.Coordinates,				   // Coordonatele rutei
+					stopIndices = stopIndices,						   // Indicii pentru vizualizarea pas cu pas a opririlor
+					segments = route.Segments,						   // Distanta si Timp pe segment
+					orderIds = route.OrderIds,						   // Order IDs in ordinea optimizata
+					coloredRouteSegments = route.ColoredRouteSegments, // Poligoanele cu vreme rea
+					AvoidPolygons = route.AvoidPolygons,               // Poligoanele de evitat
+					avoidDescriptions = route.AvoidDescriptions		   // Descrierile poligoaelor de evitat
 				});
 			}
 			catch (Exception ex)
@@ -849,6 +850,9 @@ namespace Licenta_v1.Controllers
 					order.Status = OrderStatus.Placed;
 					order.DeliveryId = null;
 					order.DeliverySequence = null;
+					order.EstimatedDeliveryDate = null;
+					order.EstimatedDeliveryInterval = null;
+					order.DeliveredDate = null;
 				}
 			}
 
@@ -1089,6 +1093,50 @@ namespace Licenta_v1.Controllers
 
 			var count = (int)await command.ExecuteScalarAsync();
 			return count > 0;
+		}
+
+		[HttpGet]
+		[Route("api/weather/heatmap")]
+		[Authorize(Roles = "Admin,Dispecer,Sofer")]
+		public async Task<IActionResult> GetWeatherHeatmap()
+		{
+			var user = db.ApplicationUsers.FirstOrDefault(u => u.UserName == User.Identity.Name);
+			if (user == null || user.RegionId == null)
+				return Unauthorized();
+
+			// Iau comenzile din regiunea userului + HQ
+			var regionOrders = db.Orders
+				.Where(o => o.RegionId == user.RegionId && o.Latitude.HasValue && o.Longitude.HasValue)
+				.Select(o => new Coordinate
+				{
+					Latitude = o.Latitude.Value,
+					Longitude = o.Longitude.Value
+				})
+				.ToList();
+
+			var hq = db.Regions
+				.Include(r => r.Headquarters)
+				.First(r => r.Id == user.RegionId)
+				.Headquarters;
+
+			regionOrders.Add(new Coordinate
+			{
+				Latitude = hq.Latitude.Value,
+				Longitude = hq.Longitude.Value
+			});
+
+			// Calculez limitele
+			var bounds = rps.GetRegionBoundsFromOrders(regionOrders);
+			var grid = rps.GenerateGrid(bounds.MinLat, bounds.MaxLat, bounds.MinLng, bounds.MaxLng, 0.05);
+
+			// Calculez severitatea vremii pe grila
+			var weatherData = await rps.GetWeatherSeveritiesAsync(grid);
+
+			var heatmap = weatherData
+				.Select(w => new[] { w.coord.Latitude, w.coord.Longitude, Math.Round(w.severity, 2) })
+				.ToList();
+
+			return Json(heatmap);
 		}
 	}
 }

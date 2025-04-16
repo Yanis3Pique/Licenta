@@ -9,7 +9,7 @@ namespace Licenta_v1.Services
 		private readonly string TomTomAPIKey = Env.GetString("TomTomTrafficIncidentsApiKey");
 		private readonly HttpClient _client = new();
 
-		public async Task<object> GetAvoidPolygonsAsync(double minLat, double minLon, double maxLat, double maxLon)
+		public async Task<(List<AvoidPolygonWithInfo> hardPolygons, List<AvoidPolygonWithInfo> softPolygons)> GetAvoidPolygonsSeparatedAsync(double minLat, double minLon, double maxLat, double maxLon)
 		{
 			string url = $"https://api.tomtom.com/traffic/services/5/incidentDetails" +
 						 $"?key={TomTomAPIKey}" +
@@ -20,44 +20,21 @@ namespace Licenta_v1.Services
 			var httpResponse = await _client.GetAsync(url);
 			var content = await httpResponse.Content.ReadAsStringAsync();
 
-			Debug.WriteLine("RAW INCIDENTS:");
-			Debug.WriteLine(content);
-
 			if (!httpResponse.IsSuccessStatusCode)
 				throw new Exception($"TomTom API error: {httpResponse.StatusCode} - {content}");
 
 			dynamic json = JsonConvert.DeserializeObject(content);
 
-			var polygons = new List<AvoidPolygonWithInfo>();
+			var hardTypes = new HashSet<string> { "LaneClosed", "RoadClosed", "RoadWorks", "Flooding" };
+			var softTypes = new HashSet<string> { "Accident", "Fog", "DangerousConditions", "Rain", "BrokenDownVehicle", "Wind", "Ice", "Jam" };
+
+			var hardPolygons = new List<AvoidPolygonWithInfo>();
+			var softPolygons = new List<AvoidPolygonWithInfo>();
 
 			foreach (var incident in json?.incidents ?? new List<dynamic>())
 			{
 				var iconCategory = (int?)incident?.properties?.iconCategory ?? -1;
 				string mainType = GetIncidentType(iconCategory);
-
-				var events = incident?.properties?.events as IEnumerable<dynamic>;
-				var eventDescriptionsList = (events != null)
-					? events
-						.Select(e => (string?)e?.description)
-						.Where(desc => !string.IsNullOrWhiteSpace(desc))
-						.ToList()
-					: new List<string>();
-
-				string eventDescriptions = eventDescriptionsList.Any()
-					? string.Join("; ", eventDescriptionsList)
-					: null;
-
-				string rawDescription = ((string?)incident?.properties?.description)?.Trim();
-
-				string from = (string?)incident?.properties?.from;
-				string to = (string?)incident?.properties?.to;
-				string roadNumbers = string.Join(", ", (incident?.properties?.roadNumbers as IEnumerable<dynamic> ?? new List<dynamic>()));
-
-				string fallback = $"From: {from}, To: {to}, Road: {roadNumbers}".Trim();
-
-				string finalDescription = $"{SplitCamelCase(mainType)}";
-
-				Debug.WriteLine($"[Incident] Category: {iconCategory} ({mainType}), Events: {eventDescriptions}");
 
 				if (incident?.geometry?.type == "LineString")
 				{
@@ -70,22 +47,22 @@ namespace Licenta_v1.Services
 						var bufferedPolygons = BufferLineToPolygon(coords, 0.00025);
 						foreach (var poly in bufferedPolygons)
 						{
-							polygons.Add(new AvoidPolygonWithInfo
+							var polygonInfo = new AvoidPolygonWithInfo
 							{
 								Coordinates = bufferedPolygons,
-								Description = finalDescription
-							});
+								Description = SplitCamelCase(mainType)
+							};
+
+							if (hardTypes.Contains(mainType))
+								hardPolygons.Add(polygonInfo);
+							else if (softTypes.Contains(mainType))
+								softPolygons.Add(polygonInfo);
 						}
 					}
 				}
 			}
 
-			return new
-			{
-				type = "MultiPolygon",
-				coordinates = polygons.Select(p => p.Coordinates).ToList(),
-				descriptions = polygons.Select(p => p.Description).ToList()
-			};
+			return (hardPolygons, softPolygons);
 		}
 
 		private List<List<double[]>> BufferLineToPolygon(List<double[]> coords, double bufferDistance)

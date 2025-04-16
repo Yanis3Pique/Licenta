@@ -418,42 +418,52 @@ function displayColoredRouteSegments(coloredSegments) {
     }
     window.coloredSegmentsLayerGroup = L.featureGroup().addTo(window.map);
 
-    const segmentStart = window.stopIndices[window.currentSegment];
-    const segmentEnd = window.stopIndices[window.currentSegment + 1];
-    const currentSegmentCoords = window.routeCoords.slice(segmentStart, segmentEnd + 1);
+    const drawnSegments = new Set();
 
-    const coordSet = new Set();
-    for (let i = 0; i < currentSegmentCoords.length - 1; i++) {
-        const a = currentSegmentCoords[i];
-        const b = currentSegmentCoords[i + 1];
-        coordSet.add(`${a[0]},${a[1]}|${b[0]},${b[1]}`);
-        coordSet.add(`${b[0]},${b[1]}|${a[0]},${a[1]}`);
+    function getSortedKey(a, b) {
+        const [p1, p2] = [a, b].sort((x, y) => {
+            if (x[0] !== y[0]) return x[0] - y[0];
+            return x[1] - y[1];
+        });
+        return `${p1[0]},${p1[1]}|${p2[0]},${p2[1]}`;
     }
 
-    coloredSegments.forEach((segment) => {
-        const [a, b] = segment.coordinates;
-        const key = `${a[0]},${a[1]}|${b[0]},${b[1]}`;
-        if (!coordSet.has(key)) return;
+    // Limitam la subsegmentele care apar intre stopIndices[current] si stopIndices[next]
+    const start = window.stopIndices[window.currentSegment];
+    const end = window.stopIndices[window.currentSegment + 1];
+    const segmentCoords = window.routeCoords.slice(start, end + 1);
 
-        const latlngs = segment.coordinates.map(([lat, lng]) => [lat, lng]);
-        const color = getSeverityColorRGBA(segment.severity);
-        const emoji = getWeatherEmoji(segment.weatherCode);
-        const weatherDesc = (segment.severity === 0 ? "Clear" : (segment.weatherDescription || "unknown"))
+    for (let i = 0; i < segmentCoords.length - 1; i++) {
+        const segStart = segmentCoords[i];
+        const segEnd = segmentCoords[i + 1];
+        const segKey = getSortedKey(segStart, segEnd);
+
+        const matching = coloredSegments.find(seg => {
+            const [a, b] = seg.coordinates;
+            return getSortedKey(a, b) === segKey;
+        });
+
+        if (!matching || drawnSegments.has(segKey)) continue;
+        drawnSegments.add(segKey);
+
+        const color = getSeverityColorRGBA(matching.severity);
+        const emoji = getWeatherEmoji(matching.weatherCode);
+        const weatherDesc = (matching.severity === 0 ? "Clear" : (matching.weatherDescription || "unknown"))
             .replace(/\b\w/g, c => c.toUpperCase());
 
-        const polyline = L.polyline(latlngs, {
+        const polyline = L.polyline([segStart, segEnd], {
             color: color,
             weight: 5,
-            opacity: 0.7
+            opacity: 1
         });
 
         polyline.bindPopup(`
-            <b>⚠️ Severity:</b> ${segment.severity.toFixed(1)}<br>
+            <b>⚠️ Severity:</b> ${matching.severity.toFixed(1)}<br>
             <b>${emoji} Weather:</b> ${weatherDesc}
         `);
 
         polyline.addTo(window.coloredSegmentsLayerGroup);
-    });
+    }
 }
 
 function getWeatherEmoji(code) {
@@ -508,20 +518,20 @@ function getWeatherEmoji(code) {
 }
 
 function getSeverityColorRGBA(severity) {
-    if (severity >= 0.9) return 'rgba(188, 65, 250, 0.8)'; // mov
-    if (severity >= 0.7) return 'rgba(255, 65, 65, 0.6)'; // rosu
-    if (severity >= 0.5) return 'rgba(255, 165, 76, 0.5)'; // portocaliu
-    if (severity >= 0.3) return 'rgba(255, 215, 0, 0.9)'; // galben
+    if (severity >= 0.9) return 'rgba(188, 65, 250)'; // mov
+    if (severity >= 0.7) return 'rgba(255, 65, 65)'; // rosu
+    if (severity >= 0.5) return 'rgba(255, 165, 76)'; // portocaliu
+    if (severity >= 0.3) return 'rgba(255, 215, 0)'; // galben
     return 'rgba(74, 255, 92, 0.3)'; // verde
 }
 
 function getColorNameFromRGBA(rgba) {
     switch (rgba) {
-        case 'rgba(188, 65, 250, 0.8)': return 'mov';
-        case 'rgba(255, 65, 65, 0.6)': return 'roșu';
-        case 'rgba(255, 165, 76, 0.5)': return 'portocaliu';
-        case 'rgba(255, 215, 0, 0.9)': return 'galben';
-        case 'rgba(74, 255, 92, 0.3)': return 'verde';
+        case 'rgba(188, 65, 250)': return 'mov';
+        case 'rgba(255, 65, 65)': return 'roșu';
+        case 'rgba(255, 165, 76)': return 'portocaliu';
+        case 'rgba(255, 215, 0)': return 'galben';
+        case 'rgba(74, 255, 92)': return 'verde';
         default: return 'necunoscut';
     }
 }

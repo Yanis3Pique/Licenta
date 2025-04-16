@@ -164,15 +164,22 @@ namespace Licenta_v1.Services
 			}
 
 			object? avoidPolygons = null;
+			List<AvoidPolygonWithInfo> hardPolygons = new();
+			List<AvoidPolygonWithInfo> softPolygons = new();
+
 			try
 			{
 				var obstacleBounds = GetRegionBoundsFromOrders(remainingCoords);
-				avoidPolygons = await obstacleService.GetAvoidPolygonsAsync(
-					obstacleBounds.MinLat,
-					obstacleBounds.MinLng,
-					obstacleBounds.MaxLat,
-					obstacleBounds.MaxLng
+				(hardPolygons, softPolygons) = await obstacleService.GetAvoidPolygonsSeparatedAsync(
+					obstacleBounds.MinLat, obstacleBounds.MinLng, obstacleBounds.MaxLat, obstacleBounds.MaxLng
 				);
+
+				avoidPolygons = new
+				{
+					type = "MultiPolygon",
+					coordinates = hardPolygons.Select(p => p.Coordinates).ToList(),
+					descriptions = hardPolygons.Select(p => p.Description).ToList()
+				};
 			}
 			catch (Exception ex)
 			{
@@ -207,11 +214,94 @@ namespace Licenta_v1.Services
 			var finalJson = JsonConvert.SerializeObject(finalRequestBody);
 			var finalContent = new StringContent(finalJson, Encoding.UTF8, "application/json");
 
-			response = await client.PostAsync(url, finalContent);
-			responseJson = await response.Content.ReadAsStringAsync();
+			try
+			{
+				response = await client.PostAsync(url, finalContent);
+				responseJson = await response.Content.ReadAsStringAsync();
 
-			if (!response.IsSuccessStatusCode)
-				throw new Exception($"ORS failed (final): {response.StatusCode} - {responseJson}");
+				if (!response.IsSuccessStatusCode)
+					throw new Exception($"ORS failed (final): {response.StatusCode} - {responseJson}");
+
+				// Actualizez coordonatele decodificate
+				orsResponse = JsonConvert.DeserializeObject<ORSGeoJsonResponse>(responseJson);
+				if (orsResponse?.features == null || !orsResponse.features.Any())
+					throw new Exception("No route found from OpenRouteService (final).");
+
+				feature = orsResponse.features.First();
+				routeSummary = feature.properties.summary;
+				routeSegments = feature.properties.segments;
+				decodedCoordinates = feature.geometry.coordinates
+					.Select(coord => new Coordinate
+					{
+						Longitude = coord[0],
+						Latitude = coord[1]
+					}).ToList();
+			}
+			catch (Exception ex)
+			{
+				Debug.WriteLine($"Full route with polygons failed. Switching to segment-by-segment fallback... {ex.Message}");
+
+				List<Coordinate> combinedCoords = new();
+				double totalDistance = 0;
+				double totalDuration = 0;
+				var segments = new List<ORSSegment>();
+
+				for (int i = 0; i < coordinates.Count - 1; i++)
+				{
+					var segmentCoords = new List<double[]> { coordinates[i], coordinates[i + 1] };
+
+					var segmentRequest = new
+					{
+						coordinates = segmentCoords,
+						instructions = false,
+						options
+					};
+
+					var segmentJson = JsonConvert.SerializeObject(segmentRequest);
+					var segmentContent = new StringContent(segmentJson, Encoding.UTF8, "application/json");
+
+					var segmentResp = await client.PostAsync(url, segmentContent);
+					var segmentRespJson = await segmentResp.Content.ReadAsStringAsync();
+
+					if (!segmentResp.IsSuccessStatusCode)
+					{
+						Debug.WriteLine($"Segment {i} failed. Retrying without avoid_polygons...");
+
+						// Reincerc fara poligoanele de evitat
+						var fallbackRequest = new { coordinates = segmentCoords, instructions = false };
+						var fallbackJson = JsonConvert.SerializeObject(fallbackRequest);
+						var fallbackContent = new StringContent(fallbackJson, Encoding.UTF8, "application/json");
+
+						segmentResp = await client.PostAsync(url, fallbackContent);
+						segmentRespJson = await segmentResp.Content.ReadAsStringAsync();
+
+						if (!segmentResp.IsSuccessStatusCode)
+							throw new Exception($"Segment {i} failed even without avoid_polygons: {segmentRespJson}");
+					}
+
+					var segResponse = JsonConvert.DeserializeObject<ORSGeoJsonResponse>(segmentRespJson);
+					var segFeature = segResponse?.features?.FirstOrDefault();
+
+					if (segFeature == null)
+						throw new Exception($"Segment {i} response invalid.");
+
+					var segCoords = segFeature.geometry.coordinates.Select(c => new Coordinate { Longitude = c[0], Latitude = c[1] }).ToList();
+					if (combinedCoords.Count > 0 && combinedCoords.Last().Equals(segCoords.First()))
+						segCoords.RemoveAt(0); // Pentru a evita duplicarea
+
+					combinedCoords.AddRange(segCoords);
+					totalDistance += segFeature.properties.summary.distance;
+					totalDuration += segFeature.properties.summary.duration;
+
+					segments.AddRange(segFeature.properties.segments);
+				}
+
+				decodedCoordinates = combinedCoords;
+				routeSummary = new ORSSummary { distance = totalDistance, duration = totalDuration };
+				routeSegments = segments;
+
+				Debug.WriteLine("Segment-by-segment fallback succeeded.");
+			}
 
 			// Actualizez coordonatele decodificate
 			orsResponse = JsonConvert.DeserializeObject<ORSGeoJsonResponse>(responseJson);
@@ -255,6 +345,24 @@ namespace Licenta_v1.Services
 				bool isDangerous = isDangerousResults[i];
 				double penaltyFactor = isDangerous ? 1.2 : 1.0;
 				double segmentDurationAdjusted = segment.duration * penaltyFactor;
+
+				var softZones = softPolygons.Select(p => new NetTopologySuite.Geometries.Polygon(new NetTopologySuite.Geometries.LinearRing(
+					p.Coordinates.First().Select(c => new NetTopologySuite.Geometries.Coordinate(c[0], c[1])).ToArray()
+				))).ToList();
+
+				var segLine = new NetTopologySuite.Geometries.LineString(new[]
+				{
+					new NetTopologySuite.Geometries.Coordinate(segmentMidpoints[i].Longitude, segmentMidpoints[i].Latitude),
+					new NetTopologySuite.Geometries.Coordinate(segmentMidpoints[i].Longitude + 0.00001, segmentMidpoints[i].Latitude + 0.00001)
+				});
+
+				bool isInsideSoft = softZones.Any(p => p.Intersects(segLine));
+
+				if (isInsideSoft)
+				{
+					segmentDurationAdjusted *= 1.2;
+					Debug.WriteLine($"Segment {i} intersects soft zone → time boosted.");
+				}
 
 				adjustedDuration += (segmentDurationAdjusted - segment.duration);
 
@@ -315,6 +423,8 @@ namespace Licenta_v1.Services
 					}
 				}
 
+				//double mockSeverity = 0.55;
+
 				string description = descriptionResults[Math.Min(i, descriptionResults.Length - 1)];
 				int code = codeResults[Math.Min(i, codeResults.Length - 1)];
 
@@ -326,6 +436,7 @@ namespace Licenta_v1.Services
 						new double[] { b.Latitude, b.Longitude }
 					},
 					Severity = maxSeverity,
+					//Severity = mockSeverity,
 					WeatherDescription = description,
 					WeatherCode = code
 				});
@@ -407,8 +518,11 @@ namespace Licenta_v1.Services
 		{
 			return vehicleType switch
 			{
-				VehicleType.HeavyTruck or VehicleType.SmallTruck => "driving-hgv",
-				_ => "driving-car",
+				VehicleType.HeavyTruck => "driving-hgv",
+				VehicleType.SmallTruck => "driving-hgv",
+				VehicleType.Van => "driving-car",
+				VehicleType.Car => "driving-car",
+				_ => "driving-car"
 			};
 		}
 

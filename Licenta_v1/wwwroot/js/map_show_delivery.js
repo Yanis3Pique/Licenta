@@ -448,8 +448,9 @@ function displayColoredRouteSegments(coloredSegments) {
 
         const color = getSeverityColorRGBA(matching.severity);
         const emoji = getWeatherEmoji(matching.weatherCode);
-        const weatherDesc = (matching.severity === 0 ? "Clear" : (matching.weatherDescription || "unknown"))
-            .replace(/\b\w/g, c => c.toUpperCase());
+        //const weatherDesc = (matching.severity === 0 ? "Clear" : (matching.weatherDescription || "unknown"))
+        //    .replace(/\b\w/g, c => c.toUpperCase());
+        const weatherDesc = getFriendlyWeatherDescription(emoji, matching.weatherDescription);
 
         const polyline = L.polyline([segStart, segEnd], {
             color: color,
@@ -458,12 +459,16 @@ function displayColoredRouteSegments(coloredSegments) {
         });
 
         polyline.bindPopup(`
-            <b>⚠️ Severity:</b> ${matching.severity.toFixed(1)}<br>
+            <b>⚠️ Severity:</b> ${getFormattedSeverity(matching.severity)}<br>
             <b>${emoji} Weather:</b> ${weatherDesc}
         `);
 
         polyline.addTo(window.coloredSegmentsLayerGroup);
     }
+}
+
+function getFormattedSeverity(severity) {
+    return severity < 0.001 ? '0' : severity.toFixed(1);
 }
 
 function getWeatherEmoji(code) {
@@ -515,6 +520,37 @@ function getWeatherEmoji(code) {
     if (code === 804) return '☁️'; // overcast clouds
 
     return '❔'; // unknown
+}
+
+function getFriendlyWeatherDescription(emoji, rawDesc) {
+    const mapping = {
+        '⛈️🌦️': 'Thunderstorm with light rain',
+        '⛈️🌧️': 'Heavy thunderstorm with rain',
+        '🌩️': 'Isolated thunderstorm',
+        '⛈️': 'Thunderstorm',
+        '🌩️⚡': 'Severe thunderstorm',
+        '🌧️': 'Rainy weather',
+        '🌦️': 'Light rain or drizzle',
+        '🌧️🌧️': 'Heavy rain',
+        '🌨️': 'Snowfall',
+        '❄️': 'Moderate snow',
+        '❄️🌨️': 'Heavy snowstorm',
+        '🌧️❄️': 'Mixed rain and snow',
+        '🌫️': 'Foggy or misty',
+        '🌪️': 'Strong winds or tornado',
+        '☀️': 'Clear skies',
+        '🌤️': 'Mostly sunny',
+        '⛅': 'Partly cloudy',
+        '🌥️': 'Mostly cloudy',
+        '☁️': 'Overcast',
+        '🚬': 'Smoky air',
+        '🌁': 'Hazy',
+        '🌋': 'Volcanic ash',
+        '💨': 'Strong gusts'
+    };
+
+    const fallback = rawDesc || "Unknown";
+    return mapping[emoji] ? mapping[emoji] : fallback.replace(/\b\w/g, c => c.toUpperCase());
 }
 
 function getSeverityColorRGBA(severity) {

@@ -335,10 +335,10 @@ namespace Licenta_v1.Controllers
 
 			try
 			{
-				// 1️⃣ ask your service for the route (which may include some FailedOrderIds)
+				// Cer ruta de la ORS
 				var route = await rps.CalculateOptimalRouteAsync(delivery);
 
-				// 2️⃣ persist any automatically‑dropped stops as FailedDelivery
+				// Daca au fost comenzi care nu pots fi livrate, le marchez ca FailedDelivery
 				if (route.FailedOrderIds?.Count > 0)
 				{
 					foreach (var oid in route.FailedOrderIds)
@@ -353,7 +353,6 @@ namespace Licenta_v1.Controllers
 					await db.SaveChangesAsync();
 				}
 
-				// build your stopIndices exactly as before…
 				var stopLocations = new List<(double Latitude, double Longitude)>
 				{
 					(delivery.Vehicle.Region.Headquarters.Latitude ?? 0,
@@ -381,7 +380,7 @@ namespace Licenta_v1.Controllers
 					stopIndices.Add(route.Coordinates.Count - 1);
 				stopIndices.Sort();
 
-				// 3️⃣ return **all** the original properties **plus** the FailedOrderIds
+				// Returnez un JSON cu coordonatele, segmentele si ordinea comenzilor
 				return Json(new
 				{
 					coordinates = route.Coordinates,

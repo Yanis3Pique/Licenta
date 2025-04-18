@@ -20,8 +20,8 @@ namespace Licenta_v1.Services
 		{
 			string key = $"{coord.Latitude:F4},{coord.Longitude:F4}";
 			var now = DateTime.UtcNow;
-			//var cacheDuration = TimeSpan.FromHours(1);
-			var cacheDuration = TimeSpan.Zero;
+			var cacheDuration = TimeSpan.FromHours(1);
+			//var cacheDuration = TimeSpan.Zero;
 
 			if (cache.TryGetValue(key, out var cached) && now - cached.timestamp < cacheDuration)
 				return (cached.isDangerous, cached.severity, cached.description, cached.code);
@@ -49,13 +49,13 @@ namespace Licenta_v1.Services
 		{
 			double severity = 0.0;
 
-			// Codul meteo (bazat pe categorie)
+			// Codul meteo
 			severity += GetCodeSeverity(code) * 0.6;
 
-			// Contributia vântului (normalizată 0..1)
+			// Efectele vantului (normalizate 0 - 1)
 			severity += NormalizeWindSeverity(wind) * 0.3;
 
-			// Bonus pentru vizibilitate redusa (ceata, fum etc)
+			// Bonus pentru vizibilitate redusa (ceata, fum, etc)
 			if (IsLowVisibility(code))
 				severity += 0.1;
 

@@ -9,7 +9,6 @@ function loadFailedOrderIds() {
 
 // Functia principala de initializare
 function initApp() {
-    // 1) read HQ coords
     const hqLat = parseFloat(document.getElementById("headquarterLat")?.value);
     const hqLng = parseFloat(document.getElementById("headquarterLng")?.value);
     if (isNaN(hqLat) || isNaN(hqLng)) {
@@ -17,13 +16,11 @@ function initApp() {
         return;
     }
 
-    // 3) now, if I’m *not* a driver, just stop here (HQ + maybe non‑driver orders)
     if (!isDriver()) {
         initMapForNonDriver();
         return;
     }
 
-    // 2) always spin up the map & draw HQ
     window.map = L.map('map', { zoomControl: true }).setView([hqLat, hqLng], 13);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '© OpenStreetMap contributors'
@@ -37,21 +34,20 @@ function initApp() {
         .addTo(window.map)
         .bindPopup("<b>Headquarter</b>");
 
-    // 4) I am a driver, but if there are *no* orders at all, don’t try to fetch a route
+    // Daca n-am comenzi, nu incerc sa fac ruta
     const ordersData = loadOrders();
     if (!ordersData || ordersData.length === 0) {
         console.warn("Nu exista comenzi disponibile → afișez doar HQ.");
         return;   // map+HQ is already on screen
     }
 
-    // 5) filter out invalid coords
+    // Scot comenzile care nu au coordonate valide
     const allWithCoords = filterOrders(ordersData);
     if (allWithCoords.length === 0) {
         console.warn("Nu exista comenzi cu coordonate valide → afișez doar HQ.");
         return;
     }
 
-    // 6) …and only *then* pick up your normal “driver + orders” flow
     window.allOrders = allWithCoords;
     const deliveryId = getDeliveryId();
     window.currentSegment = parseInt(localStorage.getItem("currentSegment_" + deliveryId) || "0", 10);
@@ -63,7 +59,6 @@ function initApp() {
     setTimeout(checkDeliveryStatus, 500);
 }
 
-// Verific daca utilizatorul este sofer (valorile din input-ul hidden "isDriver")
 function isDriver() {
     var isDriverElement = document.getElementById("isDriver");
     return isDriverElement ? (isDriverElement.value === "true") : false;
@@ -161,11 +156,10 @@ function initMapForNonDriver() {
 
     const orders = loadOrders() || [];
 
-    // In case you want to preload backend-provided failed orders here too:
     window.failedOrderIds = new Set(loadFailedOrderIds());
     window.allOrders = orders;
 
-    drawOrderMarkers(orders); // ✅ reuse the driver-side logic
+    drawOrderMarkers(orders);
 }
 
 // Preiau deliveryId-ul din input-ul hidden
@@ -268,15 +262,15 @@ async function fetchRouteAndSetup(deliveryId, forceRefresh = false) {
             try {
                 const cached = JSON.parse(cachedRaw);
                 if (now - cached.timestamp < 3600000) {
-                    console.log("✅ Using cached route data");
+                    console.log("Using cached route data");
                     setupRouteDisplay(cached.data);
                     return;
                 } else {
-                    console.log("🕒 Cached route expired");
+                    console.log("Cached route expired");
                     localStorage.removeItem(cacheKey);
                 }
             } catch (e) {
-                console.warn("⚠️ Failed to parse cached route:", e);
+                console.warn("Failed to parse cached route:", e);
                 localStorage.removeItem(cacheKey);
             }
         }
@@ -303,9 +297,9 @@ async function fetchRouteAndSetup(deliveryId, forceRefresh = false) {
 
         setupRouteDisplay(data);
 
-        console.log("✅ Route data loaded from server");
+        console.log("Route data loaded from server");
     } catch (err) {
-        console.error("❌ Eroare la preluarea rutei:", err);
+        console.error("Eroare la preluarea rutei:", err);
     }
 }
 
@@ -353,17 +347,17 @@ if (MOCK_MODE) {
 }
 
 function setupRouteDisplay(data) {
-    console.log("📍 [setupRouteDisplay] Starting...");
+    console.log("[setupRouteDisplay] Starting...");
 
-        console.log("→ rawCoordinates.length:", (data.rawCoordinates || data.coordinates).length);
-        console.log("→ finalCoordinates.length:", data.coordinates.length);
-        console.log("→ stopIndices:", data.stopIndices);
-        console.log("→ orderIds:", data.orderIds);
-        console.log("→ segmentsData (len):", data.segments.length, data.segments);
-        console.log("→ coloredRouteSegments (len):", data.coloredRouteSegments.length, data.coloredRouteSegments);
-        console.log("→ failedOrderIds:", data.failedOrderIds);
+    console.log("rawCoordinates.length:", (data.rawCoordinates || data.coordinates).length);
+    console.log("finalCoordinates.length:", data.coordinates.length);
+    console.log("stopIndices:", data.stopIndices);
+    console.log("orderIds:", data.orderIds);
+    console.log("segmentsData (len):", data.segments.length, data.segments);
+    console.log("coloredRouteSegments (len):", data.coloredRouteSegments.length, data.coloredRouteSegments);
+    console.log("failedOrderIds:", data.failedOrderIds);
 
-    // Setup map panes
+    // Toggle pentru vizualizarea rutei originale si optimizate
     if (!map.getPane('optimizedRoutePane')) {
         map.createPane('optimizedRoutePane');
         map.getPane('optimizedRoutePane').style.zIndex = 450;
@@ -373,13 +367,11 @@ function setupRouteDisplay(data) {
         map.getPane('originalRoutePane').style.zIndex = 440;
     }
 
-    // Convert coordinates to Leaflet-friendly format
     const rawCoords = (data.rawCoordinates || data.coordinates)
         .map(c => [c.latitude, c.longitude]);
     const finalCoords = data.coordinates
         .map(c => [c.latitude, c.longitude]);
 
-    // Clean old layers
     ['initialRouteLayer', 'finalRouteLayer', 'routeControl', 'routeLegend'].forEach(key => {
         if (window[key]) {
             if (key.endsWith('Layer')) map.removeLayer(window[key]);
@@ -388,7 +380,6 @@ function setupRouteDisplay(data) {
         }
     });
 
-    // Create polylines
     window.initialRouteLayer = L.polyline(rawCoords, {
         dashArray: '8,6', color: '#999', weight: 4, opacity: 0.9, pane: 'originalRoutePane'
     });
@@ -431,7 +422,6 @@ function setupRouteDisplay(data) {
 
     window.layerToggleControl.addTo(map);
 
-    // wire them up
     document.getElementById('toggleOriginal').addEventListener('change', e => {
         if (e.target.checked) initialRouteLayer.addTo(map);
         else map.removeLayer(initialRouteLayer);
@@ -441,11 +431,10 @@ function setupRouteDisplay(data) {
         else map.removeLayer(finalRouteLayer);
     });
 
-    // (optionally start with both on)
     document.getElementById('toggleOriginal').checked = false;
     document.getElementById('toggleOptimized').checked = false;
 
-    // 2) bottom‐left: severity legend
+    // Legenda cu severitatea vremii de-a lungul rutei
     window.severityLegend = L.control({ position: 'bottomleft' });
     window.severityLegend.onAdd = function (map) {
         const grades = [0, 0.3, 0.5, 0.7, 0.9];
@@ -467,7 +456,6 @@ function setupRouteDisplay(data) {
     };
     window.severityLegend.addTo(map);
 
-    // Bind data to window for use throughout the app
     window.routeCoords = finalCoords;
     window.stopIndices = data.stopIndices;
     window.orderIds = data.orderIds;
@@ -475,24 +463,21 @@ function setupRouteDisplay(data) {
     window.coloredRouteSegments = data.coloredRouteSegments;
     window.failedOrderIds = new Set(data.failedOrderIds || []);
 
-    // Ensure currentSegment is valid
     const maxSeg = window.stopIndices.length - 2;
 
-    console.log("📍 [setupRouteDisplay] currentSegment before skip check:", window.currentSegment);
-    console.log("🛑 [setupRouteDisplay] failedOrderIds =", [...window.failedOrderIds]);
-    console.log("🧾 [setupRouteDisplay] orderIds =", window.orderIds);
+    console.log("[setupRouteDisplay] currentSegment before skip check:", window.currentSegment);
+    console.log("[setupRouteDisplay] failedOrderIds =", [...window.failedOrderIds]);
+    console.log("[setupRouteDisplay] orderIds =", window.orderIds);
 
-    // 1) grab the flag _before_ you clear it
     const manualAdvance = window._justAdvancedManually;
-    // 2) immediately reset it for the next run
     window._justAdvancedManually = false;
 
     if (!manualAdvance) {
-        // ← only when this was *not* a manual advance do we auto‑skip failed orders
+        // Doar cand nu e un avans manual, sar comanda curenta
         const maxSeg = window.stopIndices.length - 2;
 
         if (window.currentSegment > maxSeg) {
-            console.warn("⚠️ currentSegment > maxSeg → resetting to maxSeg");
+            console.warn("currentSegment > maxSeg → resetting to maxSeg");
             window.currentSegment = maxSeg;
         }
 
@@ -500,25 +485,24 @@ function setupRouteDisplay(data) {
             window.currentSegment < window.orderIds.length &&
             window.failedOrderIds.has(window.orderIds[window.currentSegment])
         ) {
-            console.warn("🚫 Skipping failed orderId:", window.orderIds[window.currentSegment]);
+            console.warn("Skipping failed orderId:", window.orderIds[window.currentSegment]);
             window.currentSegment++;
         }
 
         if (window.currentSegment > maxSeg) {
-            console.warn("⚠️ After skipping, currentSegment > maxSeg → resetting to maxSeg");
+            console.warn("After skipping, currentSegment > maxSeg → resetting to maxSeg");
             window.currentSegment = maxSeg;
         }
     } else {
-        console.log("✅ Skipping segment validation (manual advance was just triggered)");
+        console.log("Skipping segment validation (manual advance was just triggered)");
     }
 
-    // Invoke helpers
     setupFullscreenControl();
     displayAllSegments();
     //displayColoredRouteSegments(data.coloredRouteSegments);
     displayAvoidPolygons(data.avoidPolygons, data.avoidDescriptions);
     drawOrderMarkers(window.allOrders || []);
-//    displayWeatherPolygons(data.coloredRouteSegments);
+    //displayWeatherPolygons(data.coloredRouteSegments);
 }
 
 function displayWeatherPolygons(coloredSegments, step = 0.03) {
@@ -552,7 +536,7 @@ function displayWeatherPolygons(coloredSegments, step = 0.03) {
             dashArray: '3, 3'
         });
 
-        polygon.bindPopup(`Poligon vreme (sev. max): ${segment.severity}`);
+        polygon.bindPopup(`Polygon weather (max value): ${segment.severity}`);
         polygon.addTo(window.weatherPolygonsLayerGroup);
     });
 }
@@ -726,11 +710,12 @@ function getColorNameFromRGBA(rgba) {
 }
 
 function getContrastingColor(severity) {
-    if (severity >= 0.9) return '#000000'; // contrast pe mov inchis
-    if (severity >= 0.7) return '#000000'; // contrast pe rosu
-    if (severity >= 0.5) return '#000000'; // contrast pe portocaliu
-    if (severity >= 0.3) return '#000000'; // contrast pe galben
-    return '#003300'; // contrast pe verde
+    //if (severity >= 0.9) return '#000000'; // contrast pe mov inchis
+    //if (severity >= 0.7) return '#000000'; // contrast pe rosu
+    //if (severity >= 0.5) return '#000000'; // contrast pe portocaliu
+    //if (severity >= 0.3) return '#000000'; // contrast pe galben
+    //return '#000000'; // contrast pe verde
+    return '#000000'; // default negru
 }
 
 // Configurez controlul fullscreen pentru harta
@@ -815,10 +800,10 @@ function setupMarkDeliveredButtons() {
                         console.warn("Mark-delivered response not JSON or success=false.");
                     }
 
-                    // 🟢 Move to next segment BEFORE refresh
+                    // Ma mut la segmentul urmator de ruta
                     if (deliveryId) {
                         window._justAdvancedManually = true;
-                        advanceRoute(); // this will update localStorage
+                        advanceRoute();
                     }
 
                     location.reload();
@@ -832,24 +817,20 @@ function setupMarkDeliveredButtons() {
 }
 
 function refreshRoute(deliveryId) {
-    console.log("🚚 [refreshRoute] Triggered with deliveryId:", deliveryId);
+    console.log("[refreshRoute] Triggered with deliveryId:", deliveryId);
 
     const cacheKey = `routeData_${deliveryId}`;
-    localStorage.removeItem(cacheKey); // Clear cache
+    localStorage.removeItem(cacheKey);
 
-    // ✅ Set the flag BEFORE advancing
     window._justAdvancedManually = true;
 
-    // Advance first
     advanceRoute();
 
-    // Then fetch and re-setup map (fresh)
     return fetchRouteAndSetup(deliveryId, true)
         .then(() => {
-            // ✅ Redraw after new data loaded
             displayAllSegments();
         })
-        .catch(err => console.error("❌ Error fetching updated route", err));
+        .catch(err => console.error("Error fetching updated route", err));
 }
 
 // Configurez listener pentru butoanele "Cannot Deliver"
@@ -876,17 +857,16 @@ function setupMarkFailedButtons() {
                         console.warn("Mark-failed response not JSON or success=false.");
                     }
 
-                    // 🟢 Move to next segment BEFORE refresh
                     if (deliveryId) {
                         window._justAdvancedManually = true;
-                        advanceRoute(); // updates localStorage
+                        advanceRoute();
                     }
 
                     location.reload();
                 })
                 .catch(error => {
                     console.error("Error marking as undeliverable:", error);
-                    location.reload(); // fallback anyway
+                    location.reload();
                 });
         });
     });
@@ -897,7 +877,7 @@ function almostEqual(a, b, epsilon = 0.0001) {
 }
 
 function displayAllSegments() {
-    console.log("🔸 displayAllSegments 🔸");
+    console.log("displayAllSegments");
 
     if (window.segmentsLayerGroup) {
         window.map.removeLayer(window.segmentsLayerGroup);
@@ -910,15 +890,12 @@ function displayAllSegments() {
     const failedSet = new Set(window.failedOrderIds || []);
     const maxSeg = stopIndices.length - 2;
 
-    // decide startIdx/endIdx
+    // Daca am un segment de livrare invalid, sar peste el
     let startIdx, endIdx;
     if (
-        // we’re on the last segment AND
         segmentIndex === maxSeg &&
-        // the *previous* order was real AND failed
         failedSet.has(window.orderIds[segmentIndex - 1])
     ) {
-        // fuse the return leg: start from the end of the stop before the failed one
         startIdx = stopIndices[segmentIndex - 1];
         console.log("→ Skipped middle, fusing return: startIdx =", startIdx);
     } else {
@@ -939,10 +916,8 @@ function displayAllSegments() {
         return;
     }
 
-    // draw the arrowed line, coloured by the max severity over this slice
     const colored = window.coloredRouteSegments || [];
     let maxSeverity = 0;
-    // each sub‐segment in coloredRouteSegments corresponds to coords[i]→coords[i+1]
     for (let i = startIdx; i < endIdx; i++) {
         const cs = colored[i];
         if (cs && cs.severity > maxSeverity) maxSeverity = cs.severity;
@@ -970,7 +945,6 @@ function displayAllSegments() {
         }]
     }).addTo(window.segmentsLayerGroup);
 
-    // — popup info for the whole segment, same as in displayColoredRouteSegments()
     let worst = null;
     for (let i = startIdx; i < endIdx; i++) {
         const cs = window.coloredRouteSegments[i];
@@ -997,13 +971,13 @@ function displayAllSegments() {
 // Avansez la urmatorul segment din ruta livrarii
 function advanceRoute() {
     const maxSeg = window.stopIndices.length - 2;
-    console.log("🔁 [advanceRoute] currentSegment before advance:", window.currentSegment);
-    console.log("🔢 [advanceRoute] maxSeg:", maxSeg);
+    console.log("[advanceRoute] currentSegment before advance:", window.currentSegment);
+    console.log("[advanceRoute] maxSeg:", maxSeg);
 
     window.currentSegment = Math.min(window.currentSegment + 1, maxSeg);
     localStorage.setItem('currentSegment_' + getDeliveryId(), window.currentSegment);
 
-    console.log("✅ [advanceRoute] advanced to segment:", window.currentSegment);
+    console.log("[advanceRoute] advanced to segment:", window.currentSegment);
 
     window._justAdvancedManually = true;
     displayAllSegments();
@@ -1054,7 +1028,7 @@ function checkDeliveryStatus() {
 }
 
 function displayAvoidPolygons(avoidPolygonsData, descriptions = []) {
-    console.log("Afișez poligoane:", avoidPolygonsData);
+    console.log("Afisez poligoane:", avoidPolygonsData);
     if (!avoidPolygonsData || !Array.isArray(avoidPolygonsData)) return;
 
     const layerGroup = L.featureGroup().addTo(window.map);

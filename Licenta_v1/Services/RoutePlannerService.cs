@@ -43,15 +43,14 @@ namespace Licenta_v1.Services
 			};
 
 			// Sortez comenzile conform proprietatii DeliverySequence
-			// 1) sort the stops in their delivery‐sequence
 			var orderedStops = delivery.Orders
 									   .OrderBy(o => o.DeliverySequence)
 									   .ToList();
 
-			// 2) keep a copy of all of those IDs (we’ll re‑use them at the very end)
+			// Pastrez ID-urile comenzilor in ordinea initiala
 			var originalOrderIds = orderedStops.Select(o => o.Id).ToList();
 
-			// 3) start our failed list with any orders already flagged in the DB
+			// Pastrez ID-urile comenzilor care nu pot fi livrate
 			var failedOrderIds = new HashSet<int>();
 			failedOrderIds = delivery.Orders
 								.Where(o => o.Status == OrderStatus.FailedDelivery)
@@ -137,15 +136,13 @@ namespace Licenta_v1.Services
 				}).ToList();
 
 			var stopCoords = new List<Coordinate>();
-			//  1) start at HQ
+			// HQ - comenzi - HQ
 			stopCoords.Add(start);
-			//  2) each ordered stop (in DeliverySequence order)
 			stopCoords.AddRange(orderedStops.Select(o => new Coordinate
 			{
 				Latitude = o.Latitude.Value,
 				Longitude = o.Longitude.Value
 			}));
-			//  3) return to HQ
 			stopCoords.Add(start);
 
 			var rawCoordinates = decodedCoordinates.ToList();
@@ -249,7 +246,6 @@ namespace Licenta_v1.Services
 
 			while (true)
 			{
-				// build request
 				var loopRequestBody = new
 				{
 					coordinates,
@@ -259,11 +255,9 @@ namespace Licenta_v1.Services
 				var loopJson = JsonConvert.SerializeObject(loopRequestBody);
 				var loopContent = new StringContent(loopJson, Encoding.UTF8, "application/json");
 
-				// send it
 				finalResponse = await client.PostAsync(url, loopContent);
 				finalResponseJson = await finalResponse.Content.ReadAsStringAsync();
 
-				// if 200 OK, try to parse features
 				if (finalResponse.IsSuccessStatusCode)
 				{
 					finalOrsResponse = JsonConvert
@@ -272,24 +266,21 @@ namespace Licenta_v1.Services
 
 					if (finalOrsResponse.features?.Any() == true)
 					{
-						// Success!  Break out.
 						break;
 					}
 				}
 
-				// otherwise parse the ORS “not found” error from the **new** finalResponseJson
 				var err = JObject.Parse(finalResponseJson)?["error"];
 				var errCode = err?["code"]?.Value<int>();
 				var errMsg = err?["message"]?.Value<string>() ?? "";
 
+				// Daca am un Delivery cu coordonate de livrare invalide il sterg si reincerc
 				if (errCode == 2009)
 				{
-					// extract bad index, mark that order failed, drop it and retry…
 					var m = Regex.Match(errMsg, @"points\s+(\d+)\s+\(");
 					if (m.Success && int.TryParse(m.Groups[1].Value, out var badIdx)
 						&& badIdx > 0 && badIdx < coordinates.Count - 1)
 					{
-						// persist failure…
 						var dropped = orderedStops[badIdx - 1];
 						failedOrderIds.Add(dropped.Id);
 						using var scope = scopeFactory.CreateScope();
@@ -301,20 +292,18 @@ namespace Licenta_v1.Services
 							await db.SaveChangesAsync();
 						}
 
-						// remove that stop and loop again
 						coordinates.RemoveAt(badIdx);
 						orderedStops.RemoveAt(badIdx - 1);
 						continue;
 					}
 				}
 
-				// any other error is fatal
 				throw new Exception(
 					$"ORS final failed: {finalResponse.StatusCode} – {finalResponseJson}"
 				);
 			}
 
-			// 🎉 at this point finalOrsResponse.features[0] is your real route
+			// Iau ruta finala, optimizata in functie de obstacole
 			var finalFeature = finalOrsResponse.features[0];
 			decodedCoordinates = finalFeature.geometry.coordinates
 									   .Select(c => new Coordinate { Longitude = c[0], Latitude = c[1] })
@@ -466,7 +455,6 @@ namespace Licenta_v1.Services
 
 			var descriptions = avoidPolygonJObj?["descriptions"]?.ToObject<List<string>>() ?? new List<string>();
 
-			// build the final stop‐list from the original IDs + HQ(0)
 			var resultOrderIds = originalOrderIds.ToList();
 			resultOrderIds.Add(0);
 
@@ -584,7 +572,7 @@ namespace Licenta_v1.Services
 			double minLng = coords.Min(c => c.Longitude);
 			double maxLng = coords.Max(c => c.Longitude);
 
-			// Adaug un mic buffer pentru siguranță
+			// Mic buffer pt siguranta
 			double buffer = 0.05;
 
 			return (
@@ -641,7 +629,7 @@ namespace Licenta_v1.Services
 	{
 		public double Distance { get; set; }
 		public double Duration { get; set; }
-		public bool IsWeatherDangerous { get; set; } // Nou adaugat
+		public bool IsWeatherDangerous { get; set; }
 	}
 
 	public class Coordinate

@@ -308,7 +308,7 @@ namespace Licenta_v1.Services
 		private async Task<HttpResponseMessage> SendApiRequestWithRetriesAsync(string requestUrl, HttpContent content, int maxRetries = 3)
 		{
 			int retry = 0;
-			int delay = 5000; // 5 seconds
+			int delay = 5000; // 5 secunde
 			HttpResponseMessage response = null;
 
 			while (retry < maxRetries)
@@ -380,7 +380,7 @@ namespace Licenta_v1.Services
 
 			foreach (var heavyVehicle in heavyVehicles)
 			{
-				// Only process orders not manually restricted for this vehicle
+				// Doar comenzile care nu au restrictii manuale pentru acest vehicul
 				var ordersToCheck = orders.Where(o =>
 					!db.OrderVehicleRestrictions.Any(r => r.OrderId == o.Id && r.VehicleId == heavyVehicle.Id && r.Source == "Manual")
 				).ToList();
@@ -410,7 +410,7 @@ namespace Licenta_v1.Services
 							ptvCheckCache[cacheKey] = accessible;
 						}
 
-						// Always persist the result in the database
+						// Pastrez rezultatul in baza de date
 						var existingRecord = db.OrderVehicleRestrictions
 							.FirstOrDefault(r => r.OrderId == order.Id && r.VehicleId == heavyVehicle.Id && r.Source == "PTV");
 
@@ -1061,11 +1061,11 @@ namespace Licenta_v1.Services
 				Status = deliveryStatus
 			};
 
-			// 1️⃣ Create & save the Delivery so it has an Id
+			// Salvez Delivery-ul in baza de date ca sa am acces la Id
 			db.Deliveries.Add(delivery);
 			await db.SaveChangesAsync();
 
-			// 2️⃣ Update orders and vehicle status
+			// Actualizez comenzile cu DeliveryId-ul si DeliverySequence
 			for (int i = 0; i < orderedOrders.Count; i++)
 			{
 				orderedOrders[i].DeliverySequence = i;
@@ -1079,7 +1079,7 @@ namespace Licenta_v1.Services
 
 			await db.SaveChangesAsync();
 
-			// 3️⃣ Re‑fetch the Delivery with all its navigations
+			// Reselectez din baza de date Delivery-ul pentru a avea acces la HQ
 			var fullDelivery = await db.Deliveries
 				.Include(d => d.Vehicle)
 				   .ThenInclude(v => v.Region)
@@ -1090,12 +1090,11 @@ namespace Licenta_v1.Services
 			if (fullDelivery == null)
 				throw new InvalidOperationException($"Delivery #{delivery.Id} not found after save!");
 
-			// 4️⃣ Now call the planner on the fully populated object
+
 			using var routeScope = scopeFactory.CreateScope();
 			var routePlanner = routeScope.ServiceProvider.GetRequiredService<RoutePlannerService>();
 			var liveRoute = await routePlanner.CalculateOptimalRouteAsync(fullDelivery);
 
-			// 5️⃣ Overwrite estimates and persist
 			delivery.DistanceEstimated = liveRoute.Distance / 1000.0;      // km  
 			delivery.TimeTakenForDelivery = liveRoute.Duration / 3600.0;      // hours  
 
@@ -1107,7 +1106,6 @@ namespace Licenta_v1.Services
 			db.Deliveries.Update(delivery);
 			await db.SaveChangesAsync();
 
-			// 6️⃣ Finally record the RouteHistory
 			var routeHistory = new RouteHistory
 			{
 				DeliveryId = delivery.Id,

@@ -766,34 +766,38 @@ function setupZoomControlListeners() {
 
 // Configurez listener pentru butoanele "Mark as Delivered"
 function setupMarkDeliveredButtons() {
-    const deliveryId = getDeliveryId();
-    if (!deliveryId) return;
-
     document.querySelectorAll(".mark-delivered-btn").forEach(button => {
         button.addEventListener("click", function (e) {
             e.preventDefault();
+
             const form = this.closest("form");
             const formData = new FormData(form);
+
+            const deliveryId = getDeliveryId();
 
             fetch(form.action, {
                 method: form.method,
                 body: formData
             })
-                // try to parse JSON, but don’t block if it isn’t JSON
                 .then(response => response.json().catch(() => null))
                 .then(data => {
                     if (data && data.success) {
-                        console.log("Order marked as delivered (JSON).");
+                        console.log("Order marked as delivered.");
                     } else {
-                        console.warn("Mark‑delivered response not JSON or success=false; continuing anyway.");
+                        console.warn("Mark-delivered response not JSON or success=false.");
                     }
-                    // always advance & refresh the route
-                    return refreshRoute(deliveryId);
+
+                    // 🟢 Move to next segment BEFORE refresh
+                    if (deliveryId) {
+                        window._justAdvancedManually = true;
+                        advanceRoute(); // this will update localStorage
+                    }
+
+                    location.reload();
                 })
                 .catch(error => {
                     console.error("Error marking as delivered:", error);
-                    // on error, still try to advance & refresh
-                    return refreshRoute(deliveryId);
+                    location.reload();
                 });
         });
     });
@@ -813,6 +817,10 @@ function refreshRoute(deliveryId) {
 
     // Then fetch and re-setup map (fresh)
     return fetchRouteAndSetup(deliveryId, true)
+        .then(() => {
+            // ✅ Redraw after new data loaded
+            displayAllSegments();
+        })
         .catch(err => console.error("❌ Error fetching updated route", err));
 }
 

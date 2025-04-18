@@ -196,7 +196,25 @@
         }
     </div>
 
-    <input type="hidden" id="ordersData" value='@Html.Raw(Json.Serialize(Model.Orders.Select(o => new { o.Latitude, o.Longitude, o.Address, o.Id })))' />
+    <input type="hidden" 
+        id="ordersData" 
+        value='@Html.Raw(
+            Json.Serialize(
+                Model.Orders
+                    .Select(o => new { o.Latitude, o.Longitude, o.Address, o.Id, o.Status })
+            )
+        )' 
+    />
+    <input type="hidden"
+        id="failedOrderIds"
+        value='@Html.Raw(
+            Json.Serialize(
+            Model.Orders
+                .Where(o => o.Status == OrderStatus.FailedDelivery)
+                .Select(o => o.Id)
+            )
+        )' 
+    />
     <input type="hidden" id="deliveryId" value="@Model.Id" />
 
     <h4 class="text-center mt-4">Order Locations</h4>

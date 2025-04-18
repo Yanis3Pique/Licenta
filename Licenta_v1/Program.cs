@@ -34,7 +34,6 @@ builder.Services.AddSingleton<OrderDeliveryOptimizer2>(provider =>
 	return new OrderDeliveryOptimizer2(scopeFactory, httpClientFactory, openRouteServiceApiKey, ptvApiKey, ptvApiKeyReserve, ptvApiKeyEmergency);
 });
 
-
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection") ??
 	throw new InvalidOperationException("Connection string 'DefaultConnection' not found.");
 builder.Services.AddDbContext<ApplicationDbContext>(options => options.UseSqlServer(connectionString));

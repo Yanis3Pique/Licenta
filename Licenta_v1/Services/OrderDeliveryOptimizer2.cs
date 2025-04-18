@@ -1060,13 +1060,14 @@ namespace Licenta_v1.Services
 				Status = deliveryStatus
 			};
 
+			// 1️⃣ Create & save the Delivery so it has an Id
 			db.Deliveries.Add(delivery);
-			db.SaveChanges();
+			await db.SaveChangesAsync();
 
-			// Actualizez Orders
+			// 2️⃣ Update orders and vehicle status
 			for (int i = 0; i < orderedOrders.Count; i++)
 			{
-				orderedOrders[i].DeliverySequence = i; // Numar mai mic inseamna ca se va livra mai repede(primele opriri)
+				orderedOrders[i].DeliverySequence = i;
 				orderedOrders[i].DeliveryId = delivery.Id;
 				orderedOrders[i].EstimatedDeliveryDate = DateTime.Today.AddDays(1);
 				db.Orders.Update(orderedOrders[i]);
@@ -1075,10 +1076,37 @@ namespace Licenta_v1.Services
 			candidateVehicle.Status = VehicleStatus.Busy;
 			db.Vehicles.Update(candidateVehicle);
 
-			await CalculateRouteMetrics(db, delivery, orderedOrders, candidateVehicle, depot);
-			await db.SaveChangesAsync();	
+			await db.SaveChangesAsync();
 
-			// Salvez RouteHistory daca avem un sofer
+			// 3️⃣ Re‑fetch the Delivery with all its navigations
+			var fullDelivery = await db.Deliveries
+				.Include(d => d.Vehicle)
+				   .ThenInclude(v => v.Region)
+					  .ThenInclude(r => r.Headquarters)
+				.Include(d => d.Orders)
+				.FirstOrDefaultAsync(d => d.Id == delivery.Id);
+
+			if (fullDelivery == null)
+				throw new InvalidOperationException($"Delivery #{delivery.Id} not found after save!");
+
+			// 4️⃣ Now call the planner on the fully populated object
+			using var routeScope = scopeFactory.CreateScope();
+			var routePlanner = routeScope.ServiceProvider.GetRequiredService<RoutePlannerService>();
+			var liveRoute = await routePlanner.CalculateOptimalRouteAsync(fullDelivery);
+
+			// 5️⃣ Overwrite estimates and persist
+			delivery.DistanceEstimated = liveRoute.Distance / 1000.0;      // km  
+			delivery.TimeTakenForDelivery = liveRoute.Duration / 3600.0;      // hours  
+
+			double fuelLiters = (double)((candidateVehicle.ConsumptionRate * delivery.DistanceEstimated) / 100.0);
+			delivery.ConsumptionEstimated = fuelLiters;
+			delivery.EmissionsEstimated = fuelLiters * GetEmissionFactor((FuelType)candidateVehicle.FuelType) / 1000.0;
+			delivery.RouteData = JsonConvert.SerializeObject(liveRoute);
+
+			db.Deliveries.Update(delivery);
+			await db.SaveChangesAsync();
+
+			// 6️⃣ Finally record the RouteHistory
 			var routeHistory = new RouteHistory
 			{
 				DeliveryId = delivery.Id,
@@ -1088,10 +1116,10 @@ namespace Licenta_v1.Services
 				Emissions = delivery.EmissionsEstimated ?? 0,
 				TimeTaken = (int)((delivery.TimeTakenForDelivery ?? 0) * 3600),
 				RouteData = delivery.RouteData,
-				VehicleId = delivery.Vehicle.Id,
-				VehicleDescription = $"{delivery.Vehicle.Brand} {delivery.Vehicle.Model} ({delivery.Vehicle.RegistrationNumber})",
+				VehicleId = candidateVehicle.Id,
+				VehicleDescription = $"{candidateVehicle.Brand} {candidateVehicle.Model}",
 				OrderIdsJson = JsonConvert.SerializeObject(orderedOrders.Select(o => o.Id)),
-				DriverId = delivery.DriverId, // asta poate sa fie null aici
+				DriverId = delivery.DriverId,
 				DriverName = driver?.UserName
 			};
 
@@ -1229,7 +1257,18 @@ namespace Licenta_v1.Services
 				Longitude = headquarter.Longitude ?? 0
 			};
 
-			await CalculateRouteMetrics(db, delivery, delivery.Orders.ToList(), delivery.Vehicle, depot);
+			using var routeScope = scopeFactory.CreateScope();
+			var routePlanner = routeScope.ServiceProvider.GetRequiredService<RoutePlannerService>();
+			var liveRoute = await routePlanner.CalculateOptimalRouteAsync(delivery);
+			delivery.DistanceEstimated = liveRoute.Distance / 1000.0;
+			delivery.TimeTakenForDelivery = liveRoute.Duration / 3600.0;
+			double fuelLiters = (double)((delivery.Vehicle.ConsumptionRate * delivery.DistanceEstimated) / 100.0);
+			delivery.ConsumptionEstimated = fuelLiters;
+			delivery.EmissionsEstimated = fuelLiters * GetEmissionFactor((FuelType)delivery.Vehicle.FuelType) / 1000.0;
+			delivery.RouteData = JsonConvert.SerializeObject(liveRoute);
+
+			db.Deliveries.Update(delivery);
+			await db.SaveChangesAsync();
 		}
 
 		private async Task RecalculateDeliverySequence(ApplicationDbContext db, Delivery delivery)

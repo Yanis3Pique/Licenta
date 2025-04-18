@@ -307,9 +307,9 @@ namespace Licenta_v1.Controllers
 		[Authorize(Roles = "Sofer,Dispecer")]
 		public async Task<IActionResult> GetOptimalRoute(int deliveryId)
 		{
-			var user = await db.ApplicationUsers.FirstOrDefaultAsync(u => u.UserName == User.Identity.Name);
-			if (user == null)
-				return Unauthorized();
+			var user = await db.ApplicationUsers
+							   .FirstOrDefaultAsync(u => u.UserName == User.Identity.Name);
+			if (user == null) return Unauthorized();
 
 			var deliveryQuery = db.Deliveries
 				.Include(d => d.Orders)
@@ -319,73 +319,73 @@ namespace Licenta_v1.Controllers
 				.Where(d => d.Id == deliveryId);
 
 			if (User.IsInRole("Sofer"))
-			{
 				deliveryQuery = deliveryQuery.Where(d => d.DriverId == user.Id);
-			}
 			else if (User.IsInRole("Dispecer"))
-			{
 				deliveryQuery = deliveryQuery.Where(d => d.Vehicle.RegionId == user.RegionId);
-			}
 
 			var delivery = await deliveryQuery.FirstOrDefaultAsync();
-			if (delivery == null)
-				return NotFound();
+			if (delivery == null) return NotFound();
 
 			try
 			{
-				// Se calculeaza ruta optima folosind serviciul de route planning cu OSRM + OR-Tools
+				// 1️⃣ ask your service for the route (which may include some FailedOrderIds)
 				var route = await rps.CalculateOptimalRouteAsync(delivery);
 
-				// Iau locatiile de stop: Headquarter + Order locations + Inapoi la Headquarter
-				var stopLocations = new List<(double Latitude, double Longitude)>
+				// 2️⃣ persist any automatically‑dropped stops as FailedDelivery
+				if (route.FailedOrderIds?.Count > 0)
 				{
-					(delivery.Vehicle.Region.Headquarters.Latitude ?? 0, delivery.Vehicle.Region.Headquarters.Longitude ?? 0) // Incepem la HQ
-				};
-
-				stopLocations.AddRange(delivery.Orders.Select(o => (o.Latitude ?? 0, o.Longitude ?? 0))); // Orders
-
-				stopLocations.Add((delivery.Vehicle.Region.Headquarters.Latitude ?? 0, delivery.Vehicle.Region.Headquarters.Longitude ?? 0));
-
-				// Iau indicii de stop pe baza coordonatelor rutei
-				List<int> stopIndices = new List<int>();
-
-				foreach (var stop in stopLocations)
-				{
-					int bestMatchIndex = -1;
-					double bestDistance = double.MaxValue;
-
-					for (int i = 0; i < route.Coordinates.Count; i++)
+					foreach (var oid in route.FailedOrderIds)
 					{
-						double distance = HaversineDistance(stop.Latitude, stop.Longitude, route.Coordinates[i].Latitude, route.Coordinates[i].Longitude);
-						if (distance < bestDistance)
+						var o = await db.Orders.FindAsync(oid);
+						if (o != null && o.Status != OrderStatus.FailedDelivery)
 						{
-							bestDistance = distance;
-							bestMatchIndex = i;
+							o.Status = OrderStatus.FailedDelivery;
+							db.Orders.Update(o);
 						}
 					}
-
-					if (bestMatchIndex != -1 && !stopIndices.Contains(bestMatchIndex))
-					{
-						stopIndices.Add(bestMatchIndex);
-					}
+					await db.SaveChangesAsync();
 				}
 
-				// Adaug si ultima oprire (inapoi la Headquarter) daca nu este deja inclusa
-				if (!stopIndices.Contains(route.Coordinates.Count - 1))
+				// build your stopIndices exactly as before…
+				var stopLocations = new List<(double Latitude, double Longitude)>
 				{
-					stopIndices.Add(route.Coordinates.Count - 1);
-				}
+					(delivery.Vehicle.Region.Headquarters.Latitude ?? 0,
+					 delivery.Vehicle.Region.Headquarters.Longitude ?? 0)
+				};
+				stopLocations.AddRange(delivery.Orders.Select(o => (o.Latitude ?? 0, o.Longitude ?? 0)));
+				stopLocations.Add((delivery.Vehicle.Region.Headquarters.Latitude ?? 0,
+								   delivery.Vehicle.Region.Headquarters.Longitude ?? 0));
 
-				stopIndices.Sort(); // Ma asigur ca opririle se fac in ordinea corecta
+				var stopIndices = new List<int>();
+				for (int i = 0; i < stopLocations.Count; i++)
+				{
+					var (lat, lon) = stopLocations[i];
+					int best = -1; double bestDist = double.MaxValue;
+					for (int j = 0; j < route.Coordinates.Count; j++)
+					{
+						var c = route.Coordinates[j];
+						var d = HaversineDistance(lat, lon, c.Latitude, c.Longitude);
+						if (d < bestDist) { bestDist = d; best = j; }
+					}
+					if (best >= 0 && !stopIndices.Contains(best))
+						stopIndices.Add(best);
+				}
+				if (!stopIndices.Contains(route.Coordinates.Count - 1))
+					stopIndices.Add(route.Coordinates.Count - 1);
+				stopIndices.Sort();
+
+				// 3️⃣ return **all** the original properties **plus** the FailedOrderIds
 				return Json(new
 				{
-					coordinates = route.Coordinates,				   // Coordonatele rutei
-					stopIndices = stopIndices,						   // Indicii pentru vizualizarea pas cu pas a opririlor
-					segments = route.Segments,						   // Distanta si Timp pe segment
-					orderIds = route.OrderIds,						   // Order IDs in ordinea optimizata
-					coloredRouteSegments = route.ColoredRouteSegments, // Poligoanele cu vreme rea
-					AvoidPolygons = route.AvoidPolygons,               // Poligoanele de evitat
-					avoidDescriptions = route.AvoidDescriptions		   // Descrierile poligoaelor de evitat
+					coordinates = route.Coordinates,
+					stopIndices = stopIndices,
+					segments = route.Segments,
+					orderIds = route.OrderIds,
+					failedOrderIds = route.FailedOrderIds,
+					coloredRouteSegments = route.ColoredRouteSegments,
+					AvoidPolygons = route.AvoidPolygons,
+					avoidDescriptions = route.AvoidDescriptions,
+					rawCoordinates = route.RawCoordinates
 				});
 			}
 			catch (Exception ex)
@@ -439,6 +439,8 @@ namespace Licenta_v1.Controllers
 		{
 			var delivery = db.Deliveries
 				.Include(d => d.Vehicle)
+					.ThenInclude(v => v.Region)
+						.ThenInclude(r => r.Headquarters)
 				.Include(d => d.Driver)
 				.Include(d => d.Orders)
 				.FirstOrDefault(d => d.Id == id);
@@ -776,7 +778,10 @@ namespace Licenta_v1.Controllers
 
 			foreach (var order in delivery.Orders)
 			{
-				order.Status = OrderStatus.InProgress;
+				if(order.Status == OrderStatus.Placed)
+				{
+					order.Status = OrderStatus.InProgress;
+				}
 			}
 
 			db.SaveChanges();
@@ -853,6 +858,8 @@ namespace Licenta_v1.Controllers
 					order.EstimatedDeliveryDate = null;
 					order.EstimatedDeliveryInterval = null;
 					order.DeliveredDate = null;
+					order.LastNotifiedStatus = null;
+					order.LastDeliveryAssignmentNotified = null;
 				}
 			}
 

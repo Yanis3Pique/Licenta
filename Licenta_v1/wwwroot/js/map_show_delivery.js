@@ -2,18 +2,40 @@
     initApp();
 });
 
+function loadFailedOrderIds() {
+    const el = document.getElementById("failedOrderIds");
+    return el ? JSON.parse(el.value) : [];
+}
+
 // Functia principala de initializare
 function initApp() {
     if (isDriver()) {
         // Pentru sofer, incarc comenzile si configurez traseul
         var ordersData = loadOrders();
         if (!ordersData) return;
-        var validOrders = filterOrders(ordersData);
-        if (validOrders.length === 0) {
-            console.error("Nu exista comenzi valide cu date de locatie.");
+
+        // remove anything already failed in the DB
+        const origFailedFromInput = loadFailedOrderIds();
+        const failedFromStatus = (ordersData || []).filter(o => o.Status === 3).map(o => o.id);
+        const origFailed = [...new Set([...origFailedFromInput, ...failedFromStatus])];
+        // split into available vs unavailable
+        const allWithCoords = filterOrders(ordersData);
+
+        // Keep all orders on the map for reference
+        window.allOrders = allWithCoords;
+
+        // But tag each one with its status for logic
+        window.failedOrderIds = origFailed;
+
+        const availableOrders = allWithCoords.filter(o => !origFailed.includes(o.id)); // ✅ ADD THIS LINE
+        const unavailableOrders = allWithCoords.filter(o => origFailed.includes(o.id));
+
+        if (!allWithCoords.length) {
+            console.error("Nu exista comenzi cu coordonate valide.");
             return;
         }
-        initMap(validOrders);
+
+        initMapForDriver(availableOrders, unavailableOrders);
         var deliveryId = getDeliveryId();
         if (!deliveryId) return;
         // Preiau currentSegment din localStorage (sau il initializez la 0)
@@ -66,59 +88,111 @@ function filterOrders(orders) {
 }
 
 // Initializez harta pentru sofer cu marker-ele pentru comenzi
-function initMap(validOrders) {
+function initMapForDriver(available, unavailable) {
     window.map = L.map('map', { zoomControl: true });
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '© OpenStreetMap contributors'
     }).addTo(window.map);
-    var bounds = L.latLngBounds();
-    validOrders.forEach(function (order) {
-        var marker = L.marker([order.latitude, order.longitude]).addTo(window.map)
-            .bindPopup("<b>Order " + order.id + "</b><br>" + order.address);
-        bounds.extend(marker.getLatLng());
+
+    // fit‐bounds container
+    const bounds = L.latLngBounds();
+
+    const okIcon = L.icon({
+        iconUrl: 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon.png',
+        shadowUrl: 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-shadow.png',
+        iconSize: [25, 41],
+        iconAnchor: [12, 41],
+        popupAnchor: [1, -34],
+        shadowSize: [41, 41]
     });
-    if (validOrders.length > 1) {
+
+    const nokIcon = L.icon({
+        iconUrl: 'https://cdn-icons-png.flaticon.com/512/2576/2576762.png',
+        iconSize: [32, 32],
+        iconAnchor: [16, 32],
+        popupAnchor: [0, -32]
+    });
+
+    available.forEach(o => {
+        const m = L.marker([o.latitude, o.longitude], { icon: okIcon })
+            .addTo(window.map)
+            .bindPopup(`<b>Order ${o.id}</b><br>${o.address}`);
+        bounds.extend(m.getLatLng());
+    });
+
+    unavailable.forEach(o => {
+        const m = L.marker([o.latitude, o.longitude], { icon: nokIcon })
+            .addTo(window.map)
+            .bindPopup(`<b>Order ${o.id}</b><br><i>Unable to be delivered!</i>`);
+        bounds.extend(m.getLatLng());
+    });
+
+    if (available.length + unavailable.length > 1) {
         window.map.fitBounds(bounds, { padding: [50, 50] });
     } else {
-        window.map.setView([validOrders[0].latitude, validOrders[0].longitude], 14);
+        const single = (available[0] || unavailable[0]);
+        window.map.setView([single.latitude, single.longitude], 14);
     }
 }
 
 // Initializez harta pentru non-sofer, cu marker pentru Headquarter si comenzile din zona
 function initMapForNonDriver() {
-    var hqLat = parseFloat(document.getElementById("headquarterLat").value);
-    var hqLng = parseFloat(document.getElementById("headquarterLng").value);
-    var hqLatLng = [hqLat, hqLng];
+    const hqLat = +document.getElementById("headquarterLat").value;
+    const hqLng = +document.getElementById("headquarterLng").value;
+    const hqLL = [hqLat, hqLng];
 
-    window.map = L.map('map', { zoomControl: true });
+    window.map = L.map('map', { zoomControl: true })
+        .setView(hqLL, 13);
+
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '© OpenStreetMap contributors'
     }).addTo(window.map);
-    window.map.setView(hqLatLng, 14);
 
-    // Adaug marker pentru Headquarter
-    L.marker(hqLatLng, {
-        icon: L.icon({
-            iconUrl: 'https://cdn-icons-png.flaticon.com/512/684/684908.png',
-            iconSize: [32, 32],
-            iconAnchor: [16, 32],
-            popupAnchor: [0, -32]
-        })
-    }).addTo(window.map).bindPopup("<b>Headquarter</b>");
+    // HQ icon
+    const hqIcon = L.icon({
+        iconUrl: 'https://cdn-icons-png.flaticon.com/512/684/684908.png',
+        iconSize: [32, 32], iconAnchor: [16, 32]
+    });
+    L.marker(hqLL, { icon: hqIcon })
+        .addTo(window.map)
+        .bindPopup("<b>Headquarter</b>");
 
-    var ordersData = loadOrders();
-    if (ordersData) {
-        var validOrders = filterOrders(ordersData);
-        validOrders.forEach(function (order) {
-            L.marker([order.latitude, order.longitude]).addTo(window.map)
-                .bindPopup("<b>Order " + order.id + "</b><br>" + order.address);
-        });
-        var bounds = L.latLngBounds([hqLatLng]);
-        validOrders.forEach(function (order) {
-            bounds.extend([order.latitude, order.longitude]);
-        });
-        window.map.fitBounds(bounds, { padding: [50, 50] });
-    }
+    const ordersData = loadOrders() || [];
+    const origFailed = loadFailedOrderIds();
+
+    const okIcon = L.icon({
+        iconUrl: 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon.png',
+        shadowUrl: 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-shadow.png',
+        iconSize: [25, 41],
+        iconAnchor: [12, 41],
+        popupAnchor: [1, -34],
+        shadowSize: [41, 41]
+    });
+
+    const nokIcon = L.icon({
+        iconUrl: 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon.png',
+        shadowUrl: 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-shadow.png',
+        iconSize: [25, 41],
+        iconAnchor: [12, 41],
+        popupAnchor: [1, -34],
+        shadowSize: [41, 41]
+    });
+
+    const bounds = L.latLngBounds([hqLL]);
+    ordersData.forEach(o => {
+        if (!o.latitude || !o.longitude) return;
+        const isBad = origFailed.includes(o.id);
+        const marker = L.marker([o.latitude, o.longitude], {
+            icon: isBad ? nokIcon : okIcon
+        }).addTo(window.map)
+            .bindPopup(
+                `<b>Order ${o.id}</b><br>${o.address}` +
+                (isBad ? "<br><i>Unable to be delivered!</i>" : "")
+            );
+        bounds.extend(marker.getLatLng());
+    });
+
+    if (bounds.isValid()) window.map.fitBounds(bounds, { padding: [50, 50] });
 }
 
 // Preiau deliveryId-ul din input-ul hidden
@@ -298,75 +372,153 @@ if (MOCK_MODE) {
 }
 
 function setupRouteDisplay(data) {
-    console.log("Ruta folosita:", data);
-
-    if (MOCK_MODE) {
-        window.routeCoords = [
-            [44.8600, 24.8650],
-            [44.8602, 24.8652],
-            [44.8604, 24.8654],
-            [44.8606, 24.8656],
-            [44.8608, 24.8658]
-        ];
-        window.stopIndices = [0, 4];
-        window.coloredRouteSegments = [
-            {
-                severity: 0.2,
-                coordinates: [
-                    [44.8600, 24.8650],
-                    [44.8602, 24.8652]
-                ]
-            },
-            {
-                severity: 0.4,
-                coordinates: [
-                    [44.8602, 24.8652],
-                    [44.8604, 24.8654]
-                ]
-            },
-            {
-                severity: 0.7,
-                coordinates: [
-                    [44.8604, 24.8654],
-                    [44.8606, 24.8656]
-                ]
-            },
-            {
-                severity: 0.95,
-                coordinates: [
-                    [44.8606, 24.8656],
-                    [44.8608, 24.8658]
-                ]
-            }
-        ];
-        window.orderIds = []; // mock
-        window.segmentsData = [{ severity: 0.5 }];
-        window.map.setView([44.8604, 24.8654], 16);
-    } else {
-        window.routeCoords = data.coordinates.map(coord => [coord.latitude, coord.longitude]);
-        window.stopIndices = data.stopIndices;
-        window.orderIds = data.orderIds;
-        window.segmentsData = data.segments;
-        window.coloredRouteSegments = data.coloredRouteSegments;
+    // 1) Ensure our custom panes exist
+    if (!map.getPane('optimizedRoutePane')) {
+        map.createPane('optimizedRoutePane');
+        map.getPane('optimizedRoutePane').style.zIndex = 450;
+    }
+    if (!map.getPane('originalRoutePane')) {
+        map.createPane('originalRoutePane');
+        map.getPane('originalRoutePane').style.zIndex = 440;
     }
 
-    var headquarterLatLng = window.routeCoords[0];
-    L.marker(headquarterLatLng, {
+    // 2) Build the two polylines (but don’t add them yet)
+    const rawCoords = (data.rawCoordinates || data.coordinates)
+        .map(c => [c.latitude, c.longitude]);
+    const finalCoords = data.coordinates
+        .map(c => [c.latitude, c.longitude]);
+
+    // 3) Clean up any old layers / controls
+    ['initialRouteLayer', 'finalRouteLayer', 'routeControl', 'routeLegend'].forEach(key => {
+        if (window[key]) {
+            if (key.endsWith('Layer')) map.removeLayer(window[key]);
+            else map.removeControl(window[key]);
+            window[key] = null;
+        }
+    });
+
+    // 4) Create the dashed “original” and solid “optimized” lines
+    window.initialRouteLayer = L.polyline(rawCoords, {
+        dashArray: '8,6', color: '#999', weight: 4, opacity: 0.9, pane: 'originalRoutePane'
+    });
+    window.finalRouteLayer = L.polyline(finalCoords, {
+        color: '#0077cc', weight: 5, opacity: 0.9, pane: 'optimizedRoutePane'
+    });
+
+    // 5) Add the layers control & legend
+    window.routeControl = L.control.layers(
+        null,
+        { 'Original route': window.initialRouteLayer, 'Optimized route': window.finalRouteLayer },
+        { collapsed: false, position: 'topright' }
+    ).addTo(map);
+
+    window.routeLegend = L.control({ position: 'bottomleft' });
+    window.routeLegend.onAdd = () => {
+        const div = L.DomUtil.create('div', 'info legend');
+        div.innerHTML = `
+      <div style="background:#fff;padding:6px;border:1px solid #999;font-size:12px">
+        <strong>Routes</strong><br>
+        <i style="display:inline-block;width:18px;height:4px;border-top:4px dashed #999;margin-right:6px"></i>Original<br>
+        <i style="display:inline-block;width:18px;height:4px;background:#0077cc;margin-right:6px"></i>Optimized
+      </div>`;
+        return div;
+    };
+    window.routeLegend.addTo(map);
+
+    console.log("🔹 setupRouteDisplay 🔹");
+    console.log("  • rawCoordinates length:", (data.rawCoordinates || data.coordinates).length);
+    console.log("  • optimized coordinates length:", data.coordinates.length);
+    console.log("  • stopIndices:", data.stopIndices);
+    console.log("  • orderIds:", data.orderIds);
+    console.log("  • incoming failedOrderIds:", data.failedOrderIds);
+
+    // Step 6 FIXED: Correctly rebuild segments skipping failed orders
+    window.failedOrderIds = new Set(data.failedOrderIds || window.failedOrderIds);
+
+    window.routeCoords = finalCoords;
+    window.stopIndices = data.stopIndices;
+    window.orderIds = data.orderIds;
+    window.segmentsData = data.segments;
+    window.coloredRouteSegments = data.coloredRouteSegments;
+
+    const goodStops = [];
+    for (let i = 0; i < window.orderIds.length; i++) {
+        if (!window.failedOrderIds.has(window.orderIds[i])) {
+            goodStops.push({
+                id: window.orderIds[i],
+                coordIndex: window.stopIndices[i + 1],
+                coords: window.routeCoords[window.stopIndices[i + 1]],
+                segment: window.routeCoords.slice(window.stopIndices[i], window.stopIndices[i + 1] + 1),
+                segmentData: window.segmentsData[i]
+            });
+        } else {
+            console.warn("❌ Skipping failed orderId:", window.orderIds[i]);
+        }
+    }
+
+    // rebuild clean coords/segments
+    let rebuiltCoords = [window.routeCoords[0]];
+    let rebuiltStopIndices = [0];
+    let rebuiltSegmentsData = [];
+    let rebuiltOrderIds = [];
+
+    goodStops.forEach(stop => {
+        rebuiltCoords.push(...stop.segment.slice(1)); // avoid duplicate first coord
+        rebuiltStopIndices.push(rebuiltCoords.length - 1);
+        rebuiltSegmentsData.push(stop.segmentData);
+        rebuiltOrderIds.push(stop.id);
+    });
+
+    // HQ at end
+    rebuiltCoords.push(window.routeCoords[window.routeCoords.length - 1]);
+    rebuiltStopIndices.push(rebuiltCoords.length - 1);
+
+    // update globals
+    window.routeCoords = rebuiltCoords;
+    window.stopIndices = rebuiltStopIndices;
+    window.orderIds = rebuiltOrderIds;
+    window.segmentsData = rebuiltSegmentsData;
+
+
+    // ←––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––
+    // 7) NEW: skip any already‐failed stops *before* drawing the segment
+    // merge in any server‐sent failures
+    window.failedOrderIds = data.failedOrderIds || window.failedOrderIds;
+
+    // never exceed the last “order→HQ” leg
+    console.log("  • previous currentSegment:", window.currentSegment);
+    const maxSeg = window.stopIndices.length - 2;
+    if (window.currentSegment > maxSeg) window.currentSegment = maxSeg;
+
+    // skip forward past all failed orders
+    while (
+        window.currentSegment < window.orderIds.length &&
+        window.failedOrderIds.includes(window.orderIds[window.currentSegment])
+    ) {
+        console.warn("  • Skipping failed orderId:", window.orderIds[window.currentSegment]);
+        window.currentSegment++;
+    }
+    // clamp again
+    if (window.currentSegment > maxSeg) window.currentSegment = maxSeg;
+    console.log("  • final currentSegment:", window.currentSegment);
+    // ←––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––
+
+    // 8) Draw the HQ marker
+    const [hqLat, hqLng] = window.routeCoords[0];
+    L.marker([hqLat, hqLng], {
         icon: L.icon({
             iconUrl: 'https://cdn-icons-png.flaticon.com/512/684/684908.png',
-            iconSize: [32, 32],
-            iconAnchor: [16, 32],
-            popupAnchor: [0, -32]
+            iconSize: [32, 32], iconAnchor: [16, 32], popupAnchor: [0, -32]
         })
-    }).addTo(window.map).bindPopup("<b>Headquarter</b>");
+    }).addTo(map).bindPopup('<b>Headquarter</b>');
 
+    // 9) Finally wire up your helpers
     setupFullscreenControl();
-
-    displayAllSegments();
+    displayAllSegments();                      // now uses updated currentSegment
     displayColoredRouteSegments(window.coloredRouteSegments);
     displayAvoidPolygons(data.avoidPolygons, data.avoidDescriptions);
-//    displayWeatherPolygons(window.coloredRouteSegments);
 }
+
 
 function displayWeatherPolygons(coloredSegments, step = 0.03) {
     if (!coloredSegments || coloredSegments.length === 0) return;
@@ -455,7 +607,7 @@ function displayColoredRouteSegments(coloredSegments) {
         const polyline = L.polyline([segStart, segEnd], {
             color: color,
             weight: 5,
-            opacity: 1
+            opacity: 0
         });
 
         polyline.bindPopup(`
@@ -558,7 +710,7 @@ function getSeverityColorRGBA(severity) {
     if (severity >= 0.7) return 'rgba(255, 65, 65)'; // rosu
     if (severity >= 0.5) return 'rgba(255, 165, 76)'; // portocaliu
     if (severity >= 0.3) return 'rgba(255, 215, 0)'; // galben
-    return 'rgba(74, 255, 92, 0.3)'; // verde
+    return 'rgba(74, 255, 92)'; // verde
 }
 
 function getColorNameFromRGBA(rgba) {
@@ -657,20 +809,35 @@ function setupMarkDeliveredButtons() {
                 try {
                     var data = JSON.parse(text);
                     if (data.success) {
-                        console.log("Order marcat ca livrat.");
+                        console.log("Order marcat ca nelivrat.");
+
+                        // Fetch new route after successful marking as failed
+                        fetch('/Deliveries/GetOptimalRoute?deliveryId=' + deliveryId)
+                            .then(res => res.json())
+                            .then(newRouteData => {
+                                // Update cache
+                                const cacheKey = `routeData_${deliveryId}`;
+                                localStorage.setItem(cacheKey, JSON.stringify({
+                                    timestamp: Date.now(),
+                                    data: newRouteData
+                                }));
+
+                                // Rerender the route immediately
+                                setupRouteDisplay(newRouteData);
+                            })
+                            .catch(err => {
+                                console.error("Error fetching updated route", err);
+                            });
+
                     } else {
-                        console.error("Eroare la marcarea comenzii ca livrate.");
+                        console.error("Eroare la marcarea comenzii ca nelivrate.");
                     }
                 } catch (e) {
                     console.warn("Raspunsul nu este JSON valid, continuam...");
                 }
-                advanceRoute();
-                window.location.reload();
             })
             .catch(function (error) {
                 console.error("Eroare la marcarea comenzii ca livrate:", error);
-                advanceRoute();
-                window.location.reload();
             });
         });
     });
@@ -719,115 +886,100 @@ function almostEqual(a, b, epsilon = 0.0001) {
 
 // Afisez toate segmentele din traseu, evidentiind segmentul curent
 function displayAllSegments() {
+    console.log("🔸 displayAllSegments 🔸");
+
     if (window.segmentsLayerGroup) {
         window.map.removeLayer(window.segmentsLayerGroup);
     }
-
     window.segmentsLayerGroup = L.featureGroup().addTo(window.map);
 
-    for (let i = 0; i < window.stopIndices.length - 1; i++) {
-        let startIdx = window.stopIndices[i];
-        let endIdx = window.stopIndices[i + 1];
-        let segmentCoords = window.routeCoords.slice(startIdx, endIdx + 1);
-        let isCurrent = (i === window.currentSegment);
-        let segment = window.segmentsData[i];
-        if (!segment) {
-            console.warn(`Segment ${i} is undefined. Skipping...`);
-            continue;
-        }
+    let startIdx = window.stopIndices[window.currentSegment];
+    let endIdx;
 
-        let polylineStyle;
-        if (isCurrent) {
-            polylineStyle = {
-                color: getSeverityColorRGBA(segment.severity), // doar pt segmentul actual
-                weight: 6,
-                opacity: 1
-            };
-        } else {
-            polylineStyle = {
-                color: '#ADD8E6', // albastru deschis
-                weight: 3,
-                opacity: 0.6,
-                dashArray: '5, 5'
-            };
-        }
+    console.log("  • startIdx:", startIdx, "→ stopIndices:", window.stopIndices);
 
-        let polyline = L.polyline(segmentCoords, polylineStyle).addTo(window.segmentsLayerGroup);
+    let nextSegment = window.currentSegment + 1;
 
-        if (isCurrent) {
-            L.polylineDecorator(polyline, {
-                patterns: [{
-                    offset: '0%',
-                    repeat: '50px',
-                    symbol: L.Symbol.arrowHead({
-                        pixelSize: 10,
-                        polygon: false,
-                        pathOptions: {
-                            stroke: true,
-                            color: getContrastingColor(segment.severity),
-                            weight: 4
-                        }
-                    })
-                }]
-            }).addTo(window.segmentsLayerGroup);
-        }
-
-        if (isCurrent) {
-            const segmentStart = window.stopIndices[i];
-            const segmentEnd = window.stopIndices[i + 1];
-            const currentSegmentCoords = window.routeCoords.slice(segmentStart, segmentEnd + 1);
-
-            const usedColors = new Set();
-
-            window.coloredRouteSegments.forEach((seg, idx) => {
-                const [start, end] = seg.coordinates;
-
-                let matched = false;
-                for (let j = 0; j < currentSegmentCoords.length - 1; j++) {
-                    const a = currentSegmentCoords[j];
-                    const b = currentSegmentCoords[j + 1];
-
-                    const sameSegment =
-                        (almostEqual(a[0], start[0]) && almostEqual(a[1], start[1]) &&
-                            almostEqual(b[0], end[0]) && almostEqual(b[1], end[1])) ||
-                        (almostEqual(a[0], end[0]) && almostEqual(a[1], end[1]) &&
-                            almostEqual(b[0], start[0]) && almostEqual(b[1], start[1]));
-
-                    if (sameSegment) {
-                        usedColors.add(getSeverityColorRGBA(seg.severity));
-                        console.log(
-                            `Subsegment ${j}: (${a[0]}, ${a[1]}) -> (${b[0]}, ${b[1]}) | severity=${seg.severity}`
-                        );
-                        matched = true;
-                        break;
-                    }
-                }
-            });
-
-            console.log(
-                "Culori folosite pentru segmentul curent:",
-                Array.from(usedColors).map(getColorNameFromRGBA)
-            );
-        }
-
+    // Skip only failed orders directly ahead, without overshooting the HQ.
+    while (
+        nextSegment < window.orderIds.length &&
+        window.failedOrderIds.includes(window.orderIds[nextSegment])
+    ) {
+        console.warn("  • Skipping nextSegment:", nextSegment, "due to failed orderId:", window.orderIds[nextSegment]);
+        nextSegment++;
     }
 
-    window.map.fitBounds(window.segmentsLayerGroup.getBounds(), { padding: [50, 50] });
+    // Use the next valid stop if found, otherwise default to the final segment (HQ).
+    if (nextSegment < window.stopIndices.length) {
+        endIdx = window.stopIndices[nextSegment];
+    } else {
+        endIdx = window.stopIndices[window.stopIndices.length - 1]; // final HQ segment
+    }
+
+    console.log("  • Calculated endIdx:", endIdx);
+
+    // Create a clean slice for the current segment.
+    const coords = window.routeCoords.slice(startIdx, endIdx + 1);
+    console.log("  • segment coords length:", coords.length);
+
+    if (!coords.length) {
+        console.error("  ✖ coords is empty! routeCoords:", window.routeCoords);
+        return;
+    }
+
+    // Draw the polyline segment clearly
+    const greenLine = L.polyline(coords, {
+        color: 'rgba(74, 255, 92)',
+        weight: 6,
+        opacity: 1
+    }).addTo(window.segmentsLayerGroup);
+
+    // Polyline decorator (directional arrows)
+    const currentSeverity = window.segmentsData[window.currentSegment]?.severity || 0;
+    L.polylineDecorator(greenLine, {
+        patterns: [{
+            offset: '0%',
+            repeat: '50px',
+            symbol: L.Symbol.arrowHead({
+                pixelSize: 10,
+                polygon: false,
+                pathOptions: {
+                    stroke: true,
+                    color: getContrastingColor(currentSeverity),
+                    weight: 4
+                }
+            })
+        }]
+    }).addTo(window.segmentsLayerGroup);
+
+    // Focus the map on the correctly calculated segment.
+    window.map.fitBounds(
+        window.segmentsLayerGroup.getBounds(),
+        { padding: [50, 50] }
+    );
 }
 
 // Avansez la urmatorul segment din ruta livrarii
 function advanceRoute() {
-    if (window.currentSegment < window.stopIndices.length - 1) {
-        window.currentSegment++;
-        localStorage.setItem("currentSegment_" + getDeliveryId(), window.currentSegment);
-        displayAllSegments();  // Reafisez toate segmentele cu actualizarea curenta
-        if (window.currentSegment === window.stopIndices.length - 1) {
-            console.log("Segment final afisat: Revenire la HQ.");
-        }
-    } else {
-        console.log("Ruta complet parcurse.");
+    // start looking at the very next leg
+    let next = window.currentSegment + 1;
+
+    // skip *all* failed stops
+    while (
+        next < window.orderIds.length &&
+        window.failedOrderIds.includes(window.orderIds[next])
+    ) {
+        next++;
     }
+
+    // make sure we never go past the final “order→HQ” leg
+    const maxSeg = window.stopIndices.length - 2;
+    window.currentSegment = Math.min(next, maxSeg);
+
+    localStorage.setItem('currentSegment_' + getDeliveryId(), window.currentSegment);
+    displayAllSegments();
 }
+
 
 // Sterg toate segmentele si decoratorii de pe harta
 function clearRouteSegments() {

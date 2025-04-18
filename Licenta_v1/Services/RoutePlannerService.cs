@@ -5,6 +5,10 @@ using Newtonsoft.Json;
 using System.Text;
 using System.Diagnostics;
 using System.Collections.Concurrent;
+using Licenta_v1.Data;
+using Newtonsoft.Json.Linq;
+using System.Text.RegularExpressions;
+using System.Linq;
 
 namespace Licenta_v1.Services
 {
@@ -39,8 +43,20 @@ namespace Licenta_v1.Services
 			};
 
 			// Sortez comenzile conform proprietatii DeliverySequence
-			var orderedStops = delivery.Orders.OrderBy(o => o.DeliverySequence).ToList();
-			var orderIds = orderedStops.Select(o => o.Id).ToList();
+			// 1) sort the stops in their delivery‐sequence
+			var orderedStops = delivery.Orders
+									   .OrderBy(o => o.DeliverySequence)
+									   .ToList();
+
+			// 2) keep a copy of all of those IDs (we’ll re‑use them at the very end)
+			var originalOrderIds = orderedStops.Select(o => o.Id).ToList();
+
+			// 3) start our failed list with any orders already flagged in the DB
+			var failedOrderIds = new HashSet<int>();
+			failedOrderIds = delivery.Orders
+								.Where(o => o.Status == OrderStatus.FailedDelivery)
+								.Select(o => o.Id)
+								.ToHashSet();
 
 			// Construiesc vectorul de coordonate pentru API (formatul [longitude, latitude])
 			// Incep cu HQ, apoi adaug comenzile in ordinea stabilita (DeliverySequence), apoi intorc la HQ
@@ -106,11 +122,11 @@ namespace Licenta_v1.Services
 			if (!response.IsSuccessStatusCode)
 				throw new Exception($"ORS failed (initial): {response.StatusCode} - {responseJson}");
 
-			var orsResponse = JsonConvert.DeserializeObject<ORSGeoJsonResponse>(responseJson);
-			if (orsResponse?.features == null || !orsResponse.features.Any())
+			var initialOrsResponse = JsonConvert.DeserializeObject<ORSGeoJsonResponse>(responseJson);
+			if (initialOrsResponse?.features == null || !initialOrsResponse.features.Any())
 				throw new Exception("No route found from OpenRouteService.");
 
-			var feature = orsResponse.features.First();
+			var feature = initialOrsResponse.features.First();
 			var routeSummary = feature.properties.summary;
 			var routeSegments = feature.properties.segments;
 			var decodedCoordinates = feature.geometry.coordinates
@@ -119,6 +135,20 @@ namespace Licenta_v1.Services
 					Longitude = coord[0],
 					Latitude = coord[1]
 				}).ToList();
+
+			var stopCoords = new List<Coordinate>();
+			//  1) start at HQ
+			stopCoords.Add(start);
+			//  2) each ordered stop (in DeliverySequence order)
+			stopCoords.AddRange(orderedStops.Select(o => new Coordinate
+			{
+				Latitude = o.Latitude.Value,
+				Longitude = o.Longitude.Value
+			}));
+			//  3) return to HQ
+			stopCoords.Add(start);
+
+			var rawCoordinates = decodedCoordinates.ToList();
 
 			List<Coordinate> remainingCoords;
 
@@ -211,112 +241,98 @@ namespace Licenta_v1.Services
 
 			Debug.WriteLine(JsonConvert.SerializeObject((object)finalRequestBody, Formatting.Indented));
 
-			var finalJson = JsonConvert.SerializeObject(finalRequestBody);
-			var finalContent = new StringContent(finalJson, Encoding.UTF8, "application/json");
+			rawCoordinates = decodedCoordinates.ToList();
 
-			try
+			ORSGeoJsonResponse finalOrsResponse = null;
+			HttpResponseMessage finalResponse;
+			string finalResponseJson;
+
+			while (true)
 			{
-				response = await client.PostAsync(url, finalContent);
-				responseJson = await response.Content.ReadAsStringAsync();
-
-				if (!response.IsSuccessStatusCode)
-					throw new Exception($"ORS failed (final): {response.StatusCode} - {responseJson}");
-
-				// Actualizez coordonatele decodificate
-				orsResponse = JsonConvert.DeserializeObject<ORSGeoJsonResponse>(responseJson);
-				if (orsResponse?.features == null || !orsResponse.features.Any())
-					throw new Exception("No route found from OpenRouteService (final).");
-
-				feature = orsResponse.features.First();
-				routeSummary = feature.properties.summary;
-				routeSegments = feature.properties.segments;
-				decodedCoordinates = feature.geometry.coordinates
-					.Select(coord => new Coordinate
-					{
-						Longitude = coord[0],
-						Latitude = coord[1]
-					}).ToList();
-			}
-			catch (Exception ex)
-			{
-				Debug.WriteLine($"Full route with polygons failed. Switching to segment-by-segment fallback... {ex.Message}");
-
-				List<Coordinate> combinedCoords = new();
-				double totalDistance = 0;
-				double totalDuration = 0;
-				var segments = new List<ORSSegment>();
-
-				for (int i = 0; i < coordinates.Count - 1; i++)
+				// build request
+				var loopRequestBody = new
 				{
-					var segmentCoords = new List<double[]> { coordinates[i], coordinates[i + 1] };
+					coordinates,
+					instructions = true,
+					options
+				};
+				var loopJson = JsonConvert.SerializeObject(loopRequestBody);
+				var loopContent = new StringContent(loopJson, Encoding.UTF8, "application/json");
 
-					var segmentRequest = new
+				// send it
+				finalResponse = await client.PostAsync(url, loopContent);
+				finalResponseJson = await finalResponse.Content.ReadAsStringAsync();
+
+				// if 200 OK, try to parse features
+				if (finalResponse.IsSuccessStatusCode)
+				{
+					finalOrsResponse = JsonConvert
+						.DeserializeObject<ORSGeoJsonResponse>(finalResponseJson)
+						?? throw new Exception("Malformed ORS response");
+
+					if (finalOrsResponse.features?.Any() == true)
 					{
-						coordinates = segmentCoords,
-						instructions = false,
-						options
-					};
-
-					var segmentJson = JsonConvert.SerializeObject(segmentRequest);
-					var segmentContent = new StringContent(segmentJson, Encoding.UTF8, "application/json");
-
-					var segmentResp = await client.PostAsync(url, segmentContent);
-					var segmentRespJson = await segmentResp.Content.ReadAsStringAsync();
-
-					if (!segmentResp.IsSuccessStatusCode)
-					{
-						Debug.WriteLine($"Segment {i} failed. Retrying without avoid_polygons...");
-
-						// Reincerc fara poligoanele de evitat
-						var fallbackRequest = new { coordinates = segmentCoords, instructions = false };
-						var fallbackJson = JsonConvert.SerializeObject(fallbackRequest);
-						var fallbackContent = new StringContent(fallbackJson, Encoding.UTF8, "application/json");
-
-						segmentResp = await client.PostAsync(url, fallbackContent);
-						segmentRespJson = await segmentResp.Content.ReadAsStringAsync();
-
-						if (!segmentResp.IsSuccessStatusCode)
-							throw new Exception($"Segment {i} failed even without avoid_polygons: {segmentRespJson}");
+						// Success!  Break out.
+						break;
 					}
-
-					var segResponse = JsonConvert.DeserializeObject<ORSGeoJsonResponse>(segmentRespJson);
-					var segFeature = segResponse?.features?.FirstOrDefault();
-
-					if (segFeature == null)
-						throw new Exception($"Segment {i} response invalid.");
-
-					var segCoords = segFeature.geometry.coordinates.Select(c => new Coordinate { Longitude = c[0], Latitude = c[1] }).ToList();
-					if (combinedCoords.Count > 0 && combinedCoords.Last().Equals(segCoords.First()))
-						segCoords.RemoveAt(0); // Pentru a evita duplicarea
-
-					combinedCoords.AddRange(segCoords);
-					totalDistance += segFeature.properties.summary.distance;
-					totalDuration += segFeature.properties.summary.duration;
-
-					segments.AddRange(segFeature.properties.segments);
 				}
 
-				decodedCoordinates = combinedCoords;
-				routeSummary = new ORSSummary { distance = totalDistance, duration = totalDuration };
-				routeSegments = segments;
+				// otherwise parse the ORS “not found” error from the **new** finalResponseJson
+				var err = JObject.Parse(finalResponseJson)?["error"];
+				var errCode = err?["code"]?.Value<int>();
+				var errMsg = err?["message"]?.Value<string>() ?? "";
 
-				Debug.WriteLine("Segment-by-segment fallback succeeded.");
+				if (errCode == 2009)
+				{
+					// extract bad index, mark that order failed, drop it and retry…
+					var m = Regex.Match(errMsg, @"points\s+(\d+)\s+\(");
+					if (m.Success && int.TryParse(m.Groups[1].Value, out var badIdx)
+						&& badIdx > 0 && badIdx < coordinates.Count - 1)
+					{
+						// persist failure…
+						var dropped = orderedStops[badIdx - 1];
+						failedOrderIds.Add(dropped.Id);
+						using var scope = scopeFactory.CreateScope();
+						var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+						var dbOrder = await db.Orders.FindAsync(dropped.Id);
+						if (dbOrder != null)
+						{
+							dbOrder.Status = OrderStatus.FailedDelivery;
+							await db.SaveChangesAsync();
+						}
+
+						// remove that stop and loop again
+						coordinates.RemoveAt(badIdx);
+						orderedStops.RemoveAt(badIdx - 1);
+						continue;
+					}
+				}
+
+				// any other error is fatal
+				throw new Exception(
+					$"ORS final failed: {finalResponse.StatusCode} – {finalResponseJson}"
+				);
 			}
 
-			// Actualizez coordonatele decodificate
-			orsResponse = JsonConvert.DeserializeObject<ORSGeoJsonResponse>(responseJson);
-			if (orsResponse?.features == null || !orsResponse.features.Any())
-				throw new Exception("No route found from OpenRouteService (final).");
+			// 🎉 at this point finalOrsResponse.features[0] is your real route
+			var finalFeature = finalOrsResponse.features[0];
+			decodedCoordinates = finalFeature.geometry.coordinates
+									   .Select(c => new Coordinate { Longitude = c[0], Latitude = c[1] })
+									   .ToList();
+			routeSummary = finalFeature.properties.summary;
+			routeSegments = finalFeature.properties.segments;
 
-			feature = orsResponse.features.First();
-			routeSummary = feature.properties.summary;
-			routeSegments = feature.properties.segments;
-			decodedCoordinates = feature.geometry.coordinates
-				.Select(coord => new Coordinate
-				{
-					Longitude = coord[0],
-					Latitude = coord[1]
-				}).ToList();
+			var finalStopCoords = new List<Coordinate> { start };
+			finalStopCoords.AddRange(orderedStops.Select(o => new Coordinate
+			{
+				Latitude = o.Latitude.Value,
+				Longitude = o.Longitude.Value
+			}));
+			finalStopCoords.Add(start);
+
+			var stopIndices = finalStopCoords
+				.Select(c => FindClosestCoordinateIndex(decodedCoordinates, c))
+				.ToList();
 
 			// Incep procesarea segmentelor si aplicarea penalizarilor
 			var segmentMidpoints = routeSegments.Select((segment, i) =>
@@ -448,18 +464,25 @@ namespace Licenta_v1.Services
 
 			var descriptions = avoidPolygonJObj?["descriptions"]?.ToObject<List<string>>() ?? new List<string>();
 
+			// build the final stop‐list from the original IDs + HQ(0)
+			var resultOrderIds = originalOrderIds.ToList();
+			resultOrderIds.Add(0);
+
 			var routeResult = new RouteResult
 			{
 				Coordinates = decodedCoordinates,
 				Distance = routeSummary.distance,
 				Duration = adjustedDuration,
 				Segments = adjustedSegments,
-				OrderIds = orderIds,
+				OrderIds = resultOrderIds,
+				FailedOrderIds = failedOrderIds.ToList(),
 				ColoredRouteSegments = coloredSegments,
 				AvoidPolygons = avoidPolygons is AvoidPolygonGeoJson geoJson
 					? geoJson.coordinates
 					: JsonConvert.DeserializeObject<AvoidPolygonGeoJson>(avoidPolygonJson)?.coordinates,
-				AvoidDescriptions = descriptions
+				AvoidDescriptions = descriptions,
+				RawCoordinates = rawCoordinates,
+				StopIndices = stopIndices
 			};
 
 			Debug.WriteLine("AvoidPolygons count: " + (routeResult.AvoidPolygons?.Count ?? 0));
@@ -590,12 +613,18 @@ namespace Licenta_v1.Services
 		public List<SegmentResult> Segments { get; set; }
 		// Lista de OrderIds, in ordinea in care sunt parcurse comenzile (pentru primele n segmente)
 		public List<int> OrderIds { get; set; }
+		// Lista de OrderIds care nu se pot livra din cauza obstacolelor
+		public List<int> FailedOrderIds { get; set; }
 		// Culorile pentru segmentele de ruta
 		public List<ColoredSegment> ColoredRouteSegments { get; set; }
 		// Poligoanele de evitat (obstacole)
 		public List<List<List<double[]>>>? AvoidPolygons { get; set; }
 		// Descrierea fiecarui poligon de evitat
 		public List<string>? AvoidDescriptions { get; set; }
+		// Ruta originala - doar pt view
+		public List<Coordinate> RawCoordinates { get; set; }
+		// Opririle din ruta
+		public List<int> StopIndices { get; set; }
 	}
 
 	public class ColoredSegment

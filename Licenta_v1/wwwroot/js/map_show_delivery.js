@@ -832,6 +832,7 @@ function setupMarkFailedButtons() {
     document.querySelectorAll(".mark-failed-btn").forEach(button => {
         button.addEventListener("click", function (e) {
             e.preventDefault();
+
             const form = this.closest("form");
             const formData = new FormData(form);
 
@@ -839,40 +840,25 @@ function setupMarkFailedButtons() {
                 method: form.method,
                 body: formData
             })
-                .then(response => response.text())
-                .then(text => {
-                    try {
-                        const data = JSON.parse(text);
-                        if (data.success) {
-                            console.log("Order marked as failed.");
-
-                            fetch(`/Deliveries/GetOptimalRoute?deliveryId=${deliveryId}`)
-                                .then(res => res.json())
-                                .then(newRouteData => {
-                                    const cacheKey = `routeData_${deliveryId}`;
-                                    localStorage.setItem(cacheKey, JSON.stringify({
-                                        timestamp: Date.now(),
-                                        data: newRouteData
-                                    }));
-                                    setupRouteDisplay(newRouteData);
-                                    advanceRoute(); // move to next valid stop
-                                })
-                                .catch(err => {
-                                    console.error("Error fetching updated route", err);
-                                    window.location.reload(); // fallback
-                                });
-                        } else {
-                            console.error("Failed to mark order as undeliverable.");
-                            window.location.reload(); // fallback
-                        }
-                    } catch (e) {
-                        console.warn("Response was not valid JSON.");
-                        window.location.reload(); // fallback
+                .then(response => response.json().catch(() => null))
+                .then(data => {
+                    if (data && data.success) {
+                        console.log("Order marked as undeliverable.");
+                    } else {
+                        console.warn("Mark-failed response not JSON or success=false.");
                     }
+
+                    // 🟢 Move to next segment BEFORE refresh
+                    if (deliveryId) {
+                        window._justAdvancedManually = true;
+                        advanceRoute(); // updates localStorage
+                    }
+
+                    location.reload();
                 })
                 .catch(error => {
-                    console.error("Error marking as failed:", error);
-                    window.location.reload(); // fallback
+                    console.error("Error marking as undeliverable:", error);
+                    location.reload(); // fallback anyway
                 });
         });
     });

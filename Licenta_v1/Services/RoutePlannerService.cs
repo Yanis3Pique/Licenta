@@ -429,15 +429,17 @@ namespace Licenta_v1.Services
 					new NetTopologySuite.Geometries.Coordinate(b.Longitude, b.Latitude)
 				});
 
-				double maxSeverity = 0.0;
+				//double maxSeverity = 0.0;
 
-				foreach (var (polygon, severity) in dangerZonesNts)
-				{
-					if (polygon.Intersects(line))
-					{
-						maxSeverity = Math.Max(maxSeverity, severity);
-					}
-				}
+				//foreach (var (polygon, severity) in dangerZonesNts)
+				//{
+				//	if (polygon.Intersects(line))
+				//	{
+				//		maxSeverity = Math.Max(maxSeverity, severity);
+				//	}
+				//}
+
+				double maxSeverity = severityResults[Math.Min(i, severityResults.Length - 1)];
 
 				//double mockSeverity = 0.55;
 

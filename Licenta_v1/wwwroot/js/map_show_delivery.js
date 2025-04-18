@@ -490,7 +490,7 @@ function setupRouteDisplay(data) {
     displayColoredRouteSegments(data.coloredRouteSegments);
     displayAvoidPolygons(data.avoidPolygons, data.avoidDescriptions);
     drawOrderMarkers(window.allOrders || []);
-    //displayWeatherPolygons(data.coloredRouteSegments);
+    displayWeatherPolygons(data.coloredRouteSegments);
 }
 
 function displayWeatherPolygons(coloredSegments, step = 0.03) {

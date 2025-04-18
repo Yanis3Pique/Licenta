@@ -20,7 +20,8 @@ namespace Licenta_v1.Services
 		{
 			string key = $"{coord.Latitude:F4},{coord.Longitude:F4}";
 			var now = DateTime.UtcNow;
-			var cacheDuration = TimeSpan.FromHours(1);
+			//var cacheDuration = TimeSpan.FromHours(1);
+			var cacheDuration = TimeSpan.Zero;
 
 			if (cache.TryGetValue(key, out var cached) && now - cached.timestamp < cacheDuration)
 				return (cached.isDangerous, cached.severity, cached.description, cached.code);
@@ -59,6 +60,7 @@ namespace Licenta_v1.Services
 				severity += 0.1;
 
 			return Math.Min(severity, 1.0);
+//			return 1.0;
 		}
 
 		private static double GetCodeSeverity(int code)

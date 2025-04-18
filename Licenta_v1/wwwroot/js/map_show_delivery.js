@@ -9,69 +9,57 @@ function loadFailedOrderIds() {
 
 // Functia principala de initializare
 function initApp() {
+    // 1) read HQ coords
+    const hqLat = parseFloat(document.getElementById("headquarterLat")?.value);
+    const hqLng = parseFloat(document.getElementById("headquarterLng")?.value);
+    if (isNaN(hqLat) || isNaN(hqLng)) {
+        console.error("Coordonate HQ invalide.");
+        return;
+    }
+
+    // 3) now, if I’m *not* a driver, just stop here (HQ + maybe non‑driver orders)
     if (!isDriver()) {
         initMapForNonDriver();
         return;
     }
 
-    const ordersData = loadOrders();
-    if (!ordersData || ordersData.length === 0) {
-        console.error("Nu exista comenzi disponibile.");
-        return;
-    }
-
-    const deliveryId = getDeliveryId();
-    if (!deliveryId) return;
-
-    const allWithCoords = filterOrders(ordersData);
-    if (!allWithCoords.length) {
-        console.error("Nu exista comenzi cu coordonate valide.");
-        return;
-    }
-
-    const hqLat = parseFloat(document.getElementById("headquarterLat")?.value);
-    const hqLng = parseFloat(document.getElementById("headquarterLng")?.value);
-    if (isNaN(hqLat) || isNaN(hqLng)) {
-        console.error("Coordonate HQ invalide pentru sofer.");
-        return;
-    }
-
+    // 2) always spin up the map & draw HQ
     window.map = L.map('map', { zoomControl: true }).setView([hqLat, hqLng], 13);
-
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '© OpenStreetMap contributors'
     }).addTo(window.map);
-
-    // Optional: mark HQ immediately
     const hqIcon = L.icon({
         iconUrl: 'https://cdn-icons-png.flaticon.com/512/684/684908.png',
         iconSize: [32, 32],
         iconAnchor: [16, 32]
     });
-
     L.marker([hqLat, hqLng], { icon: hqIcon })
         .addTo(window.map)
         .bindPopup("<b>Headquarter</b>");
 
-    // ✅ Save global data
+    // 4) I am a driver, but if there are *no* orders at all, don’t try to fetch a route
+    const ordersData = loadOrders();
+    if (!ordersData || ordersData.length === 0) {
+        console.warn("Nu exista comenzi disponibile → afișez doar HQ.");
+        return;   // map+HQ is already on screen
+    }
+
+    // 5) filter out invalid coords
+    const allWithCoords = filterOrders(ordersData);
+    if (allWithCoords.length === 0) {
+        console.warn("Nu exista comenzi cu coordonate valide → afișez doar HQ.");
+        return;
+    }
+
+    // 6) …and only *then* pick up your normal “driver + orders” flow
     window.allOrders = allWithCoords;
-
-    const storedSegment = localStorage.getItem("currentSegment_" + deliveryId);
-    window.currentSegment = storedSegment !== null ? parseInt(storedSegment, 10) : 0;
-
-    // Save for debugging / fallback
-    window.allOrders = allWithCoords;
-
-    // Basic map + user tracking
+    const deliveryId = getDeliveryId();
+    window.currentSegment = parseInt(localStorage.getItem("currentSegment_" + deliveryId) || "0", 10);
     setupFollowMode();
     setupZoomControlListeners();
     setupMarkDeliveredButtons();
     setupMarkFailedButtons();
-
-    // Now load the backend-calculated route
-    fetchRouteAndSetup(deliveryId);  // This will call setupRouteDisplay()
-
-    // If completed, clear the route
+    fetchRouteAndSetup(deliveryId);
     setTimeout(checkDeliveryStatus, 500);
 }
 
@@ -91,7 +79,7 @@ function loadOrders() {
     try {
         var ordersData = JSON.parse(ordersDataElement.value);
         if (!ordersData || ordersData.length === 0) {
-            console.error("Nu s-au gasit comenzi pentru aceasta livrare.");
+            //console.error("Nu s-au gasit comenzi pentru aceasta livrare.");
             return null;
         }
         console.log("Orders Data:", ordersData);
@@ -174,9 +162,7 @@ function initMapForNonDriver() {
     const orders = loadOrders() || [];
 
     // In case you want to preload backend-provided failed orders here too:
-    const failedIds = new Set(loadFailedOrderIds());
-
-    window.failedOrderIds = Array.from(failedIds);
+    window.failedOrderIds = new Set(loadFailedOrderIds());
     window.allOrders = orders;
 
     drawOrderMarkers(orders); // ✅ reuse the driver-side logic
@@ -410,25 +396,76 @@ function setupRouteDisplay(data) {
         color: '#0077cc', weight: 5, opacity: 0.9, pane: 'optimizedRoutePane'
     });
 
-    // Add layer controls + legend
-    window.routeControl = L.control.layers(
-        null,
-        { 'Original route': window.initialRouteLayer, 'Optimized route': window.finalRouteLayer },
-        { collapsed: false, position: 'topright' }
-    ).addTo(map);
-
-    window.routeLegend = L.control({ position: 'bottomleft' });
-    window.routeLegend.onAdd = () => {
-        const div = L.DomUtil.create('div', 'info legend');
+    window.layerToggleControl = L.control({ position: 'topright' });
+    window.layerToggleControl.onAdd = function (map) {
+        const div = L.DomUtil.create('div', 'leaflet-bar leaflet-control leaflet-control-custom');
+        div.style.padding = '8px';
+        div.style.background = 'white';
+        div.style.fontSize = '14px';
         div.innerHTML = `
-          <div style="background:#fff;padding:6px;border:1px solid #999;font-size:12px">
-            <strong>Routes</strong><br>
-            <i style="display:inline-block;width:18px;height:4px;border-top:4px dashed #999;margin-right:6px"></i>Original<br>
-            <i style="display:inline-block;width:18px;height:4px;background:#0077cc;margin-right:6px"></i>Optimized
-          </div>`;
+            <label style="display:flex; align-items:center; cursor:pointer; user-select:none">
+              <input type="checkbox" id="toggleOriginal" style="margin-right:6px">
+              <span style="
+                display:inline-block;
+                width:20px;
+                height:0;
+                border-top:3px dashed #999;
+                margin-right:6px;
+              "></span>
+              Original model
+            </label>
+            <label style="display:flex; align-items:center; cursor:pointer; user-select:none; margin-top:6px">
+              <input type="checkbox" id="toggleOptimized" style="margin-right:6px">
+              <span style="
+                display:inline-block;
+                width:20px;
+                height:0;
+                border-top:4px solid #0077cc;
+                margin-right:6px;
+              "></span>
+              Optimized model
+            </label>
+          `;
         return div;
     };
-    window.routeLegend.addTo(map);
+
+    window.layerToggleControl.addTo(map);
+
+    // wire them up
+    document.getElementById('toggleOriginal').addEventListener('change', e => {
+        if (e.target.checked) initialRouteLayer.addTo(map);
+        else map.removeLayer(initialRouteLayer);
+    });
+    document.getElementById('toggleOptimized').addEventListener('change', e => {
+        if (e.target.checked) finalRouteLayer.addTo(map);
+        else map.removeLayer(finalRouteLayer);
+    });
+
+    // (optionally start with both on)
+    document.getElementById('toggleOriginal').checked = false;
+    document.getElementById('toggleOptimized').checked = false;
+
+    // 2) bottom‐left: severity legend
+    window.severityLegend = L.control({ position: 'bottomleft' });
+    window.severityLegend.onAdd = function (map) {
+        const grades = [0, 0.3, 0.5, 0.7, 0.9];
+        const labels = grades.map((g, i) => {
+            const from = g;
+            const to = grades[i + 1];
+            const color = getSeverityColorRGBA(from + 0.05);
+            return `
+      <i style="display:inline-block;width:18px;height:12px;background:${color};margin-right:6px"></i>
+      ${from}${to ? '&ndash;' + to : '+'}
+    `;
+        });
+        const container = L.DomUtil.create('div', 'info legend');
+        container.style.background = 'white';
+        container.style.padding = '6px';
+        container.style.lineHeight = '18px';
+        container.innerHTML = `<strong>Severity</strong><br>${labels.join('<br>')}`;
+        return container;
+    };
+    window.severityLegend.addTo(map);
 
     // Bind data to window for use throughout the app
     window.routeCoords = finalCoords;
@@ -475,22 +512,13 @@ function setupRouteDisplay(data) {
         console.log("✅ Skipping segment validation (manual advance was just triggered)");
     }
 
-    // Draw HQ marker
-    const [hqLat, hqLng] = finalCoords[0];
-    L.marker([hqLat, hqLng], {
-        icon: L.icon({
-            iconUrl: 'https://cdn-icons-png.flaticon.com/512/684/684908.png',
-            iconSize: [32, 32], iconAnchor: [16, 32], popupAnchor: [0, -32]
-        })
-    }).addTo(map).bindPopup('<b>Headquarter</b>');
-
     // Invoke helpers
     setupFullscreenControl();
     displayAllSegments();
-    displayColoredRouteSegments(data.coloredRouteSegments);
+    //displayColoredRouteSegments(data.coloredRouteSegments);
     displayAvoidPolygons(data.avoidPolygons, data.avoidDescriptions);
     drawOrderMarkers(window.allOrders || []);
-    displayWeatherPolygons(data.coloredRouteSegments);
+//    displayWeatherPolygons(data.coloredRouteSegments);
 }
 
 function displayWeatherPolygons(coloredSegments, step = 0.03) {
@@ -580,7 +608,7 @@ function displayColoredRouteSegments(coloredSegments) {
         const polyline = L.polyline([segStart, segEnd], {
             color: color,
             weight: 5,
-            opacity: 0
+            opacity: 1
         });
 
         polyline.bindPopup(`
@@ -698,8 +726,8 @@ function getColorNameFromRGBA(rgba) {
 }
 
 function getContrastingColor(severity) {
-    if (severity >= 0.9) return '#ffffff'; // contrast pe mov inchis
-    if (severity >= 0.7) return '#ffffff'; // contrast pe rosu
+    if (severity >= 0.9) return '#000000'; // contrast pe mov inchis
+    if (severity >= 0.7) return '#000000'; // contrast pe rosu
     if (severity >= 0.5) return '#000000'; // contrast pe portocaliu
     if (severity >= 0.3) return '#000000'; // contrast pe galben
     return '#003300'; // contrast pe verde
@@ -911,30 +939,54 @@ function displayAllSegments() {
         return;
     }
 
-    const severity = window.segmentsData?.[segmentIndex]?.severity || 0;
-
-    // draw the green arrowed line
-    const greenLine = L.polyline(segmentCoords, {
-        color: 'rgba(74, 255, 92)',
+    // draw the arrowed line, coloured by the max severity over this slice
+    const colored = window.coloredRouteSegments || [];
+    let maxSeverity = 0;
+    // each sub‐segment in coloredRouteSegments corresponds to coords[i]→coords[i+1]
+    for (let i = startIdx; i < endIdx; i++) {
+        const cs = colored[i];
+        if (cs && cs.severity > maxSeverity) maxSeverity = cs.severity;
+    }
+    const segColor = getSeverityColorRGBA(maxSeverity);
+    const coloredLine = L.polyline(segmentCoords, {
+        color: segColor,
         weight: 6,
         opacity: 1
     }).addTo(window.segmentsLayerGroup);
 
-    L.polylineDecorator(greenLine, {
+    L.polylineDecorator(coloredLine, {
         patterns: [{
             offset: '0%',
             repeat: '50px',
             symbol: L.Symbol.arrowHead({
-                pixelSize: 10,
-                polygon: false,
-                pathOptions: {
-                    stroke: true,
-                    color: getContrastingColor(severity),
-                    weight: 4
-                }
+                    pixelSize: 10,
+                    polygon: false,
+                    pathOptions: {
+                        stroke: true,
+                        color: getContrastingColor(maxSeverity),
+                        weight: 4
+                    }
             })
         }]
     }).addTo(window.segmentsLayerGroup);
+
+    // — popup info for the whole segment, same as in displayColoredRouteSegments()
+    let worst = null;
+    for (let i = startIdx; i < endIdx; i++) {
+        const cs = window.coloredRouteSegments[i];
+        if (!cs) continue;
+        if (!worst || cs.severity > worst.severity) worst = cs;
+    }
+    if (worst) {
+        const emoji = getWeatherEmoji(worst.weatherCode);
+        const desc = getFriendlyWeatherDescription(emoji, worst.weatherDescription);
+        const sev = getFormattedSeverity(worst.severity);
+        
+        coloredLine.bindPopup(`
+            <b>⚠️ Severity:</b> ${sev}<br>
+            <b>${emoji} Weather:</b> ${desc}
+        `);
+    }
 
     window.map.fitBounds(
         window.segmentsLayerGroup.getBounds(),

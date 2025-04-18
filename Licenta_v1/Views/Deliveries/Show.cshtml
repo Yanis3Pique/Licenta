@@ -185,8 +185,8 @@
         @if (User.IsInRole("Dispecer") && (Model.Status == "Planned" || Model.Status == "Up for Taking"))
         {
             <a asp-action="Edit" asp-route-id="@Model.Id"
-               class="btn btn-primary mt-4 @(ViewBag.IsOptimizationRunning ? "disabled" : "")"
-               selected="@(ViewBag.IsOptimizationRunning ? "tabindex='-1' aria-disabled='true'" : "")">
+            class="btn btn-primary mt-4 @(ViewBag.IsOptimizationRunning ? "disabled" : "")"
+            selected="@(ViewBag.IsOptimizationRunning ? "tabindex='-1' aria-disabled='true'" : "")">
                 Edit Delivery
             </a>
             @if (ViewBag.IsOptimizationRunning)
@@ -197,8 +197,8 @@
     </div>
 
     <input type="hidden" 
-        id="ordersData" 
-        value='@Html.Raw(
+    id="ordersData" 
+    value='@Html.Raw(
             Json.Serialize(
                 Model.Orders
                     .Select(o => new { o.Latitude, o.Longitude, o.Address, o.Id, o.Status })
@@ -206,8 +206,8 @@
         )' 
     />
     <input type="hidden"
-        id="failedOrderIds"
-        value='@Html.Raw(
+    id="failedOrderIds"
+    value='@Html.Raw(
             Json.Serialize(
             Model.Orders
                 .Where(o => o.Status == OrderStatus.FailedDelivery)
@@ -234,6 +234,10 @@
 {
     <div class="mt-4 p-4">
         <h4 class="text-center mb-3">📦 Orders in this Delivery</h4>
+        @if (!Model.Orders.Any())
+        {
+            <p class="text-center text-muted">No orders.</p>
+        }
 
         <ul class="list-group order-list">
             @foreach (var order in Model.Orders.OrderBy(o => o.DeliverySequence))
@@ -306,7 +310,7 @@
                 </a>
             }
             @if (Model.Status == "In Progress" && Model.Orders.All(o => o.Status == OrderStatus.Delivered || 
-                                                                       o.Status == OrderStatus.FailedDelivery))
+                                                                        o.Status == OrderStatus.FailedDelivery))
             {
                 <form asp-action="CompleteDelivery" method="post" class="mt-4">
                     <input type="hidden" name="id" value="@Model.Id" />

@@ -125,7 +125,13 @@ else
                             }
                         </td>
                         <td id="light-blue-elements-background-id">@item.Vehicle?.Brand @item.Vehicle?.Model (@item.Vehicle?.RegistrationNumber)</td>
-                        <td id="light-blue-elements-background-id">@(item.Orders.Any() ? item.Orders.First().Region?.County : "N/A")</td>
+                        <td id="light-blue-elements-background-id">
+                            @(
+                                item.Vehicle?.Region != null
+                                ? item.Vehicle.Region.County
+                                : "N/A"
+                                )
+                        </td>
                         <td id="light-blue-elements-background-id">@item.PlannedStartDate.ToString("d")</td>
                         <td id="light-blue-elements-background-id">@(item.ActualEndDate != null ? item.ActualEndDate.Value.ToString("d") : "N/A")</td>
                         <td id="light-blue-elements-background-id">@item.Status</td>
@@ -167,7 +173,7 @@ else
                         <br />
                     }
                     <strong>Vehicle:</strong> @item.Vehicle?.Brand @item.Vehicle?.Model (@item.Vehicle?.RegistrationNumber) <br />
-                    <strong>Region:</strong> @(item.Orders.Any() ? item.Orders.First().Region?.County : "N/A") <br />
+                    <strong>Region:</strong> @(item.Vehicle?.Region != null ? item.Vehicle.Region.County : "N/A") <br />
                     <strong>Planned Start:</strong> @item.PlannedStartDate.ToString("d") <br />
                     <strong>Delivered Date:</strong> @(item.ActualEndDate != null ? item.ActualEndDate.Value.ToString("d") : "N/A") <br />
                     <strong>Status:</strong> @item.Status

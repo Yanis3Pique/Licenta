@@ -204,10 +204,10 @@ namespace Licenta_v1.Controllers
 			}
 
 			var deliveriesQuery = db.Deliveries
-				.Include(d => d.Vehicle)
 				.Include(d => d.Driver)
+				.Include(d => d.Vehicle)
+					.ThenInclude(v => v.Region)
 				.Include(d => d.Orders)
-				.ThenInclude(o => o.Region)
 				.AsQueryable();
 
 			// Dispecer - doar regiunea lui

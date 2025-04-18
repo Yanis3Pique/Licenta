@@ -60,7 +60,7 @@ namespace Licenta_v1.Services
 				severity += 0.1;
 
 			return Math.Min(severity, 1.0);
-//			return 1.0;
+			//return 1.0;
 		}
 
 		private static double GetCodeSeverity(int code)

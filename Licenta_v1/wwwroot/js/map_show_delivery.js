@@ -9,48 +9,70 @@ function loadFailedOrderIds() {
 
 // Functia principala de initializare
 function initApp() {
-    if (isDriver()) {
-        // Pentru sofer, incarc comenzile si configurez traseul
-        var ordersData = loadOrders();
-        if (!ordersData) return;
-
-        // remove anything already failed in the DB
-        const origFailedFromInput = loadFailedOrderIds();
-        const failedFromStatus = (ordersData || []).filter(o => o.Status === 3).map(o => o.id);
-        const origFailed = [...new Set([...origFailedFromInput, ...failedFromStatus])];
-        // split into available vs unavailable
-        const allWithCoords = filterOrders(ordersData);
-
-        // Keep all orders on the map for reference
-        window.allOrders = allWithCoords;
-
-        // But tag each one with its status for logic
-        window.failedOrderIds = origFailed;
-
-        const availableOrders = allWithCoords.filter(o => !origFailed.includes(o.id)); // ✅ ADD THIS LINE
-        const unavailableOrders = allWithCoords.filter(o => origFailed.includes(o.id));
-
-        if (!allWithCoords.length) {
-            console.error("Nu exista comenzi cu coordonate valide.");
-            return;
-        }
-
-        initMapForDriver(availableOrders, unavailableOrders);
-        var deliveryId = getDeliveryId();
-        if (!deliveryId) return;
-        // Preiau currentSegment din localStorage (sau il initializez la 0)
-        var storedSegment = localStorage.getItem("currentSegment_" + deliveryId);
-        window.currentSegment = storedSegment !== null ? parseInt(storedSegment, 10) : 0;
-        setupFollowMode();
-        fetchRouteAndSetup(deliveryId);
-        setupZoomControlListeners();
-        setupMarkDeliveredButtons();
-        setupMarkFailedButtons();
-        setTimeout(checkDeliveryStatus, 500);
-    } else {
-        // Pentru non-sofer, afisez pe harta doar marker-ul pentru Headquarter si comenzile din zona
+    if (!isDriver()) {
         initMapForNonDriver();
+        return;
     }
+
+    const ordersData = loadOrders();
+    if (!ordersData || ordersData.length === 0) {
+        console.error("Nu exista comenzi disponibile.");
+        return;
+    }
+
+    const deliveryId = getDeliveryId();
+    if (!deliveryId) return;
+
+    const allWithCoords = filterOrders(ordersData);
+    if (!allWithCoords.length) {
+        console.error("Nu exista comenzi cu coordonate valide.");
+        return;
+    }
+
+    const hqLat = parseFloat(document.getElementById("headquarterLat")?.value);
+    const hqLng = parseFloat(document.getElementById("headquarterLng")?.value);
+    if (isNaN(hqLat) || isNaN(hqLng)) {
+        console.error("Coordonate HQ invalide pentru sofer.");
+        return;
+    }
+
+    window.map = L.map('map', { zoomControl: true }).setView([hqLat, hqLng], 13);
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap contributors'
+    }).addTo(window.map);
+
+    // Optional: mark HQ immediately
+    const hqIcon = L.icon({
+        iconUrl: 'https://cdn-icons-png.flaticon.com/512/684/684908.png',
+        iconSize: [32, 32],
+        iconAnchor: [16, 32]
+    });
+
+    L.marker([hqLat, hqLng], { icon: hqIcon })
+        .addTo(window.map)
+        .bindPopup("<b>Headquarter</b>");
+
+    // ✅ Save global data
+    window.allOrders = allWithCoords;
+
+    const storedSegment = localStorage.getItem("currentSegment_" + deliveryId);
+    window.currentSegment = storedSegment !== null ? parseInt(storedSegment, 10) : 0;
+
+    // Save for debugging / fallback
+    window.allOrders = allWithCoords;
+
+    // Basic map + user tracking
+    setupFollowMode();
+    setupZoomControlListeners();
+    setupMarkDeliveredButtons();
+    setupMarkFailedButtons();
+
+    // Now load the backend-calculated route
+    fetchRouteAndSetup(deliveryId);  // This will call setupRouteDisplay()
+
+    // If completed, clear the route
+    setTimeout(checkDeliveryStatus, 500);
 }
 
 // Verific daca utilizatorul este sofer (valorile din input-ul hidden "isDriver")
@@ -87,14 +109,9 @@ function filterOrders(orders) {
     });
 }
 
-// Initializez harta pentru sofer cu marker-ele pentru comenzi
-function initMapForDriver(available, unavailable) {
-    window.map = L.map('map', { zoomControl: true });
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '© OpenStreetMap contributors'
-    }).addTo(window.map);
+function drawOrderMarkers(orders) {
+    if (!window.map) return;
 
-    // fit‐bounds container
     const bounds = L.latLngBounds();
 
     const okIcon = L.icon({
@@ -113,86 +130,56 @@ function initMapForDriver(available, unavailable) {
         popupAnchor: [0, -32]
     });
 
-    available.forEach(o => {
-        const m = L.marker([o.latitude, o.longitude], { icon: okIcon })
-            .addTo(window.map)
-            .bindPopup(`<b>Order ${o.id}</b><br>${o.address}`);
-        bounds.extend(m.getLatLng());
+    orders.forEach(order => {
+        if (!order.latitude || !order.longitude) return;
+        const marker = L.marker([order.latitude, order.longitude], {
+            icon: (window.failedOrderIds.has(order.id) ? nokIcon : okIcon)
+        }).addTo(window.map).bindPopup(`
+            <b>Order ${order.id}</b><br>${order.address || ""}${window.failedOrderIds.has(order.id)
+                ? "<br><i>Unable to be delivered!</i>" : ""
+            }`);
+        bounds.extend(marker.getLatLng());
     });
 
-    unavailable.forEach(o => {
-        const m = L.marker([o.latitude, o.longitude], { icon: nokIcon })
-            .addTo(window.map)
-            .bindPopup(`<b>Order ${o.id}</b><br><i>Unable to be delivered!</i>`);
-        bounds.extend(m.getLatLng());
-    });
-
-    if (available.length + unavailable.length > 1) {
+    if (bounds.isValid()) {
         window.map.fitBounds(bounds, { padding: [50, 50] });
-    } else {
-        const single = (available[0] || unavailable[0]);
-        window.map.setView([single.latitude, single.longitude], 14);
     }
 }
 
-// Initializez harta pentru non-sofer, cu marker pentru Headquarter si comenzile din zona
 function initMapForNonDriver() {
-    const hqLat = +document.getElementById("headquarterLat").value;
-    const hqLng = +document.getElementById("headquarterLng").value;
-    const hqLL = [hqLat, hqLng];
+    const hqLat = parseFloat(document.getElementById("headquarterLat")?.value);
+    const hqLng = parseFloat(document.getElementById("headquarterLng")?.value);
+    if (isNaN(hqLat) || isNaN(hqLng)) {
+        console.error("Coordonate HQ invalide.");
+        return;
+    }
 
-    window.map = L.map('map', { zoomControl: true })
-        .setView(hqLL, 13);
+    const hqLL = [hqLat, hqLng];
+    window.map = L.map('map', { zoomControl: true }).setView(hqLL, 13);
 
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '© OpenStreetMap contributors'
     }).addTo(window.map);
 
-    // HQ icon
     const hqIcon = L.icon({
         iconUrl: 'https://cdn-icons-png.flaticon.com/512/684/684908.png',
-        iconSize: [32, 32], iconAnchor: [16, 32]
+        iconSize: [32, 32],
+        iconAnchor: [16, 32]
     });
+
     L.marker(hqLL, { icon: hqIcon })
         .addTo(window.map)
         .bindPopup("<b>Headquarter</b>");
 
-    const ordersData = loadOrders() || [];
-    const origFailed = loadFailedOrderIds();
+    const orders = loadOrders() || [];
 
-    const okIcon = L.icon({
-        iconUrl: 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon.png',
-        shadowUrl: 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-shadow.png',
-        iconSize: [25, 41],
-        iconAnchor: [12, 41],
-        popupAnchor: [1, -34],
-        shadowSize: [41, 41]
-    });
+    // In case you want to preload backend-provided failed orders here too:
+    const failedIds = new Set(loadFailedOrderIds());
 
-    const nokIcon = L.icon({
-        iconUrl: 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon.png',
-        shadowUrl: 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-shadow.png',
-        iconSize: [25, 41],
-        iconAnchor: [12, 41],
-        popupAnchor: [1, -34],
-        shadowSize: [41, 41]
-    });
+    window.failedOrderIds = Array.from(failedIds);
+    window.allOrders = orders;
 
-    const bounds = L.latLngBounds([hqLL]);
-    ordersData.forEach(o => {
-        if (!o.latitude || !o.longitude) return;
-        const isBad = origFailed.includes(o.id);
-        const marker = L.marker([o.latitude, o.longitude], {
-            icon: isBad ? nokIcon : okIcon
-        }).addTo(window.map)
-            .bindPopup(
-                `<b>Order ${o.id}</b><br>${o.address}` +
-                (isBad ? "<br><i>Unable to be delivered!</i>" : "")
-            );
-        bounds.extend(marker.getLatLng());
-    });
-
-    if (bounds.isValid()) window.map.fitBounds(bounds, { padding: [50, 50] });
+    drawOrderMarkers(orders); // ✅ reuse the driver-side logic
 }
 
 // Preiau deliveryId-ul din input-ul hidden
@@ -285,47 +272,55 @@ function watchUserPosition() {
     }, { enableHighAccuracy: true });
 }
 
-// Preiau ruta optima si configurez marker-ele si afisez segmentului curent
-function fetchRouteAndSetup(deliveryId) {
+async function fetchRouteAndSetup(deliveryId, forceRefresh = false) {
     const cacheKey = `routeData_${deliveryId}`;
-    const cachedRaw = localStorage.getItem(cacheKey);
+    const now = Date.now();
 
-    if (cachedRaw) {
-        const cached = JSON.parse(cachedRaw);
-        const now = Date.now();
-
-        if (now - cached.timestamp < 3600000) { // o ora
-            console.log("Using cached route data (still valid)...");
-            setupRouteDisplay(cached.data);
-            return;
-        } else {
-            console.log("Cached route expired. Fetching new data...");
-            localStorage.removeItem(cacheKey);
+    if (!forceRefresh) {
+        const cachedRaw = localStorage.getItem(cacheKey);
+        if (cachedRaw) {
+            try {
+                const cached = JSON.parse(cachedRaw);
+                if (now - cached.timestamp < 3600000) {
+                    console.log("✅ Using cached route data");
+                    setupRouteDisplay(cached.data);
+                    return;
+                } else {
+                    console.log("🕒 Cached route expired");
+                    localStorage.removeItem(cacheKey);
+                }
+            } catch (e) {
+                console.warn("⚠️ Failed to parse cached route:", e);
+                localStorage.removeItem(cacheKey);
+            }
         }
     }
 
-    fetch('/Deliveries/GetOptimalRoute?deliveryId=' + deliveryId)
-        .then(response => response.json())
-        .then(data => {
-            console.log("API Response:", data);
-            if (data.error) {
-                alert("Error: " + data.error);
-                return;
-            }
+    try {
+        const response = await fetch('/Deliveries/GetOptimalRoute?deliveryId=' + deliveryId);
+        const data = await response.json();
 
-            const payload = {
-                timestamp: Date.now(),
-                data: data
-            };
+        console.log("Data de la SV:", data);
 
-            localStorage.setItem(cacheKey, JSON.stringify(payload));
-            setupRouteDisplay(data);
-            console.log("DATA primit în JS:", data);
-            console.log("AvoidPolygons în data:", data.avoidPolygons);
-        })
-        .catch(error => {
-            console.error("Eroare la preluarea rutei:", error);
-        });
+        if (data.error) {
+            alert("Error: " + data.error);
+            return;
+        }
+
+        localStorage.setItem(cacheKey, JSON.stringify({
+            timestamp: now,
+            data: data
+        }));
+
+        window.failedOrderIds = new Set(data.failedOrderIds || []);
+        window.routeResult = data;
+
+        setupRouteDisplay(data);
+
+        console.log("✅ Route data loaded from server");
+    } catch (err) {
+        console.error("❌ Eroare la preluarea rutei:", err);
+    }
 }
 
 const MOCK_MODE = localStorage.getItem("mock_mode") === "true";
@@ -372,7 +367,17 @@ if (MOCK_MODE) {
 }
 
 function setupRouteDisplay(data) {
-    // 1) Ensure our custom panes exist
+    console.log("📍 [setupRouteDisplay] Starting...");
+
+        console.log("→ rawCoordinates.length:", (data.rawCoordinates || data.coordinates).length);
+        console.log("→ finalCoordinates.length:", data.coordinates.length);
+        console.log("→ stopIndices:", data.stopIndices);
+        console.log("→ orderIds:", data.orderIds);
+        console.log("→ segmentsData (len):", data.segments.length, data.segments);
+        console.log("→ coloredRouteSegments (len):", data.coloredRouteSegments.length, data.coloredRouteSegments);
+        console.log("→ failedOrderIds:", data.failedOrderIds);
+
+    // Setup map panes
     if (!map.getPane('optimizedRoutePane')) {
         map.createPane('optimizedRoutePane');
         map.getPane('optimizedRoutePane').style.zIndex = 450;
@@ -382,13 +387,13 @@ function setupRouteDisplay(data) {
         map.getPane('originalRoutePane').style.zIndex = 440;
     }
 
-    // 2) Build the two polylines (but don’t add them yet)
+    // Convert coordinates to Leaflet-friendly format
     const rawCoords = (data.rawCoordinates || data.coordinates)
         .map(c => [c.latitude, c.longitude]);
     const finalCoords = data.coordinates
         .map(c => [c.latitude, c.longitude]);
 
-    // 3) Clean up any old layers / controls
+    // Clean old layers
     ['initialRouteLayer', 'finalRouteLayer', 'routeControl', 'routeLegend'].forEach(key => {
         if (window[key]) {
             if (key.endsWith('Layer')) map.removeLayer(window[key]);
@@ -397,7 +402,7 @@ function setupRouteDisplay(data) {
         }
     });
 
-    // 4) Create the dashed “original” and solid “optimized” lines
+    // Create polylines
     window.initialRouteLayer = L.polyline(rawCoords, {
         dashArray: '8,6', color: '#999', weight: 4, opacity: 0.9, pane: 'originalRoutePane'
     });
@@ -405,7 +410,7 @@ function setupRouteDisplay(data) {
         color: '#0077cc', weight: 5, opacity: 0.9, pane: 'optimizedRoutePane'
     });
 
-    // 5) Add the layers control & legend
+    // Add layer controls + legend
     window.routeControl = L.control.layers(
         null,
         { 'Original route': window.initialRouteLayer, 'Optimized route': window.finalRouteLayer },
@@ -416,95 +421,62 @@ function setupRouteDisplay(data) {
     window.routeLegend.onAdd = () => {
         const div = L.DomUtil.create('div', 'info legend');
         div.innerHTML = `
-      <div style="background:#fff;padding:6px;border:1px solid #999;font-size:12px">
-        <strong>Routes</strong><br>
-        <i style="display:inline-block;width:18px;height:4px;border-top:4px dashed #999;margin-right:6px"></i>Original<br>
-        <i style="display:inline-block;width:18px;height:4px;background:#0077cc;margin-right:6px"></i>Optimized
-      </div>`;
+          <div style="background:#fff;padding:6px;border:1px solid #999;font-size:12px">
+            <strong>Routes</strong><br>
+            <i style="display:inline-block;width:18px;height:4px;border-top:4px dashed #999;margin-right:6px"></i>Original<br>
+            <i style="display:inline-block;width:18px;height:4px;background:#0077cc;margin-right:6px"></i>Optimized
+          </div>`;
         return div;
     };
     window.routeLegend.addTo(map);
 
-    console.log("🔹 setupRouteDisplay 🔹");
-    console.log("  • rawCoordinates length:", (data.rawCoordinates || data.coordinates).length);
-    console.log("  • optimized coordinates length:", data.coordinates.length);
-    console.log("  • stopIndices:", data.stopIndices);
-    console.log("  • orderIds:", data.orderIds);
-    console.log("  • incoming failedOrderIds:", data.failedOrderIds);
-
-    // Step 6 FIXED: Correctly rebuild segments skipping failed orders
-    window.failedOrderIds = new Set(data.failedOrderIds || window.failedOrderIds);
-
+    // Bind data to window for use throughout the app
     window.routeCoords = finalCoords;
     window.stopIndices = data.stopIndices;
     window.orderIds = data.orderIds;
     window.segmentsData = data.segments;
     window.coloredRouteSegments = data.coloredRouteSegments;
+    window.failedOrderIds = new Set(data.failedOrderIds || []);
 
-    const goodStops = [];
-    for (let i = 0; i < window.orderIds.length; i++) {
-        if (!window.failedOrderIds.has(window.orderIds[i])) {
-            goodStops.push({
-                id: window.orderIds[i],
-                coordIndex: window.stopIndices[i + 1],
-                coords: window.routeCoords[window.stopIndices[i + 1]],
-                segment: window.routeCoords.slice(window.stopIndices[i], window.stopIndices[i + 1] + 1),
-                segmentData: window.segmentsData[i]
-            });
-        } else {
-            console.warn("❌ Skipping failed orderId:", window.orderIds[i]);
-        }
-    }
-
-    // rebuild clean coords/segments
-    let rebuiltCoords = [window.routeCoords[0]];
-    let rebuiltStopIndices = [0];
-    let rebuiltSegmentsData = [];
-    let rebuiltOrderIds = [];
-
-    goodStops.forEach(stop => {
-        rebuiltCoords.push(...stop.segment.slice(1)); // avoid duplicate first coord
-        rebuiltStopIndices.push(rebuiltCoords.length - 1);
-        rebuiltSegmentsData.push(stop.segmentData);
-        rebuiltOrderIds.push(stop.id);
-    });
-
-    // HQ at end
-    rebuiltCoords.push(window.routeCoords[window.routeCoords.length - 1]);
-    rebuiltStopIndices.push(rebuiltCoords.length - 1);
-
-    // update globals
-    window.routeCoords = rebuiltCoords;
-    window.stopIndices = rebuiltStopIndices;
-    window.orderIds = rebuiltOrderIds;
-    window.segmentsData = rebuiltSegmentsData;
-
-
-    // ←––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––
-    // 7) NEW: skip any already‐failed stops *before* drawing the segment
-    // merge in any server‐sent failures
-    window.failedOrderIds = data.failedOrderIds || window.failedOrderIds;
-
-    // never exceed the last “order→HQ” leg
-    console.log("  • previous currentSegment:", window.currentSegment);
+    // Ensure currentSegment is valid
     const maxSeg = window.stopIndices.length - 2;
-    if (window.currentSegment > maxSeg) window.currentSegment = maxSeg;
 
-    // skip forward past all failed orders
-    while (
-        window.currentSegment < window.orderIds.length &&
-        window.failedOrderIds.includes(window.orderIds[window.currentSegment])
-    ) {
-        console.warn("  • Skipping failed orderId:", window.orderIds[window.currentSegment]);
-        window.currentSegment++;
+    console.log("📍 [setupRouteDisplay] currentSegment before skip check:", window.currentSegment);
+    console.log("🛑 [setupRouteDisplay] failedOrderIds =", [...window.failedOrderIds]);
+    console.log("🧾 [setupRouteDisplay] orderIds =", window.orderIds);
+
+    // 1) grab the flag _before_ you clear it
+    const manualAdvance = window._justAdvancedManually;
+    // 2) immediately reset it for the next run
+    window._justAdvancedManually = false;
+
+    if (!manualAdvance) {
+        // ← only when this was *not* a manual advance do we auto‑skip failed orders
+        const maxSeg = window.stopIndices.length - 2;
+
+        if (window.currentSegment > maxSeg) {
+            console.warn("⚠️ currentSegment > maxSeg → resetting to maxSeg");
+            window.currentSegment = maxSeg;
+        }
+
+        while (
+            window.currentSegment < window.orderIds.length &&
+            window.failedOrderIds.has(window.orderIds[window.currentSegment])
+        ) {
+            console.warn("🚫 Skipping failed orderId:", window.orderIds[window.currentSegment]);
+            window.currentSegment++;
+        }
+
+        if (window.currentSegment > maxSeg) {
+            console.warn("⚠️ After skipping, currentSegment > maxSeg → resetting to maxSeg");
+            window.currentSegment = maxSeg;
+        }
+    } else {
+        console.log("✅ Skipping segment validation (manual advance was just triggered)");
     }
-    // clamp again
-    if (window.currentSegment > maxSeg) window.currentSegment = maxSeg;
-    console.log("  • final currentSegment:", window.currentSegment);
-    // ←––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––
 
-    // 8) Draw the HQ marker
-    const [hqLat, hqLng] = window.routeCoords[0];
+    // Draw HQ marker
+    const [hqLat, hqLng] = finalCoords[0];
     L.marker([hqLat, hqLng], {
         icon: L.icon({
             iconUrl: 'https://cdn-icons-png.flaticon.com/512/684/684908.png',
@@ -512,13 +484,14 @@ function setupRouteDisplay(data) {
         })
     }).addTo(map).bindPopup('<b>Headquarter</b>');
 
-    // 9) Finally wire up your helpers
+    // Invoke helpers
     setupFullscreenControl();
-    displayAllSegments();                      // now uses updated currentSegment
-    displayColoredRouteSegments(window.coloredRouteSegments);
+    displayAllSegments();
+    displayColoredRouteSegments(data.coloredRouteSegments);
     displayAvoidPolygons(data.avoidPolygons, data.avoidDescriptions);
+    drawOrderMarkers(window.allOrders || []);
+    //displayWeatherPolygons(data.coloredRouteSegments);
 }
-
 
 function displayWeatherPolygons(coloredSegments, step = 0.03) {
     if (!coloredSegments || coloredSegments.length === 0) return;
@@ -793,89 +766,106 @@ function setupZoomControlListeners() {
 
 // Configurez listener pentru butoanele "Mark as Delivered"
 function setupMarkDeliveredButtons() {
-    document.querySelectorAll(".mark-delivered-btn").forEach(function (button) {
+    const deliveryId = getDeliveryId();
+    if (!deliveryId) return;
+
+    document.querySelectorAll(".mark-delivered-btn").forEach(button => {
         button.addEventListener("click", function (e) {
             e.preventDefault();
-            var form = this.closest("form");
-            var formData = new FormData(form);
+            const form = this.closest("form");
+            const formData = new FormData(form);
+
             fetch(form.action, {
                 method: form.method,
                 body: formData
             })
-            .then(function (response) {
-                return response.text();
-            })
-            .then(function (text) {
-                try {
-                    var data = JSON.parse(text);
-                    if (data.success) {
-                        console.log("Order marcat ca nelivrat.");
-
-                        // Fetch new route after successful marking as failed
-                        fetch('/Deliveries/GetOptimalRoute?deliveryId=' + deliveryId)
-                            .then(res => res.json())
-                            .then(newRouteData => {
-                                // Update cache
-                                const cacheKey = `routeData_${deliveryId}`;
-                                localStorage.setItem(cacheKey, JSON.stringify({
-                                    timestamp: Date.now(),
-                                    data: newRouteData
-                                }));
-
-                                // Rerender the route immediately
-                                setupRouteDisplay(newRouteData);
-                            })
-                            .catch(err => {
-                                console.error("Error fetching updated route", err);
-                            });
-
+                // try to parse JSON, but don’t block if it isn’t JSON
+                .then(response => response.json().catch(() => null))
+                .then(data => {
+                    if (data && data.success) {
+                        console.log("Order marked as delivered (JSON).");
                     } else {
-                        console.error("Eroare la marcarea comenzii ca nelivrate.");
+                        console.warn("Mark‑delivered response not JSON or success=false; continuing anyway.");
                     }
-                } catch (e) {
-                    console.warn("Raspunsul nu este JSON valid, continuam...");
-                }
-            })
-            .catch(function (error) {
-                console.error("Eroare la marcarea comenzii ca livrate:", error);
-            });
+                    // always advance & refresh the route
+                    return refreshRoute(deliveryId);
+                })
+                .catch(error => {
+                    console.error("Error marking as delivered:", error);
+                    // on error, still try to advance & refresh
+                    return refreshRoute(deliveryId);
+                });
         });
     });
 }
 
+function refreshRoute(deliveryId) {
+    console.log("🚚 [refreshRoute] Triggered with deliveryId:", deliveryId);
+
+    const cacheKey = `routeData_${deliveryId}`;
+    localStorage.removeItem(cacheKey); // Clear cache
+
+    // ✅ Set the flag BEFORE advancing
+    window._justAdvancedManually = true;
+
+    // Advance first
+    advanceRoute();
+
+    // Then fetch and re-setup map (fresh)
+    return fetchRouteAndSetup(deliveryId, true)
+        .catch(err => console.error("❌ Error fetching updated route", err));
+}
+
 // Configurez listener pentru butoanele "Cannot Deliver"
 function setupMarkFailedButtons() {
-    document.querySelectorAll(".mark-failed-btn").forEach(function (button) {
+    const deliveryId = getDeliveryId();
+    if (!deliveryId) return;
+
+    document.querySelectorAll(".mark-failed-btn").forEach(button => {
         button.addEventListener("click", function (e) {
             e.preventDefault();
-            var form = this.closest("form");
-            var formData = new FormData(form);
+            const form = this.closest("form");
+            const formData = new FormData(form);
+
             fetch(form.action, {
                 method: form.method,
                 body: formData
             })
-            .then(function (response) {
-                return response.text();
-            })
-            .then(function (text) {
-                try {
-                    var data = JSON.parse(text);
-                    if (data.success) {
-                        console.log("Order marcat ca nelivrat.");
-                    } else {
-                        console.error("Eroare la marcarea comenzii ca nelivrate.");
+                .then(response => response.text())
+                .then(text => {
+                    try {
+                        const data = JSON.parse(text);
+                        if (data.success) {
+                            console.log("Order marked as failed.");
+
+                            fetch(`/Deliveries/GetOptimalRoute?deliveryId=${deliveryId}`)
+                                .then(res => res.json())
+                                .then(newRouteData => {
+                                    const cacheKey = `routeData_${deliveryId}`;
+                                    localStorage.setItem(cacheKey, JSON.stringify({
+                                        timestamp: Date.now(),
+                                        data: newRouteData
+                                    }));
+                                    setupRouteDisplay(newRouteData);
+                                    advanceRoute(); // move to next valid stop
+                                })
+                                .catch(err => {
+                                    console.error("Error fetching updated route", err);
+                                    window.location.reload(); // fallback
+                                });
+                        } else {
+                            console.error("Failed to mark order as undeliverable.");
+                            window.location.reload(); // fallback
+                        }
+                    } catch (e) {
+                        console.warn("Response was not valid JSON.");
+                        window.location.reload(); // fallback
                     }
-                } catch (e) {
-                    console.warn("Raspunsul nu este JSON valid, continuam...");
-                }
-                advanceRoute();
-                window.location.reload();
-            })
-            .catch(function (error) {
-                console.error("Eroare la marcarea comenzii ca nelivrate:", error);
-                advanceRoute();
-                window.location.reload();
-            });
+                })
+                .catch(error => {
+                    console.error("Error marking as failed:", error);
+                    window.location.reload(); // fallback
+                });
         });
     });
 }
@@ -884,7 +874,6 @@ function almostEqual(a, b, epsilon = 0.0001) {
     return Math.abs(a - b) < epsilon;
 }
 
-// Afisez toate segmentele din traseu, evidentiind segmentul curent
 function displayAllSegments() {
     console.log("🔸 displayAllSegments 🔸");
 
@@ -893,49 +882,50 @@ function displayAllSegments() {
     }
     window.segmentsLayerGroup = L.featureGroup().addTo(window.map);
 
-    let startIdx = window.stopIndices[window.currentSegment];
-    let endIdx;
+    const stopIndices = window.stopIndices;
+    const coords = window.routeCoords;
+    const segmentIndex = window.currentSegment;
+    const failedSet = new Set(window.failedOrderIds || []);
+    const maxSeg = stopIndices.length - 2;
 
-    console.log("  • startIdx:", startIdx, "→ stopIndices:", window.stopIndices);
-
-    let nextSegment = window.currentSegment + 1;
-
-    // Skip only failed orders directly ahead, without overshooting the HQ.
-    while (
-        nextSegment < window.orderIds.length &&
-        window.failedOrderIds.includes(window.orderIds[nextSegment])
+    // decide startIdx/endIdx
+    let startIdx, endIdx;
+    if (
+        // we’re on the last segment AND
+        segmentIndex === maxSeg &&
+        // the *previous* order was real AND failed
+        failedSet.has(window.orderIds[segmentIndex - 1])
     ) {
-        console.warn("  • Skipping nextSegment:", nextSegment, "due to failed orderId:", window.orderIds[nextSegment]);
-        nextSegment++;
-    }
-
-    // Use the next valid stop if found, otherwise default to the final segment (HQ).
-    if (nextSegment < window.stopIndices.length) {
-        endIdx = window.stopIndices[nextSegment];
+        // fuse the return leg: start from the end of the stop before the failed one
+        startIdx = stopIndices[segmentIndex - 1];
+        console.log("→ Skipped middle, fusing return: startIdx =", startIdx);
     } else {
-        endIdx = window.stopIndices[window.stopIndices.length - 1]; // final HQ segment
+        startIdx = stopIndices[segmentIndex];
     }
+    endIdx = stopIndices[segmentIndex + 1];
 
-    console.log("  • Calculated endIdx:", endIdx);
+    console.log("  • startIdx:", startIdx, "→ endIdx:", endIdx);
 
-    // Create a clean slice for the current segment.
-    const coords = window.routeCoords.slice(startIdx, endIdx + 1);
-    console.log("  • segment coords length:", coords.length);
-
-    if (!coords.length) {
-        console.error("  ✖ coords is empty! routeCoords:", window.routeCoords);
+    if (startIdx == null || endIdx == null || startIdx >= coords.length) {
+        console.error("Segment indices invalid.");
         return;
     }
 
-    // Draw the polyline segment clearly
-    const greenLine = L.polyline(coords, {
+    const segmentCoords = coords.slice(startIdx, endIdx + 1);
+    if (!segmentCoords.length) {
+        console.error("Segment coords empty.");
+        return;
+    }
+
+    const severity = window.segmentsData?.[segmentIndex]?.severity || 0;
+
+    // draw the green arrowed line
+    const greenLine = L.polyline(segmentCoords, {
         color: 'rgba(74, 255, 92)',
         weight: 6,
         opacity: 1
     }).addTo(window.segmentsLayerGroup);
 
-    // Polyline decorator (directional arrows)
-    const currentSeverity = window.segmentsData[window.currentSegment]?.severity || 0;
     L.polylineDecorator(greenLine, {
         patterns: [{
             offset: '0%',
@@ -945,14 +935,13 @@ function displayAllSegments() {
                 polygon: false,
                 pathOptions: {
                     stroke: true,
-                    color: getContrastingColor(currentSeverity),
+                    color: getContrastingColor(severity),
                     weight: 4
                 }
             })
         }]
     }).addTo(window.segmentsLayerGroup);
 
-    // Focus the map on the correctly calculated segment.
     window.map.fitBounds(
         window.segmentsLayerGroup.getBounds(),
         { padding: [50, 50] }
@@ -961,44 +950,39 @@ function displayAllSegments() {
 
 // Avansez la urmatorul segment din ruta livrarii
 function advanceRoute() {
-    // start looking at the very next leg
-    let next = window.currentSegment + 1;
-
-    // skip *all* failed stops
-    while (
-        next < window.orderIds.length &&
-        window.failedOrderIds.includes(window.orderIds[next])
-    ) {
-        next++;
-    }
-
-    // make sure we never go past the final “order→HQ” leg
     const maxSeg = window.stopIndices.length - 2;
-    window.currentSegment = Math.min(next, maxSeg);
+    console.log("🔁 [advanceRoute] currentSegment before advance:", window.currentSegment);
+    console.log("🔢 [advanceRoute] maxSeg:", maxSeg);
 
+    window.currentSegment = Math.min(window.currentSegment + 1, maxSeg);
     localStorage.setItem('currentSegment_' + getDeliveryId(), window.currentSegment);
+
+    console.log("✅ [advanceRoute] advanced to segment:", window.currentSegment);
+
+    window._justAdvancedManually = true;
     displayAllSegments();
 }
 
-
 // Sterg toate segmentele si decoratorii de pe harta
 function clearRouteSegments() {
-    return new Promise(function (resolve) {
-        if (window.currentSegmentLayer) {
-            window.map.removeLayer(window.currentSegmentLayer);
+    return new Promise(resolve => {
+        if (window.segmentsLayerGroup) {
+            window.map.removeLayer(window.segmentsLayerGroup);
+            window.segmentsLayerGroup = null;
         }
-        if (window.currentDecorator) {
-            window.map.removeLayer(window.currentDecorator);
+
+        if (window.coloredSegmentsLayerGroup) {
+            window.map.removeLayer(window.coloredSegmentsLayerGroup);
+            window.coloredSegmentsLayerGroup = null;
         }
-        window.map.eachLayer(function (layer) {
-            if (layer instanceof L.Polyline && !(layer instanceof L.Marker)) {
-                window.map.removeLayer(layer);
-            } else if (layer instanceof L.LayerGroup) {
-                window.map.removeLayer(layer);
-            }
-        });
+
+        if (window.weatherPolygonsLayerGroup) {
+            window.map.removeLayer(window.weatherPolygonsLayerGroup);
+            window.weatherPolygonsLayerGroup = null;
+        }
+
         localStorage.setItem("routeCleared", "true");
-        console.log("Toate segmentele si decoratorii au fost sterse. Raman doar comenzile si headquarter-ul.");
+        console.log("Toate segmentele și decoratorii au fost curățate.");
         resolve();
     });
 }

@@ -152,7 +152,14 @@ namespace Licenta_v1.Controllers
 
 			await db.SaveChangesAsync();
 
-			await opt.RecalculateDeliveryMetrics(db, delivery);
+			var fullDelivery = await db.Deliveries
+				.Include(d => d.Vehicle)
+				   .ThenInclude(v => v.Region)
+					  .ThenInclude(r => r.Headquarters)
+				.Include(d => d.Orders)
+				.FirstOrDefaultAsync(d => d.Id == delivery.Id);
+
+			await opt.RecalculateDeliveryMetrics(db, fullDelivery);
 			await db.SaveChangesAsync();
 
 			// Creez RouteHistory record

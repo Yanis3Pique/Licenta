@@ -743,6 +743,7 @@ namespace Licenta_v1.Services
 						id = v.Id,
 						profile = GetProfileForVehicle(v),
 						start = new[] { depot.Longitude, depot.Latitude },
+						end = new[] { depot.Longitude, depot.Latitude },
 						capacity = new[] { (int)(v.MaxWeightCapacity * scaleFactor), (int)(v.MaxVolumeCapacity * scaleFactor) },
 					})
 				};

@@ -348,7 +348,8 @@ namespace Licenta_v1.Services
 			{
 				var segment = routeSegments[i];
 				bool isDangerous = isDangerousResults[i];
-				double penaltyFactor = isDangerous ? 1.2 : 1.0;
+				double severity = severityResults[i];                      // 0 ‑ 1
+				double penaltyFactor = 1.0 + 0.8 * severity;               // depinde de severitatea vremii
 				double segmentDurationAdjusted = segment.duration * penaltyFactor;
 
 				var softZones = softPolygons.Select(p => new NetTopologySuite.Geometries.Polygon(new NetTopologySuite.Geometries.LinearRing(
@@ -380,6 +381,22 @@ namespace Licenta_v1.Services
 			}
 
 			Debug.WriteLine($"Original total duration: {routeSummary.duration}s, Adjusted total duration: {adjustedDuration}s");
+
+			// Combustibil si emisii
+			double distKm = routeSummary.distance / 1000.0;
+			double baseLperKm = (delivery.Vehicle.ConsumptionRate ?? 0) / 100.0;   // L/100 km
+			double totalWeightKg = delivery.Orders.Sum(o => o.Weight ?? 0);
+
+			double loadFactor = 1 + (totalWeightKg / (delivery.Vehicle.MaxWeightCapacity ?? 1)) * 0.25;
+			double avgSeverity = severityResults.Length > 0 ? severityResults.Average() : 0;
+			double weatherFactor = 1 + avgSeverity * 0.10;
+
+			double realLperKm = baseLperKm * loadFactor * weatherFactor;
+			double litres = distKm * realLperKm;
+			double co2Kg = litres * EmissionFactor(delivery.Vehicle.FuelType ?? FuelType.Diesel);
+
+			delivery.ConsumptionEstimated = litres;
+			delivery.EmissionsEstimated = co2Kg;
 
 			var regionCoordinates = decodedCoordinates; // HQ + comenzi
 			var bounds = GetRegionBoundsFromOrders(regionCoordinates);
@@ -507,6 +524,9 @@ namespace Licenta_v1.Services
 
 		public List<Coordinate> GetGridPointsNearRoute(List<Coordinate> route, double step, double distanceThresholdMeters)
 		{
+			if (route == null || route.Count < 2)
+				return new List<Coordinate>();
+
 			var bounds = GetRegionBoundsFromOrders(route);
 			var allGridPoints = GenerateGrid(bounds.MinLat, bounds.MaxLat, bounds.MinLng, bounds.MaxLng, step);
 			var routeLine = new NetTopologySuite.Geometries.LineString(
@@ -538,6 +558,16 @@ namespace Licenta_v1.Services
 				_ => "driving-car"
 			};
 		}
+
+		// DEFRA 2024 condensed factors, doar pentru emisiile de tip tail-pipe, kg CO2e/L
+		private static double EmissionFactor(FuelType fuel) => fuel switch
+		{
+			FuelType.Diesel => 2.52,
+			FuelType.Petrol => 2.08,
+			FuelType.Hybrid => 1.04, // 50% combustie interna
+			FuelType.Electric => 0.0,
+			_ => 2.50 // in caz de eroare
+		};
 
 		public List<Coordinate> GenerateGrid(double minLat, double maxLat, double minLng, double maxLng, double step = 0.0125)
 		{

@@ -252,7 +252,79 @@ function watchUserPosition() {
     }, { enableHighAccuracy: true });
 }
 
+const MOCK_MODE = localStorage.getItem("mock_mode") === "true";
+
 async function fetchRouteAndSetup(deliveryId, forceRefresh = false) {
+
+    if (MOCK_MODE) {
+        console.log("MOCK MODE = fake route");
+
+        const hqLat = parseFloat(document.getElementById("headquarterLat").value);
+        const hqLng = parseFloat(document.getElementById("headquarterLng").value);
+
+        const mockCoords = [
+            [hqLat, hqLng],
+            [hqLat + 0.005, hqLng + 0.002],
+            [hqLat + 0.01, hqLng + 0.004],
+            [hqLat + 0.015, hqLng + 0.006],
+            [hqLat + 0.02, hqLng + 0.008],
+            [hqLat + 0.025, hqLng + 0.01]
+        ];
+
+        const stopIndices = [0, 1, 2, 3, 4, 5];
+        const orderIds = [101, 102, 103, 104];
+        const severities = [0.2, 0.4, 0.6, 0.8, 0.95];
+        const segments = stopIndices.slice(0, -1).map((from, i) => ({
+            coordinates: [mockCoords[from], mockCoords[from + 1]],
+            severity: severities[i % severities.length],
+            weatherCode: 800 + i
+        }));
+
+        const mockData = {
+            rawCoordinates: mockCoords.map(c => ({ latitude: c[0], longitude: c[1] })),
+            coordinates: mockCoords.map(c => ({ latitude: c[0], longitude: c[1] })),
+            stopIndices,
+            orderIds,
+            segments,
+            coloredRouteSegments: segments,
+            failedOrderIds: []
+        };
+
+        window.failedOrderIds = new Set();
+        window.routeResult = mockData;
+
+        mockData.coloredRouteSegments.forEach(seg => {
+            const line = L.polyline(seg.coordinates, {
+                color: getSeverityColorRGBA(seg.severity),
+                weight: 6,
+                opacity: 1
+            }).addTo(window.map);
+
+            L.polylineDecorator(line, {
+                patterns: [{
+                    offset: '3%',
+                    repeat: '50px',
+                    symbol: L.Symbol.arrowHead({
+                        pixelSize: 10,
+                        polygon: false,
+                        pathOptions: {
+                            stroke: true,
+                            color: getContrastingColor(seg.severity),
+                            weight: 4
+                        }
+                    })
+                }]
+            }).addTo(window.map);
+
+            line.bindPopup(`⚠️ Severity: ${seg.severity}`);
+        });
+
+        const allCoords = mockData.coloredRouteSegments.flatMap(s => s.coordinates);
+        window.map.fitBounds(allCoords);
+
+        return;
+    }
+
     const cacheKey = `routeData_${deliveryId}`;
     const now = Date.now();
 
@@ -302,8 +374,6 @@ async function fetchRouteAndSetup(deliveryId, forceRefresh = false) {
         console.error("Eroare la preluarea rutei:", err);
     }
 }
-
-const MOCK_MODE = localStorage.getItem("mock_mode") === "true";
 
 document.addEventListener("keydown", function (e) {
     const key = e.key.toLowerCase();

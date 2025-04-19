@@ -140,24 +140,38 @@ namespace Licenta_v1.Controllers
 			vehicle.Status = VehicleStatus.Busy;
 			db.Deliveries.Add(delivery);
 			db.Vehicles.Update(vehicle);
-
-			if (driver != null)
-			{
-				var trackedDriver = await db.Users.FirstOrDefaultAsync(u => u.Id == driver.Id);
-				if (trackedDriver != null)
-				{
-					trackedDriver.IsAvailable = false;
-				}
-			}
-
 			await db.SaveChangesAsync();
 
 			var fullDelivery = await db.Deliveries
 				.Include(d => d.Vehicle)
 				   .ThenInclude(v => v.Region)
-					  .ThenInclude(r => r.Headquarters)
+					   .ThenInclude(r => r.Headquarters)
 				.Include(d => d.Orders)
 				.FirstOrDefaultAsync(d => d.Id == delivery.Id);
+
+			var previewRoute = await rps.CalculateOptimalRouteAsync(fullDelivery);
+			if (previewRoute.FailedOrderIds.Count == fullDelivery.Orders.Count)
+			{
+				vehicle.Status = VehicleStatus.Available;
+				db.Vehicles.Update(vehicle);
+				if (driver != null)
+				{
+					driver.IsAvailable = true;
+					db.ApplicationUsers.Update(driver);
+				}
+				foreach (var o in fullDelivery.Orders)
+				{
+					o.DeliveryId = null;
+					o.DeliverySequence = null;
+					o.Status = OrderStatus.Placed;
+					db.Orders.Update(o);
+				}
+				db.Deliveries.Remove(fullDelivery);
+				await db.SaveChangesAsync();
+
+				TempData["Error"] = "No delivery created - none of the selected orders could be reached.";
+				return RedirectToAction("Create");
+			}
 
 			await opt.RecalculateDeliveryMetrics(db, fullDelivery);
 			await db.SaveChangesAsync();

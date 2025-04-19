@@ -1095,8 +1095,31 @@ namespace Licenta_v1.Services
 			var routePlanner = routeScope.ServiceProvider.GetRequiredService<RoutePlannerService>();
 			var liveRoute = await routePlanner.CalculateOptimalRouteAsync(fullDelivery);
 
-			delivery.DistanceEstimated = liveRoute.Distance / 1000.0;      // km  
-			delivery.TimeTakenForDelivery = liveRoute.Duration / 3600.0;      // hours  
+			if (liveRoute.FailedOrderIds.Count == fullDelivery.Orders.Count)
+			{
+				candidateVehicle.Status = VehicleStatus.Available;
+				db.Vehicles.Update(candidateVehicle);
+				
+				if (driver != null)
+				{
+					driver.IsAvailable = true;
+					db.ApplicationUsers.Update(driver);
+				}
+				
+				foreach (var o in fullDelivery.Orders)
+				{
+					o.DeliveryId = null;
+					o.DeliverySequence = null;
+					db.Orders.Update(o);
+				}
+				
+				db.Deliveries.Remove(delivery);
+				await db.SaveChangesAsync();
+				return;
+			}
+
+			delivery.DistanceEstimated = liveRoute.Distance / 1000.0; // km  
+			delivery.TimeTakenForDelivery = liveRoute.Duration / 3600.0; // ore  
 
 			double fuelLiters = (double)((candidateVehicle.ConsumptionRate * delivery.DistanceEstimated) / 100.0);
 			delivery.ConsumptionEstimated = fuelLiters;
@@ -1240,6 +1263,25 @@ namespace Licenta_v1.Services
 
 		public async Task RecalculateDeliveryMetrics(ApplicationDbContext db, Delivery delivery)
 		{
+			if (delivery.Orders == null || delivery.Orders.Count == 0)
+			{
+				if (delivery.Vehicle != null)
+				{
+					delivery.Vehicle.Status = VehicleStatus.Available;
+					db.Vehicles.Update(delivery.Vehicle);
+				}
+				
+				if (delivery.Driver != null)
+				{
+					delivery.Driver.IsAvailable = true;
+					db.ApplicationUsers.Update(delivery.Driver);
+				}
+				
+				db.Deliveries.Remove(delivery);
+				await db.SaveChangesAsync();
+				return;  
+			}
+
 			// Actualizez DeliverySequence pentru fiecare Order in Delivery
 			await RecalculateDeliverySequence(db, delivery);
 

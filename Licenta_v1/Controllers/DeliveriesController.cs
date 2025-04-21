@@ -667,6 +667,7 @@ namespace Licenta_v1.Controllers
 					order.DeliverySequence = null;
 					order.EstimatedDeliveryInterval = null;
 					order.EstimatedDeliveryDate = null;
+					order.Status = OrderStatus.Placed;
 					db.Orders.Update(order);
 				}
 

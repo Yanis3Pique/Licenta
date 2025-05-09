@@ -80,6 +80,18 @@ namespace Licenta_v1.Controllers
 				return RedirectToAction("Create");
 			}
 
+			// Verific daca toate comenzile sunt nelivrabile
+			var undeliverableOrders = await db.OrderVehicleRestrictions
+				.Where(r => selectedOrderIds.Contains(r.OrderId) &&
+							(r.Source == "Manual" || !r.IsAccessible))
+				.Select(r => r.OrderId)
+				.ToListAsync();
+			if (undeliverableOrders.Count == orders.Count)
+			{
+				TempData["Error"] = "Cannot create a delivery because all selected orders are undeliverable.";
+				return RedirectToAction("Create");
+			}
+
 			// Iau Vehiculul selectat de user
 			var vehicle = db.Vehicles.FirstOrDefault(v => v.Id == vehicleId && v.Status == VehicleStatus.Available);
 			if (vehicle == null)
@@ -124,7 +136,7 @@ namespace Licenta_v1.Controllers
 				VehicleId = vehicle.Id,
 				DriverId = driver?.Id,
 				Status = driver != null ? "Planned" : "Up for Taking",
-				PlannedStartDate = DateTime.Now.AddDays(1),
+				PlannedStartDate = DateTime.Today.AddDays(1),
 				Orders = new List<Order>()
 			};
 

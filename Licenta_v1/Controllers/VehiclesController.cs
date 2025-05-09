@@ -682,6 +682,16 @@ namespace Licenta_v1.Controllers
 				return RedirectToAction("Index");
 			}
 
+			var activeDeliveries = await db.Deliveries
+				.Where(d => d.VehicleId == id && (d.Status == "Planned" || d.Status == "In Progress"))
+				.AnyAsync();
+
+			if (activeDeliveries)
+			{
+				TempData["Error"] = "Vehicle cannot be retired because it has active deliveries (Planned or In Progress).";
+				return RedirectToAction("Index");
+			}
+
 			vehicle.Status = VehicleStatus.Retired;
 
 			var maintenances = await db.Maintenances
@@ -704,6 +714,5 @@ namespace Licenta_v1.Controllers
 				return RedirectToAction("ShowVehiclesOfDispatcher", "Users", new { id = currentUser.Id });
 			}
 		}
-
 	}
 }

@@ -113,7 +113,7 @@
             <div class="col">
                 <div class="card h-100 text-center @cardClass">
                     <div class="card-body">
-                        <h5 class="card-title">Order ID: @order.Id</h5>
+                        @* <h5 class="card-title">Order ID: @order.Id</h5> *@
                         <p class="card-text">
                             <strong>Client:</strong>
                             @if (order.Client == null)
@@ -177,7 +177,7 @@
             <div class="col">
                 <div class="card h-100 text-center" id="light-blue-elements-background-id">
                     <div class="card-body">
-                        <h5 class="card-title">Order ID: @order.Id</h5>
+                        @* <h5 class="card-title">Order ID: @order.Id</h5> *@
                         <p class="card-text">
                             <strong>Client:</strong> @order.Client?.UserName<br />
                             <strong>Address:</strong> @order.Address<br />

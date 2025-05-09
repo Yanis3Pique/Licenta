@@ -612,6 +612,56 @@ namespace Licenta_v1.Services
 				MaxLng: maxLng + buffer
 			);
 		}
+
+		public async Task<RoadContext> GetRoadContextAsync(double lat, double lng)	
+		{
+			var tomTomKey = Env.GetString("TomTomTrafficIncidentsApiKey");
+			var url = $"https://api.tomtom.com/search/2/reverseGeocode/{lat},{lng}.json" +
+					  $"?key={tomTomKey}" +
+					  $"&returnSpeedLimit=true" +
+					  $"&returnRoadClass=Functional";
+
+			using var client = new HttpClient();
+			string json = await client.GetStringAsync(url);
+
+			var root = JObject.Parse(json);
+			var firstAddr = root["addresses"]?.First;
+
+			double speedLimit = 0;
+			string roadType = "Unknown";
+
+			if (firstAddr != null)
+			{
+				var sl = (string)firstAddr["address"]?["speedLimit"] ?? (string)firstAddr["roads"]?.First?["speedLimit"];
+				if (!string.IsNullOrEmpty(sl) && sl.EndsWith("KPH"))
+				{
+					if (double.TryParse(sl[..^3], out var kmh))
+						speedLimit = kmh;
+				}
+
+				var rcVal = firstAddr["roadClass"]?["values"]?.First;
+				if (rcVal != null)
+				{
+					roadType = $"FunctionalClass-{rcVal}";
+				}
+			}
+
+			var (isDangerous, severity, desc, code) = await weatherService.AnalyzeWeatherAsync(new Coordinate { Latitude = lat, Longitude = lng });
+
+			return new RoadContext
+			{
+				SpeedLimitKmh = speedLimit,
+				RoadType = roadType,
+				WeatherSeverity = severity
+			};
+		}
+	}
+
+	public class RoadContext
+	{
+		public double SpeedLimitKmh { get; set; }
+		public string RoadType { get; set; }
+		public double WeatherSeverity { get; set; }
 	}
 
 	public class AvoidPolygonGeoJson

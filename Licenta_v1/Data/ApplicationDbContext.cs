@@ -21,6 +21,7 @@ namespace Licenta_v1.Data
 		public DbSet<Maintenance> Maintenances { get; set; }
 		public DbSet<RouteHistory> RouteHistories { get; set; }
 		public DbSet<OrderVehicleRestriction> OrderVehicleRestrictions { get; set; }
+		public DbSet<AggressiveEvent> AggressiveEvents { get; set; }
 
 		protected override void OnModelCreating(ModelBuilder modelBuilder)
 		{

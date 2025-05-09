@@ -56,28 +56,40 @@
     <br />
 
     <div class="form-group">
-        <label asp-for="Address"></label>
+        <label for="address">Address</label>
+        <small class="text-muted d-block mb-2">
+            Please choose the address by dragging the marker on the map below.
+        </small>
         <input asp-for="Address" class="form-control" id="address" />
         <span asp-validation-for="Address" class="text-danger"></span>
     </div>
     <br />
 
     <div class="form-group">
-        <label asp-for="Latitude"></label>
+        <label for="latitude">Latitude</label>
+        <small class="text-muted d-block mb-2">
+            The latitude will be automatically updated when you move the marker.
+        </small>
         <input asp-for="Latitude" class="form-control" id="latitude" />
         <span asp-validation-for="Latitude" class="text-danger"></span>
     </div>
     <br />
 
     <div class="form-group">
-        <label asp-for="Longitude"></label>
+        <label for="longitude">Longitude</label>
+        <small class="text-muted d-block mb-2">
+            The longitude will be automatically updated when you move the marker.
+        </small>
         <input asp-for="Longitude" class="form-control" id="longitude" />
         <span asp-validation-for="Longitude" class="text-danger"></span>
     </div>
     <br />
 
     <div class="form-group">
-        <label asp-for="Region"></label>
+        <label for="region">Region</label>
+        <small class="text-muted d-block mb-2">
+            The region is automatically selected and cannot be changed.
+        </small>
         <select asp-for="RegionId" class="form-control" id="region" asp-items="ViewBag.RegionId" disabled>
             <option value="">Select Region</option>
         </select>

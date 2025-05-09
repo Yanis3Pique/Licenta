@@ -7,8 +7,52 @@
     ViewBag.Title = "Headquarter Details";
 }
 
-<script src="https://maps.googleapis.com/maps/api/js?key=@ViewBag.GoogleMapsApiKey"></script>
-<script src="~/js/show_headquarter_google.js"></script>
+<!-- Leaflet.js CSS and JS for OpenStreetMap -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<!-- Custom Styles for Custom Marker Icon -->
+<style>
+    .custom-marker {
+        background-image: url('https://cdn-icons-png.flaticon.com/512/6756/6756142.png'); /* Warehouse icon from Flaticon */
+        background-size: cover;
+        width: 50px;
+        height: 50px;
+        display: block;
+        transform: translate(-25px, -50px); /* Center the icon properly */
+    }
+</style>
+
+<script>
+    document.addEventListener("DOMContentLoaded", function () {
+        const mapElement = document.getElementById("map");
+        const latitude = parseFloat(mapElement.getAttribute("data-lat"));
+        const longitude = parseFloat(mapElement.getAttribute("data-lng"));
+
+        const map = L.map('map').setView([latitude, longitude], 15);
+
+        // Add the OpenStreetMap tile layer
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+            attribution: '&copy; OpenStreetMap contributors'
+        }).addTo(map);
+
+        // Custom marker icon
+        const customIcon = L.divIcon({
+            className: 'custom-marker',
+            iconSize: [50, 50], // Custom size
+            popupAnchor: [0, -20] // Adjust popup position
+        });
+
+        // Add a custom, non-draggable marker to the map
+        const marker = L.marker([latitude, longitude], {
+            icon: customIcon,
+            draggable: false
+        }).addTo(map)
+            .bindPopup("<b>@Model.Name</b><br>@Model.Address")
+            .openPopup();
+    });
+</script>
 
 <h2 class="text-center mt-5">@Model.Name</h2>
 <br />
@@ -17,16 +61,13 @@
     <div class="card-body">
         <p class="card-text"><strong>Address:</strong> @Model.Address</p>
         <p class="card-text"><strong>Region:</strong> @Model.Region?.County</p>
-        <p class="card-text"><strong>Latitude:</strong> @Model.Latitude</p>
-        <p class="card-text"><strong>Longitude:</strong> @Model.Longitude</p>
+        <p class="card-text"><strong>Latitude:</strong> <input type="text" id="latitudeInput" value="@Model.Latitude" class="form-control" readonly /></p>
+        <p class="card-text"><strong>Longitude:</strong> <input type="text" id="longitudeInput" value="@Model.Longitude" class="form-control" readonly /></p>
     </div>
 </div>
 
-<div id="map"
-     style="height: 650px; width: 100%; margin-top: 20px;"
-     data-lat=@Model.Latitude
-     data-lng=@Model.Longitude>
-</div>
+<div id="map" style="height: 650px; width: 100%; margin-top: 20px;"
+     data-lat="@Model.Latitude" data-lng="@Model.Longitude"></div>
 <br />
 
 <div>

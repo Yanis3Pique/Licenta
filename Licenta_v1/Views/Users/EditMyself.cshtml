@@ -48,7 +48,10 @@
                 <br />
 
                 <div class="form-group">
-                    @Html.LabelFor(m => m.HomeAddress)
+                    <label for="homeAddress">Home Address</label>
+                    <small class="text-muted d-block mb-2">
+                        Please choose the address by dragging the marker on the map below.
+                    </small>
                     @Html.EditorFor(m => m.HomeAddress, new { htmlAttributes = new { @class = "form-control", id = "homeAddress" } })
                     @Html.ValidationMessageFor(m => m.HomeAddress, null, new { @class = "text-danger" })
                 </div>
@@ -58,7 +61,6 @@
 
                 <input type="hidden" id="latitude" asp-for="Latitude" value="@ViewBag.Latitude" />
                 <input type="hidden" id="longitude" asp-for="Longitude" value="@ViewBag.Longitude" />
-                <br />
 
                 <div class="form-group">
                     @Html.LabelFor(m => m.Email, "Email")

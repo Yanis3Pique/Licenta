@@ -1129,6 +1129,15 @@ namespace Licenta_v1.Services
 			db.Deliveries.Update(delivery);
 			await db.SaveChangesAsync();
 
+			await CalculateRouteMetrics(db,
+							delivery,
+							delivery.Orders.ToList(),
+							candidateVehicle,
+							depot);
+
+			db.Deliveries.Update(delivery);
+			await db.SaveChangesAsync();
+
 			var routeHistory = new RouteHistory
 			{
 				DeliveryId = delivery.Id,
@@ -1307,6 +1316,8 @@ namespace Licenta_v1.Services
 			delivery.ConsumptionEstimated = fuelLiters;
 			delivery.EmissionsEstimated = fuelLiters * GetEmissionFactor((FuelType)delivery.Vehicle.FuelType) / 1000.0;
 			delivery.RouteData = JsonConvert.SerializeObject(liveRoute);
+
+			await CalculateRouteMetrics(db, delivery, delivery.Orders.ToList(), delivery.Vehicle, depot);
 
 			db.Deliveries.Update(delivery);
 			await db.SaveChangesAsync();

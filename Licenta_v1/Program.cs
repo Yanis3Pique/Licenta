@@ -21,6 +21,12 @@ var ptvApiKeyReserve = Env.GetString("PTV_ApiKeyReserve");
 var ptvApiKeyEmergency = Env.GetString("PTV_ApiKeyEmergency");
 
 // Add services to the container.
+builder.Services.AddHttpClient("MlService", c =>
+{
+	c.BaseAddress = new Uri(builder.Configuration["MlService:BaseUrl"]);
+	c.Timeout = TimeSpan.FromSeconds(5);
+});
+
 builder.Services.AddScoped<RoutePlannerService>();
 
 builder.Services.AddHttpClient("ApiClient", client =>
@@ -77,6 +83,8 @@ app.UseStaticFiles();
 app.UseRouting();
 
 app.UseAuthorization();
+
+app.MapControllers();
 
 app.MapControllerRoute(
     name: "default",

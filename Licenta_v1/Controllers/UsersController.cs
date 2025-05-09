@@ -936,7 +936,19 @@ namespace Licenta_v1.Controllers
 
 			if (role == "Admin")
 			{
-				// Adminii se pot sterge oricand
+				var adminCount = await (from userRole in db.UserRoles
+										join r in db.Roles on userRole.RoleId equals r.Id
+										join activeUser in db.ApplicationUsers on userRole.UserId equals activeUser.Id
+										where r.Name == "Admin"
+											&& userRole.UserId != userId
+											&& !activeUser.IsDeleted
+										select userRole.UserId).CountAsync();
+
+				if (adminCount <= 2)
+				{
+					TempData["Error"] = "You cannot delete your account because there must be at least two other Admins in the application.";
+					return RedirectToAction("Profile");
+				}
 			}
 			else if (role == "Dispecer")
 			{
@@ -985,8 +997,8 @@ namespace Licenta_v1.Controllers
 			user.Email = $"deleted_{Guid.NewGuid()}@example.com";
 			user.PhoneNumber = string.Empty;
 			user.HomeAddress = "Anonymized";
-			user.Latitude = null;
-			user.Longitude = null;
+			user.Latitude = 0;
+			user.Longitude = 0;
 			user.NormalizedEmail = user.Email;
 			user.NormalizedUserName = user.UserName;
 
@@ -999,11 +1011,17 @@ namespace Licenta_v1.Controllers
 
 			await db.SaveChangesAsync();
 
-			// Dam Sign out la User
-			await HttpContext.SignOutAsync();
+			// Force Log Out without Session
+			await _signInManager.SignOutAsync(); // Sign out the user (Identity)
+			Response.Cookies.Delete(".AspNetCore.Identity.Application"); // Remove Identity Cookie
+
+			// Set Headers
+			Response.Headers["Cache-Control"] = "no-cache, no-store, must-revalidate";
+			Response.Headers["Pragma"] = "no-cache";
+			Response.Headers["Expires"] = "0";
 
 			TempData["Success"] = "Your account was successfully deleted.";
-			return RedirectToAction("Index", "Home");
+			return Redirect("/Identity/Account/Login");
 		}
 
 		[NonAction]

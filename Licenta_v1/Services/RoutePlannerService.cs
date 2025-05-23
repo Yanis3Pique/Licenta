@@ -274,30 +274,38 @@ namespace Licenta_v1.Services
 				var errCode = err?["code"]?.Value<int>();
 				var errMsg = err?["message"]?.Value<string>() ?? "";
 
-				// Daca am un Delivery cu coordonate de livrare invalide il sterg si reincerc
-				if (errCode == 2009)
+				// handle both “points X not routable” (2009) and “coordinate X not routable” (2010)
+				if (errCode == 2009 || errCode == 2010)
 				{
-					var m = Regex.Match(errMsg, @"points\s+(\d+)\s+\(");
-					if (m.Success && int.TryParse(m.Groups[1].Value, out var badIdx)
-						&& badIdx > 0 && badIdx < coordinates.Count - 1)
+					// match either "points 3 (" or "coordinate 3:"
+					var m = Regex.Match(errMsg, @"(?:points|coordinate)\s+(\d+)");
+					if (m.Success
+						&& int.TryParse(m.Groups[1].Value, out var badIdx)
+						&& badIdx > 0
+						&& badIdx < coordinates.Count - 1)
 					{
+						// mark that order failed in DB
 						var dropped = orderedStops[badIdx - 1];
 						failedOrderIds.Add(dropped.Id);
-						using var scope = scopeFactory.CreateScope();
-						var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-						var dbOrder = await db.Orders.FindAsync(dropped.Id);
-						if (dbOrder != null)
+						using (var scope = scopeFactory.CreateScope())
 						{
-							dbOrder.Status = OrderStatus.FailedDelivery;
-							await db.SaveChangesAsync();
+							var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+							var dbOrder = await db.Orders.FindAsync(dropped.Id);
+							if (dbOrder != null)
+							{
+								dbOrder.Status = OrderStatus.FailedDelivery;
+								await db.SaveChangesAsync();
+							}
 						}
 
+						// remove that waypoint and its corresponding orderedStop, then retry
 						coordinates.RemoveAt(badIdx);
 						orderedStops.RemoveAt(badIdx - 1);
 						continue;
 					}
 				}
 
+				// anything else is fatal
 				throw new Exception(
 					$"ORS final failed: {finalResponse.StatusCode} – {finalResponseJson}"
 				);
@@ -613,49 +621,91 @@ namespace Licenta_v1.Services
 			);
 		}
 
-		public async Task<RoadContext> GetRoadContextAsync(double lat, double lng)	
-		{
-			var tomTomKey = Env.GetString("TomTomTrafficIncidentsApiKey");
-			var url = $"https://api.tomtom.com/search/2/reverseGeocode/{lat},{lng}.json" +
-					  $"?key={tomTomKey}" +
-					  $"&returnSpeedLimit=true" +
-					  $"&returnRoadClass=Functional";
 
-			using var client = new HttpClient();
-			string json = await client.GetStringAsync(url);
-
-			var root = JObject.Parse(json);
-			var firstAddr = root["addresses"]?.First;
-
-			double speedLimit = 0;
-			string roadType = "Unknown";
-
-			if (firstAddr != null)
+		public async Task<RoadContext> GetRoadContextAsync(double lat, double lng)
 			{
-				var sl = (string)firstAddr["address"]?["speedLimit"] ?? (string)firstAddr["roads"]?.First?["speedLimit"];
-				if (!string.IsNullOrEmpty(sl) && sl.EndsWith("KPH"))
+				var tomTomKey = Env.GetString("TomTomTrafficIncidentsApiKey");
+				var url = $"https://api.tomtom.com/search/2/reverseGeocode/{lat},{lng}.json" +
+						  $"?key={tomTomKey}" +
+						  $"&returnSpeedLimit=true" +
+						  $"&returnRoadClass=Functional";
+
+				using var client = new HttpClient();
+				var json = await client.GetStringAsync(url);
+				Debug.WriteLine("[TomTom JSON] " + json);
+
+				var root = JObject.Parse(json);
+				var firstAddr = root["addresses"]?.First;
+				if (firstAddr == null)
+					throw new InvalidOperationException("TomTom returned no addresses");
+
+				// ─── 1) Parse roadClass → roadType ────────────────────────
+				string roadType = "Unknown";
+				var rcToken = firstAddr["roadClass"];
+				if (rcToken != null)
 				{
-					if (double.TryParse(sl[..^3], out var kmh))
-						speedLimit = kmh;
+					var entry = rcToken.Type == JTokenType.Array
+						? rcToken.First
+						: rcToken;
+					var values = entry?["values"] as JArray;
+					var v0 = values?.First?.ToString();
+					if (!string.IsNullOrEmpty(v0))
+						roadType = v0;  // e.g. "Street", "Motorway", etc.
 				}
 
-				var rcVal = firstAddr["roadClass"]?["values"]?.First;
-				if (rcVal != null)
+				// ─── 2) Try API speedLimit first ─────────────────────────
+				double? apiLimit = firstAddr["address"]?["speedLimitInKmh"]?.Value<double?>();
+
+				// ─── 3) Detect “in locality” via municipality ───────────
+				string municipality = firstAddr["address"]?["municipality"]?.Value<string>() ?? "";
+				bool inLocality = !string.IsNullOrEmpty(municipality);
+
+				// ─── 4) Detect E‐road via routeNumbers ──────────────────
+				var routeNums = firstAddr["address"]?["routeNumbers"]?.ToObject<string[]>()
+								?? Array.Empty<string>();
+				bool isERoad = routeNums.Any(r => r.StartsWith("E", StringComparison.OrdinalIgnoreCase));
+
+				// ─── 5) Fallback rules ───────────────────────────────────
+				double speedLimitKmh;
+				if (apiLimit.HasValue && apiLimit.Value > 0)
 				{
-					roadType = $"FunctionalClass-{rcVal}";
+					speedLimitKmh = apiLimit.Value;
 				}
+				else if (inLocality)
+				{
+					speedLimitKmh = 50;
+				}
+				else if (roadType.Equals("Motorway", StringComparison.OrdinalIgnoreCase))
+				{
+					speedLimitKmh = 130;
+				}
+				else if (roadType.Equals("Trunk", StringComparison.OrdinalIgnoreCase))
+				{
+					speedLimitKmh = 120;
+				}
+				else if (isERoad)
+				{
+					speedLimitKmh = 100;
+				}
+				else
+				{
+					speedLimitKmh = 90;
+				}
+
+				// ─── 6) Weather as before ────────────────────────────────
+				var (isDangerous, severity, desc, code) =
+					await weatherService.AnalyzeWeatherAsync(
+						new Coordinate { Latitude = lat, Longitude = lng }
+					);
+
+				return new RoadContext
+				{
+					SpeedLimitKmh = speedLimitKmh,
+					RoadType = roadType,
+					WeatherSeverity = severity
+				};
 			}
-
-			var (isDangerous, severity, desc, code) = await weatherService.AnalyzeWeatherAsync(new Coordinate { Latitude = lat, Longitude = lng });
-
-			return new RoadContext
-			{
-				SpeedLimitKmh = speedLimit,
-				RoadType = roadType,
-				WeatherSeverity = severity
-			};
 		}
-	}
 
 	public class RoadContext
 	{

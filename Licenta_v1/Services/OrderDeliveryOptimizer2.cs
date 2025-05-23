@@ -1129,11 +1129,16 @@ namespace Licenta_v1.Services
 			db.Deliveries.Update(delivery);
 			await db.SaveChangesAsync();
 
-			await CalculateRouteMetrics(db,
-							delivery,
-							delivery.Orders.ToList(),
-							candidateVehicle,
-							depot);
+			var reachableOrders = fullDelivery.Orders
+				.Where(o => !liveRoute.FailedOrderIds.Contains(o.Id))
+				.ToList();
+
+			await CalculateRouteMetrics(
+				db,
+				delivery,
+				reachableOrders,
+				candidateVehicle,
+				depot);
 
 			db.Deliveries.Update(delivery);
 			await db.SaveChangesAsync();
@@ -1317,7 +1322,17 @@ namespace Licenta_v1.Services
 			delivery.EmissionsEstimated = fuelLiters * GetEmissionFactor((FuelType)delivery.Vehicle.FuelType) / 1000.0;
 			delivery.RouteData = JsonConvert.SerializeObject(liveRoute);
 
-			await CalculateRouteMetrics(db, delivery, delivery.Orders.ToList(), delivery.Vehicle, depot);
+			// only include orders that weren’t flagged as failed
+			var reachableOrders = delivery.Orders
+				.Where(o => !liveRoute.FailedOrderIds.Contains(o.Id))
+				.ToList();
+
+			await CalculateRouteMetrics(
+				db,
+				delivery,
+				reachableOrders,
+				delivery.Vehicle,
+				depot);
 
 			db.Deliveries.Update(delivery);
 			await db.SaveChangesAsync();

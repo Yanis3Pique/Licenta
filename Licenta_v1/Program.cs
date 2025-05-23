@@ -19,12 +19,13 @@ var openRouteServiceApiKey = Env.GetString("OpenRouteServiceApiKey");
 var ptvApiKey = Env.GetString("PTV_ApiKey");
 var ptvApiKeyReserve = Env.GetString("PTV_ApiKeyReserve");
 var ptvApiKeyEmergency = Env.GetString("PTV_ApiKeyEmergency");
+var fastApiBaseUrl = Env.GetString("FastApiBaseUrl");
 
-// Add services to the container.
-builder.Services.AddHttpClient("MlService", c =>
-{
-	c.BaseAddress = new Uri(builder.Configuration["MlService:BaseUrl"]);
-	c.Timeout = TimeSpan.FromSeconds(5);
+builder.Services.AddHttpClient("MlService", client =>
+  {
+	// Adjust host/port to whatever uvicorn is bound to:
+	client.BaseAddress = new Uri("http://localhost:8000");
+	client.Timeout = TimeSpan.FromSeconds(5);
 });
 
 builder.Services.AddScoped<RoutePlannerService>();

@@ -52,11 +52,11 @@ public class TaskuriAutomate : BackgroundService
 
 				DateTime todayAt18 = currentTime.Date.AddHours(18);
 				// Rulez doar daca am trecut de ora 18:00 si inca nu s-a rulat deja codul pe ziua de astazi
-				if (currentTime >= todayAt18 && _lastDeliveryCleanup < todayAt18)
-				{
-					await DeletePlannedDeliveries(db);
-					_lastDeliveryCleanup = currentTime;
-				}
+				//if (currentTime >= todayAt18 && _lastDeliveryCleanup < todayAt18)
+				//{
+				//	await DeletePlannedDeliveries(db);
+				//	_lastDeliveryCleanup = currentTime;
+				//}
 
 				// Celelalte trei metode se ruleaza la fiecare minut
 				await CheckAndScheduleMaintenance(db);

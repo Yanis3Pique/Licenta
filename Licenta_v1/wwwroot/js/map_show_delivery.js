@@ -1,4 +1,7 @@
-﻿document.addEventListener("DOMContentLoaded", function () {
+﻿let lastPos = null;
+let lastTs = null;
+
+document.addEventListener("DOMContentLoaded", function () {
     initApp();
 });
 
@@ -218,36 +221,84 @@ function setupFollowMode() {
 // Urmaresc pozitia userului (doar pentru sofer)
 function watchUserPosition() {
     if (!isDriver()) return;
-    var carIcon = L.icon({
+    const carIcon = L.icon({
         iconUrl: '/Images/car.png',
         iconSize: [32, 32],
         iconAnchor: [16, 16]
     });
-    navigator.geolocation.watchPosition(function (position) {
-        var lat = position.coords.latitude;
-        var lng = position.coords.longitude;
-        var latlng = [lat, lng];
 
+    navigator.geolocation.watchPosition(pos => {
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+        const ts = new Date(pos.timestamp || Date.now());
+
+        // Only POST when we have a previous point
+        if (lastPos && lastTs) {
+            // 1) compute speed & heading
+            const dt = (ts - lastTs) / 1000; // seconds
+            const R = 6371000;              // metres
+            const φ1 = lastPos.lat * Math.PI / 180;
+            const φ2 = lat * Math.PI / 180;
+            const Δφ = (lat - lastPos.lat) * Math.PI / 180;
+            const Δλ = (lng - lastPos.lng) * Math.PI / 180;
+            const a = Math.sin(Δφ / 2) ** 2
+                + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) ** 2;
+            const d = 2 * R * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+            const speedKmh = d / dt * 3.6;
+            const y = Math.sin(Δλ) * Math.cos(φ2);
+            const x = Math.cos(φ1) * Math.sin(φ2)
+                - Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
+            const headingDeg = (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+
+            // 2) build DTO
+            const payload = {
+                driverId: document.getElementById("driverId").value,
+                vehicleId: parseInt(document.getElementById("vehicleId").value, 10),
+                timestamp: ts.toISOString(),
+                latitude: lat,
+                longitude: lng,
+                speedKmh: speedKmh,
+                headingDeg: headingDeg
+            };
+
+            // 3) POST
+            fetch("/api/Telemetry", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload)
+            })
+                .then(async r => {
+                    if (!r.ok) {
+                        const text = await r.text();
+                        console.warn("Telemetry error", r.status, ":", text || r.statusText);
+                    }
+                })
+                .catch(err => console.error("Telemetry failed:", err));
+        }
+
+        // 4) slide the window
+        lastPos = { lat, lng };
+        lastTs = ts;
+
+        // 5) update the marker
+        const latlng = [lat, lng];
         if (!window.userMarker) {
-            window.userMarker = L.marker(latlng, { icon: carIcon, rotationAngle: 0 })
+            window.userMarker = L.marker(latlng, { icon: carIcon })
                 .addTo(window.map)
                 .bindPopup("Your location");
         } else {
             window.userMarker.setLatLng(latlng);
         }
-
-        console.log("Follow mode =", window.followMode);
-        window.updateRefocusButtonStyle(window.followMode);
         if (window.followMode) {
-            console.log("Harta se centreaza pe:", latlng);
             window.ignoreNextMovestart = true;
             window.map.panTo(latlng, { animate: true });
         }
-    }, function (error) {
-        if (error.code === error.PERMISSION_DENIED) {
-            alert("Acceptati monitorizarea GPS pentru a vedea pozitia pe harta.");
+
+    }, err => {
+        if (err.code === err.PERMISSION_DENIED) {
+            alert("Accepta monitorizarea GPS pentru a vedea poziția pe hartă.");
         } else {
-            console.error("Eroare la obtinerea locatiei GPS:", error);
+            console.error("Geolocation error:", err);
         }
     }, { enableHighAccuracy: true });
 }
@@ -359,10 +410,38 @@ async function fetchRouteAndSetup(deliveryId, forceRefresh = false) {
             return;
         }
 
-        localStorage.setItem(cacheKey, JSON.stringify({
-            timestamp: now,
-            data: data
-        }));
+        try {
+            // Extragem doar datele esențiale pentru cache
+            const reducedData = {
+                rawCoordinates: data.rawCoordinates,
+                coordinates: data.coordinates,
+                stopIndices: data.stopIndices,
+                orderIds: data.orderIds,
+                segments: (data.segments || []).map(s => ({
+                    coordinates: s.coordinates,
+                    severity: s.severity
+                })),
+                failedOrderIds: data.failedOrderIds
+            };
+
+            const payload = {
+                timestamp: now,
+                data: reducedData
+            };
+
+            // Încercăm să salvăm în cache
+            try {
+                localStorage.setItem(cacheKey, JSON.stringify(payload));
+            } catch (storageErr) {
+                console.warn("LocalStorage overflow – ruta nu a fost salvată în cache:", storageErr);
+                localStorage.removeItem(cacheKey);
+                // Dacă vrei: fallback la sessionStorage
+                // sessionStorage.setItem(cacheKey, JSON.stringify(payload));
+            }
+
+        } catch (processingErr) {
+            console.error("Eroare la procesarea datelor pentru cache:", processingErr);
+        }
 
         window.failedOrderIds = new Set(data.failedOrderIds || []);
         window.routeResult = data;

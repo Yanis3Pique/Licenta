@@ -17,6 +17,10 @@
 <!-- Input hidden pentru isDriver in JavaScript -->
 <input type="hidden" id="isDriver" value="@isDriver.ToString().ToLower()" />
 
+<!-- Input hidden pentru driverId si vehicleId in JavaScript -->
+<input type="hidden" id="driverId" value="@ViewBag.CurrentUserId" />
+<input type="hidden" id="vehicleId" value="@Model.Vehicle.Id" />
+
 <!-- Input-uri hidden pentru coordonatele headquarter -->
 <input type="hidden" id="headquarterLat" value="@Model.Vehicle.Region.Headquarters.Latitude" />
 <input type="hidden" id="headquarterLng" value="@Model.Vehicle.Region.Headquarters.Longitude" />

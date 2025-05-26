@@ -1178,6 +1178,36 @@ namespace Licenta_v1.Controllers
 
 			return Json(heatmap);
 		}
+
+		[HttpGet]
+		public async Task<IActionResult> GetEvents(int deliveryId)
+		{
+			var delivery = await db.Deliveries
+				.Include(d => d.Vehicle)
+				.FirstOrDefaultAsync(d => d.Id == deliveryId);
+
+			if (delivery == null)
+				return NotFound();
+
+			var vehicleId = delivery.VehicleId;
+
+			// Get latest 10 events that are not "Normal"
+			var events = await db.AggressiveEvents
+				.Where(e => e.VehicleId == vehicleId && e.EventType != "Normal")
+				.OrderByDescending(e => e.Timestamp)
+				.Take(10)
+				.Select(e => new
+				{
+					eventType = e.EventType,
+					severity = e.SeverityScore,
+					timestamp = e.Timestamp,
+					driverId = e.DriverId,
+					probabilities = e.Probabilities
+				})
+				.ToListAsync();
+
+			return Ok(events);
+		}
 	}
 }
 

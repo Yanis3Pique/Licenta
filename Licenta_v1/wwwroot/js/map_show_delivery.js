@@ -1,9 +1,15 @@
 ﻿let lastPos = null;
 let lastTs = null;
+let recentMlEvents = []; // store last 5 non-normal events
 
 document.addEventListener("DOMContentLoaded", function () {
     initApp();
 });
+
+function getSeverityThreshold() {
+    const el = document.getElementById("severityThreshold");
+    return el ? parseFloat(el.value) : 0.1;
+}
 
 function loadFailedOrderIds() {
     const el = document.getElementById("failedOrderIds");
@@ -24,9 +30,8 @@ function initApp() {
         return;
     }
 
-    window.map = L.map('map', { zoomControl: true }).setView([hqLat, hqLng], 13);
+    window.map = L.map('map', { zoomControl: true, attributionControl: false }).setView([hqLat, hqLng], 13);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '© OpenStreetMap contributors'
     }).addTo(window.map);
     const hqIcon = L.icon({
         iconUrl: 'https://cdn-icons-png.flaticon.com/512/684/684908.png',
@@ -41,7 +46,7 @@ function initApp() {
     const ordersData = loadOrders();
     if (!ordersData || ordersData.length === 0) {
         console.warn("Nu exista comenzi disponibile → afișez doar HQ.");
-        return;   // map+HQ is already on screen
+        return;
     }
 
     // Scot comenzile care nu au coordonate valide
@@ -60,6 +65,11 @@ function initApp() {
     setupMarkFailedButtons();
     fetchRouteAndSetup(deliveryId);
     setTimeout(checkDeliveryStatus, 500);
+
+    setInterval(() => {
+        const deliveryId = getDeliveryId();
+        if (deliveryId) pollMlEvents(deliveryId);
+    }, 1000);
 }
 
 function isDriver() {
@@ -376,27 +386,15 @@ async function fetchRouteAndSetup(deliveryId, forceRefresh = false) {
         return;
     }
 
-    const cacheKey = `routeData_${deliveryId}`;
-    const now = Date.now();
+    window.routeCache = window.routeCache || {};
 
-    if (!forceRefresh) {
-        const cachedRaw = localStorage.getItem(cacheKey);
-        if (cachedRaw) {
-            try {
-                const cached = JSON.parse(cachedRaw);
-                if (now - cached.timestamp < 3600000) {
-                    console.log("Using cached route data");
-                    setupRouteDisplay(cached.data);
-                    return;
-                } else {
-                    console.log("Cached route expired");
-                    localStorage.removeItem(cacheKey);
-                }
-            } catch (e) {
-                console.warn("Failed to parse cached route:", e);
-                localStorage.removeItem(cacheKey);
-            }
-        }
+    const now = Date.now();
+    const cacheEntry = window.routeCache[deliveryId];
+
+    if (!forceRefresh && cacheEntry && now - cacheEntry.timestamp < 3600000) {
+        console.log("Using in-memory route cache");
+        setupRouteDisplay(cacheEntry.data);
+        return;
     }
 
     try {
@@ -431,7 +429,10 @@ async function fetchRouteAndSetup(deliveryId, forceRefresh = false) {
 
             // Încercăm să salvăm în cache
             try {
-                localStorage.setItem(cacheKey, JSON.stringify(payload));
+                window.routeCache[deliveryId] = {
+                    timestamp: now,
+                    data: reducedData
+                };
             } catch (storageErr) {
                 console.warn("LocalStorage overflow – ruta nu a fost salvată în cache:", storageErr);
                 localStorage.removeItem(cacheKey);
@@ -496,6 +497,17 @@ if (MOCK_MODE) {
 }
 
 function setupRouteDisplay(data) {
+    const deliveryStatus = document.getElementById("deliveryStatus")?.value?.trim();
+
+    // Always draw markers
+    drawOrderMarkers(window.allOrders || []);
+
+    // If delivery is completed, do NOT draw routes
+    if (deliveryStatus === "Completed") {
+        console.log("🔕 Delivery is completed. Route segments will not be displayed, but order markers are visible.");
+        return;
+    }
+
     console.log("[setupRouteDisplay] Starting...");
 
     console.log("rawCoordinates.length:", (data.rawCoordinates || data.coordinates).length);
@@ -552,7 +564,7 @@ function setupRouteDisplay(data) {
                 border-top:3px dashed #999;
                 margin-right:6px;
               "></span>
-              Original model
+              Original Route
             </label>
             <label style="display:flex; align-items:center; cursor:pointer; user-select:none; margin-top:6px">
               <input type="checkbox" id="toggleOptimized" style="margin-right:6px">
@@ -563,7 +575,7 @@ function setupRouteDisplay(data) {
                 border-top:4px solid #0077cc;
                 margin-right:6px;
               "></span>
-              Optimized model
+              Optimized Route
             </label>
           `;
         return div;
@@ -650,7 +662,6 @@ function setupRouteDisplay(data) {
     displayAllSegments();
     //displayColoredRouteSegments(data.coloredRouteSegments);
     displayAvoidPolygons(data.avoidPolygons, data.avoidDescriptions);
-    drawOrderMarkers(window.allOrders || []);
     //displayWeatherPolygons(data.coloredRouteSegments);
 }
 
@@ -968,9 +979,6 @@ function setupMarkDeliveredButtons() {
 function refreshRoute(deliveryId) {
     console.log("[refreshRoute] Triggered with deliveryId:", deliveryId);
 
-    const cacheKey = `routeData_${deliveryId}`;
-    localStorage.removeItem(cacheKey);
-
     window._justAdvancedManually = true;
 
     advanceRoute();
@@ -1083,13 +1091,13 @@ function displayAllSegments() {
             offset: '0%',
             repeat: '50px',
             symbol: L.Symbol.arrowHead({
-                    pixelSize: 10,
-                    polygon: false,
-                    pathOptions: {
-                        stroke: true,
-                        color: getContrastingColor(maxSeverity),
-                        weight: 4
-                    }
+                pixelSize: 10,
+                polygon: false,
+                pathOptions: {
+                    stroke: true,
+                    color: getContrastingColor(maxSeverity),
+                    weight: 4
+                }
             })
         }]
     }).addTo(window.segmentsLayerGroup);
@@ -1104,7 +1112,7 @@ function displayAllSegments() {
         const emoji = getWeatherEmoji(worst.weatherCode);
         const desc = getFriendlyWeatherDescription(emoji, worst.weatherDescription);
         const sev = getFormattedSeverity(worst.severity);
-        
+
         coloredLine.bindPopup(`
             <b>⚠️ Severity:</b> ${sev}<br>
             <b>${emoji} Weather:</b> ${desc}
@@ -1200,4 +1208,102 @@ function displayAvoidPolygons(avoidPolygonsData, descriptions = []) {
     });
 
     window.avoidPolygonsLayer = layerGroup;
+}
+
+function updateMlEventPopup() {
+    const popup = document.getElementById("mlEventsPopup");
+    if (!popup) return;
+
+    if (recentMlEvents.length === 0) {
+        popup.style.display = "none";
+        return;
+    }
+
+    function severityLabel(sev) {
+        if (sev >= 0.95) return { label: "Very High", icon: "🟣" };
+        if (sev >= 0.75) return { label: "High", icon: "🔴" };
+        return { label: "Medium", icon: "🟠" };
+    }
+
+    function formatTime(isoString) {
+        try {
+            const d = new Date(isoString);
+            return d.toLocaleTimeString('en-GB', { hour12: false });
+        } catch (err) {
+            return "";
+        }
+    }
+
+    popup.innerHTML = `
+        <div style="font-size: 0.85em;">
+            <strong style="font-size: 0.95em;">⚠️ ML Events</strong>
+            <ul style="padding-left: 14px; margin: 6px 0; list-style: none;">
+                ${recentMlEvents.map(e => {
+        const sev = severityLabel(e.severity);
+        const time = formatTime(e.timestamp);
+        return `
+                        <li style="margin-bottom: 4px;">
+                            <b style="font-size: 0.85em;">${sev.icon} ${normalizeEventName(e.eventType)}</b><br>
+                            <span style="color: gray; font-size: 0.75em;">
+                                Severity: ${sev.label} (${time})
+                            </span>
+                        </li>
+                    `;
+    }).join("")}
+            </ul>
+        </div>
+    `;
+
+    popup.style.display = "block";
+}
+
+function handleNewEvents(events) {
+    const threshold = getSeverityThreshold();
+    const currentDriverId = document.getElementById("driverId")?.value;
+
+    console.log("Received events:", events);
+    console.log("Current driverId:", currentDriverId);
+
+    for (const e of events) {
+        if (e.driverId !== currentDriverId) continue;
+        if (e.eventType === "Normal") continue;
+        if (!Array.isArray(e.probabilities)) continue;
+
+        const maxProb = Math.max(...e.probabilities);
+
+        if (e.severity >= threshold && maxProb >= 0.5) {
+            recentMlEvents.push({
+                eventType: e.eventType,
+                severity: e.severity,
+                probability: maxProb, // Use correct key name here
+                timestamp: e.timestamp
+            });
+        }
+
+        console.log(`Checking event: ${e.eventType}, severity=${e.severity}, prob=${maxProb}`);
+    }
+
+    recentMlEvents = recentMlEvents.slice(-1);
+    updateMlEventPopup();
+}
+
+async function pollMlEvents(deliveryId) {
+    try {
+        const res = await fetch(`/Deliveries/GetEvents?deliveryId=${deliveryId}`);
+        if (!res.ok) throw new Error(res.statusText);
+        const events = await res.json();
+        handleNewEvents(events);
+    } catch (err) {
+        console.warn("Failed to fetch ML events:", err);
+    }
+}
+
+function normalizeEventName(raw) {
+    const map = {
+        'HardAccel': 'Accelerating too fast',
+        'HardBraking': 'Braking too hard',
+        'HighJerk': 'Driving erratically',
+        'Speeding': 'Driving too fast',
+    };
+    return map[raw] || raw;
 }

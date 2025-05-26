@@ -98,6 +98,7 @@ public class TelemetryController : ControllerBase
 			Timestamp = dto.Timestamp,
 			EventType = prediction.PredictedEvent,
 			SeverityScore = prediction.AggressiveScore,
+			Probabilities = prediction.Proba?.ToArray(),
 			Latitude = dto.Latitude,
 			Longitude = dto.Longitude,
 			RoadContextJson = JsonConvert.SerializeObject(roadCtx)
@@ -126,5 +127,8 @@ public class TelemetryController : ControllerBase
 
 		[JsonPropertyName("aggressive_score")]
 		public double AggressiveScore { get; set; }
+
+		[JsonPropertyName("proba")]
+		public List<double>? Proba { get; set; }
 	}
 }

@@ -25,6 +25,9 @@
 <input type="hidden" id="headquarterLat" value="@Model.Vehicle.Region.Headquarters.Latitude" />
 <input type="hidden" id="headquarterLng" value="@Model.Vehicle.Region.Headquarters.Longitude" />
 
+<!-- Input-uri hidden pentru threshold-ul de severitate -->
+<input type="hidden" id="severityThreshold" value="0.3" />
+
 @if (TempData["Success"] != null)
 {
     <div class="alert alert-success">@TempData["Success"]</div>
@@ -223,15 +226,42 @@
 
     <h4 class="text-center mt-4">Order Locations</h4>
     <div id="map-container" style="position: relative; width: 100%; height: 600px;">
+        <div id="mlEventsPopup" style="
+            position: absolute;
+            bottom: 15px;
+            right: 15px;
+            background: rgba(255,255,255,0.95);
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            padding: 10px 14px;
+            z-index: 1001;
+            max-width: 300px;
+            font-size: 14px;
+            display: none;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+        "></div>
+
         <div id="map" style="width: 100%; height: 100%; border-radius: 10px;"></div>
         <!-- Daca userul este sofer, afisez butonul de Refocus -->
         @if (isDriver)
         {
-            <button id="refocusButton" style="position: absolute; bottom: 25px; right: 10px; z-index: 1000; padding: 10px; background-color: #fff; border: 1px solid #ccc; border-radius: 4px; cursor: pointer;">
-                Refocus
-            </button>
+            <div class="leaflet-control leaflet-bar" style="position: absolute; top: 12px; left: 50px; z-index: 1000;">
+                <a id="refocusButton" href="javascript:void(0)" title="Refocus" style="
+                    display: block;
+                    width: auto;
+                    padding: 0 6px;
+                    height: 30px;
+                    line-height: 26px;
+                    text-align: center;
+                    background-color: white;
+                    color: blue;
+                    font-weight: bold;
+                    font-size: 13px;
+                    text-decoration: none;
+                    border-radius: 4px;
+                ">Refocus</a>
+            </div>
         }
-    </div>
 </div>
 
 @if (User.IsInRole("Sofer") && Model.DriverId?.ToString() == ViewBag.CurrentUserId?.ToString())

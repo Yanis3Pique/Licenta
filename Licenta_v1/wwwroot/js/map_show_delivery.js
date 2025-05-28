@@ -1254,7 +1254,7 @@ function updateMlEventPopup() {
 
     popup.innerHTML = `
         <div style="font-size: 0.85em;">
-            <strong style="font-size: 0.95em;">⚠️ ML Events</strong>
+            <strong style="font-size: 0.95em;">⚠️ Driver Warnings</strong>
             <ul style="padding-left: 14px; margin: 6px 0; list-style: none;">
                 ${recentMlEvents.map(e => {
         const sev = severityLabel(e.severity);

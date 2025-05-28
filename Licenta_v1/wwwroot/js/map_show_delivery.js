@@ -1227,12 +1227,30 @@ function updateMlEventPopup() {
 
     function formatTime(isoString) {
         try {
-            const d = new Date(isoString);
-            return d.toLocaleTimeString('en-GB', { hour12: false });
+            const date = new Date(isoString);
+            date.setHours(date.getHours() + 3); // Adaugă 3 ore
+
+            const dateTimeRo = new Intl.DateTimeFormat('ro-RO', {
+                timeZone: 'Europe/Bucharest',
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+                hour12: false
+            }).format(date);
+
+            //console.log("➡️ UTC:", isoString);
+            //console.log("➡️ Europe/Bucharest:", dateTimeRo);
+
+            return dateTimeRo;
         } catch (err) {
-            return "";
+            console.warn("formatTime error:", err);
+            return "invalid";
         }
     }
+
 
     popup.innerHTML = `
         <div style="font-size: 0.85em;">
@@ -1241,6 +1259,7 @@ function updateMlEventPopup() {
                 ${recentMlEvents.map(e => {
         const sev = severityLabel(e.severity);
         const time = formatTime(e.timestamp);
+
         return `
                         <li style="margin-bottom: 4px;">
                             <b style="font-size: 0.85em;">${sev.icon} ${normalizeEventName(e.eventType)}</b><br>
@@ -1261,29 +1280,29 @@ function handleNewEvents(events) {
     const threshold = getSeverityThreshold();
     const currentDriverId = document.getElementById("driverId")?.value;
 
-    console.log("Received events:", events);
-    console.log("Current driverId:", currentDriverId);
-
-    for (const e of events) {
-        if (e.driverId !== currentDriverId) continue;
-        if (e.eventType === "Normal") continue;
-        if (!Array.isArray(e.probabilities)) continue;
+    // Filtrez evenimentele valide pentru șoferul curent
+    const validEvents = events.filter(e => {
+        if (e.driverId !== currentDriverId) return false;
+        if (e.eventType === "Normal") return false;
+        if (!Array.isArray(e.probabilities)) return false;
 
         const maxProb = Math.max(...e.probabilities);
+        return e.severity >= threshold && maxProb >= 0.6;
+    }).map(e => ({
+        eventType: e.eventType,
+        severity: e.severity,
+        probability: Math.max(...e.probabilities),
+        timestamp: e.timestamp
+    }));
 
-        if (e.severity >= threshold && maxProb >= 0.5) {
-            recentMlEvents.push({
-                eventType: e.eventType,
-                severity: e.severity,
-                probability: maxProb, // Use correct key name here
-                timestamp: e.timestamp
-            });
-        }
+    if (validEvents.length === 0) return;
 
-        console.log(`Checking event: ${e.eventType}, severity=${e.severity}, prob=${maxProb}`);
-    }
+    // Selectez cel mai recent cronologic
+    const latestEvent = validEvents.reduce((a, b) => {
+        return new Date(a.timestamp) > new Date(b.timestamp) ? a : b;
+    });
 
-    recentMlEvents = recentMlEvents.slice(-1);
+    recentMlEvents = [latestEvent];
     updateMlEventPopup();
 }
 

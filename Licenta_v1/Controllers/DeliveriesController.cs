@@ -1200,7 +1200,7 @@ namespace Licenta_v1.Controllers
 				{
 					eventType = e.EventType,
 					severity = e.SeverityScore,
-					timestamp = e.Timestamp,
+					timestamp = e.Timestamp.ToUniversalTime().ToString("o"),
 					driverId = e.DriverId,
 					probabilities = e.Probabilities
 				})

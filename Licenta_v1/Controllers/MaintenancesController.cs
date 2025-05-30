@@ -164,6 +164,12 @@ namespace Licenta_v1.Controllers
 				.ToListAsync();
 
 			ViewBag.Vehicle = vehicle;
+
+			var user = await _userManager.GetUserAsync(User);
+			var roles = await _userManager.GetRolesAsync(user);
+			ViewBag.UserRole = roles.FirstOrDefault();
+			ViewBag.DispatcherId = user.Id;
+
 			return View(maintenances);
 		}
 

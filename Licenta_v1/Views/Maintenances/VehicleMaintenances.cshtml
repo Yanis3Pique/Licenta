@@ -60,7 +60,15 @@
     </tbody>
 </table>
 
-<a asp-action="Index" asp-controller="Vehicles" class="btn btn-secondary">Back to Vehicles</a>
+@if (ViewBag.UserRole == "Admin")
+{
+    <a asp-action="Index" asp-controller="Vehicles" class="btn btn-secondary">Back to Vehicles</a>
+}
+else if (ViewBag.UserRole == "Dispecer")
+{
+    <a href="/Users/ShowVehiclesOfDispatcher/@ViewBag.DispatcherId"
+       class="btn btn-secondary">Back to Vehicles</a>
+}
 
 @functions {
     private string GetMaintenanceDisplayName(MaintenanceTypes maintenanceType)

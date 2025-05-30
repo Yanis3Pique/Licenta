@@ -23,7 +23,6 @@ var fastApiBaseUrl = Env.GetString("FastApiBaseUrl");
 
 builder.Services.AddHttpClient("MlService", client =>
   {
-	// Adjust host/port to whatever uvicorn is bound to:
 	client.BaseAddress = new Uri("http://localhost:8000");
 	client.Timeout = TimeSpan.FromSeconds(5);
 });

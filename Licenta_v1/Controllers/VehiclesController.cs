@@ -58,7 +58,7 @@ namespace Licenta_v1.Controllers
 			}
 
 			// Filtrez masinile dupa judet
-			if (regionId.HasValue)
+			if (regionId.HasValue && regionId.Value != 0)
 			{
 				vehicles = vehicles.Where(v => v.RegionId == regionId);
 			}
@@ -93,7 +93,21 @@ namespace Licenta_v1.Controllers
 
 			ViewBag.SearchString = searchString;
 			ViewBag.RegionId = regionId;
-			ViewBag.Regions = new SelectList(db.Regions, "Id", "County");
+			var regions = db.Regions.ToList();
+			var regionItems = regions.Select(r => new SelectListItem
+			{
+				Value = r.Id.ToString(),
+				Text = r.County
+			}).ToList();
+
+			// Adaugă opțiunea „All Regions” cu valoare ""
+			regionItems.Insert(0, new SelectListItem
+			{
+				Value = "0",
+				Text = "All Regions"
+			});
+
+			ViewBag.Regions = regionItems;
 
 			var (vehicles, count) = await GetFilteredVehicles(searchString, regionId, sortOrder, pageNumber, pageSize);
 
@@ -545,9 +559,9 @@ namespace Licenta_v1.Controllers
 		}
 
 		// Post - Vehicles/ScheduleMaintenance/id
-		[Authorize(Roles = "Admin,Dispecer")]
 		[HttpPost]
-		public async Task<IActionResult> ScheduleMaintenance(int id, [FromForm] string selectedMaintenanceType)
+		[Authorize(Roles = "Admin,Dispecer")]
+		public async Task<IActionResult> ScheduleMaintenance(int id, [FromForm] string selectedMaintenanceType, [FromForm] DateTime scheduledDate)
 		{
 			if (id <= 0)
 			{
@@ -556,7 +570,6 @@ namespace Licenta_v1.Controllers
 			}
 
 			var vehicle = await db.Vehicles.FindAsync(id);
-
 			if (vehicle == null)
 			{
 				TempData["Error"] = "Vehicle not found!";
@@ -569,38 +582,41 @@ namespace Licenta_v1.Controllers
 				return RedirectToAction("ScheduleMaintenance", new { id });
 			}
 
-			// Verific sa nu mai fie o mentenanta de acelasi tip programata pentru vehicul ("Scheduled")
-			if (await db.Maintenances.AnyAsync(m => m.VehicleId == id && m.MaintenanceType.ToString() == selectedMaintenanceType && m.Status == "Scheduled"))
+			if (scheduledDate.Date < DateTime.Today)
 			{
-				TempData["Error"] = "A maintenance of the same type is already scheduled for this vehicle!";
+				TempData["Error"] = "Scheduled date cannot be in the past.";
 				return RedirectToAction("ScheduleMaintenance", new { id });
 			}
 
-			// Adaug o noua mentenanta in BD peste 7 zile
+			bool duplicate = await db.Maintenances.AnyAsync(m =>
+				m.VehicleId == id &&
+				m.MaintenanceType.ToString() == selectedMaintenanceType &&
+				m.Status == "Scheduled");
+
+			if (duplicate)
+			{
+				TempData["Error"] = "A maintenance of the same type is already scheduled!";
+				return RedirectToAction("ScheduleMaintenance", new { id });
+			}
+
 			var maintenance = new Maintenance
 			{
 				VehicleId = id,
 				MaintenanceType = Enum.Parse<MaintenanceTypes>(selectedMaintenanceType),
-				ScheduledDate = DateTime.Now.AddDays(7),
+				ScheduledDate = scheduledDate,
 				Status = "Scheduled"
 			};
 
 			db.Maintenances.Add(maintenance);
 			await db.SaveChangesAsync();
 
-			TempData["Success"] = $"Maintenance for {vehicle.Brand} {vehicle.Model} scheduled successfully!";
-
-			// Dau mail la toti adminii ca s-a programat o mentenanta
 			await NotifyUsers(vehicle, maintenance);
 
-			if(User.IsInRole("Admin"))
-			{
-				return RedirectToAction("Index");
-			}
-			else
-			{
-				return RedirectToAction("VehicleMaintenances", "Maintenances", new { vehicleId = id });
-			}
+			TempData["Success"] = $"Maintenance for {vehicle.Brand} {vehicle.Model} scheduled successfully!";
+
+			return User.IsInRole("Admin")
+				? RedirectToAction("Index")
+				: RedirectToAction("VehicleMaintenances", "Maintenances", new { vehicleId = id });
 		}
 
 		// Dau mail la toti adminii si dispecerilor din regiunea specificata ca s-a programat o mentenanta

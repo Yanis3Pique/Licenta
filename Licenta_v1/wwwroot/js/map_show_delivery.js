@@ -1261,13 +1261,13 @@ function updateMlEventPopup() {
         const time = formatTime(e.timestamp);
 
         return `
-                        <li style="margin-bottom: 4px;">
-                            <b style="font-size: 0.85em;">${sev.icon} ${normalizeEventName(e.eventType)}</b><br>
-                            <span style="color: gray; font-size: 0.75em;">
-                                Severity: ${sev.label} (${time})
-                            </span>
-                        </li>
-                    `;
+            <li style="margin-bottom: 4px;">
+                <b style="font-size: 0.85em;">${sev.icon} ${normalizeEventName(e.eventType)}</b><br>
+                <span style="color: gray; font-size: 0.75em;">
+                    Severity: ${sev.label} (${time})
+                </span>
+            </li>
+        `;
     }).join("")}
             </ul>
         </div>
@@ -1279,28 +1279,66 @@ function updateMlEventPopup() {
 function handleNewEvents(events) {
     const threshold = getSeverityThreshold();
     const currentDriverId = document.getElementById("driverId")?.value;
+    const currentDeliveryId = document.getElementById("deliveryId")?.value;
 
-    // Filtrez evenimentele valide pentru șoferul curent
-    const validEvents = events.filter(e => {
-        if (e.driverId !== currentDriverId) return false;
-        if (e.eventType === "Normal") return false;
-        if (!Array.isArray(e.probabilities)) return false;
+    //console.log("📥 Raw events from server:", events);
+    //console.log(
+    //    "🔍 Filtering for driverId:",
+    //    currentDriverId,
+    //    "| deliveryId:",
+    //    currentDeliveryId
+    //);
 
-        const maxProb = Math.max(...e.probabilities);
-        return e.severity >= threshold && maxProb >= 0.6;
-    }).map(e => ({
-        eventType: e.eventType,
-        severity: e.severity,
-        probability: Math.max(...e.probabilities),
-        timestamp: e.timestamp
-    }));
+    //events.forEach((e, idx) => {
+    //    console.log(`Event[${idx}] keys:`, Object.keys(e));
+    //});
 
-    if (validEvents.length === 0) return;
+    const validEvents = events
+        .filter(e => {
+            if (e.deliveryId == null || e.deliveryId.toString() !== currentDeliveryId) {
+                return false;
+            }
 
-    // Selectez cel mai recent cronologic
-    const latestEvent = validEvents.reduce((a, b) => {
-        return new Date(a.timestamp) > new Date(b.timestamp) ? a : b;
-    });
+            if (e.driverId !== currentDriverId) {
+                return false;
+            }
+
+            if (e.eventType === "Normal") {
+                return false;
+            }
+
+            if (!Array.isArray(e.probabilities) || Math.max(...e.probabilities) < 0) {
+                return false;
+            }
+
+            if (typeof e.severity !== "number" || e.severity < threshold) {
+                return false;
+            }
+
+            return true;
+        })
+        .map(e => ({
+            eventType: e.eventType,
+            severity: e.severity,
+            probability: Math.max(...e.probabilities),
+            timestamp: e.timestamp
+        }));
+
+    //console.log(
+    //    "✅ Filtered aggressive events for this delivery:",
+    //    validEvents
+    //);
+
+    if (validEvents.length === 0) {
+        recentMlEvents = [];
+        updateMlEventPopup();
+        return;
+    }
+
+    // Pick the chronologically latest event
+    const latestEvent = validEvents.reduce((a, b) =>
+        new Date(a.timestamp) > new Date(b.timestamp) ? a : b
+    );
 
     recentMlEvents = [latestEvent];
     updateMlEventPopup();
@@ -1320,7 +1358,7 @@ async function pollMlEvents(deliveryId) {
 function normalizeEventName(raw) {
     const map = {
         'HardAccel': 'Accelerating too fast',
-        'HardBraking': 'Braking too hard',
+        'HardBrake': 'Braking too hard',
         'HighJerk': 'Driving erratically',
         'Speeding': 'Driving too fast',
     };

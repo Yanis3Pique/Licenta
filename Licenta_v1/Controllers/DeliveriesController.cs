@@ -1202,7 +1202,9 @@ namespace Licenta_v1.Controllers
 					severity = e.SeverityScore,
 					timestamp = e.Timestamp.ToUniversalTime().ToString("o"),
 					driverId = e.DriverId,
-					probabilities = e.Probabilities
+					probabilities = e.Probabilities,
+					vehicleId = e.VehicleId,
+					deliveryId = e.DeliveryId
 				})
 				.ToListAsync();
 

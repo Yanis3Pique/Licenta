@@ -73,13 +73,15 @@ namespace Licenta_v1.Controllers
 				return View(feedback);
 			}
 
+			// 1) Verify that this feedback really belongs to a delivered order of this client:
 			var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
 
-			// Ma asigur ca feedback-ul este de la clientul corect la comanda livrata
 			var order = await db.Orders
 				.Include(o => o.Delivery)
-				.ThenInclude(d => d.Driver)
-				.FirstOrDefaultAsync(o => o.Id == feedback.OrderId && o.ClientId == userId && o.Status == OrderStatus.Delivered);
+				.FirstOrDefaultAsync(o =>
+					o.Id == feedback.OrderId &&
+					o.ClientId == userId &&
+					o.Status == OrderStatus.Delivered);
 
 			if (order == null || order.Delivery?.DriverId != feedback.DriverId)
 			{
@@ -87,10 +89,44 @@ namespace Licenta_v1.Controllers
 				return RedirectToAction("Index", "Orders");
 			}
 
+			//    First, get the numerical DeliveryId:
+			int deliveryId = order.Delivery.Id;
+
+			//    Define your severity threshold for "dangerous" (e.g. SeverityScore ≥ 0.7)
+			const double dangerousThreshold = 0.7;
+
+			//    Count how many AggressiveEvents on that delivery meet or exceed the threshold:
+			int dangerousCount = await db.AggressiveEvents
+				.Where(e =>
+					e.DeliveryId == deliveryId &&
+					e.SeverityScore >= dangerousThreshold)
+				.CountAsync();
+
+			//    Decide how much penalty per event—for example, subtract 0.2 stars per event:
+			const double penaltyPerEvent = 0.2;
+
+			//    Compute the total penalty:
+			double totalPenalty = dangerousCount * penaltyPerEvent;
+
+			//    Apply the penalty to the client's original rating:
+			double originalRating = feedback.Rating;
+			double adjustedRating = originalRating - totalPenalty;
+
+			//    Clamp so it never goes below 1:
+			if (adjustedRating < 1.0)
+			{
+				adjustedRating = 1.0;
+			}
+
+			//    Finally, store that into the feedback object:
+			feedback.Rating = (int)Math.Round(adjustedRating);
+
+			// 3) Now save everything normally:
 			db.Feedbacks.Add(feedback);
 			await db.SaveChangesAsync();
 
-			// Actualizez rating-ul soferului
+			// 4) Recompute the driver's average rating (this part stays exactly as you had it):
+
 			var driver = await db.ApplicationUsers
 				.Include(d => d.FeedbacksReceived)
 				.FirstOrDefaultAsync(d => d.Id == feedback.DriverId);
@@ -104,6 +140,7 @@ namespace Licenta_v1.Controllers
 			TempData["Success"] = "Your feedback has been submitted successfully!";
 			return RedirectToAction("Index", "Orders");
 		}
+
 
 		// Get - Feedbacks/Index
 		[Authorize(Roles = "Admin,Dispecer")]

@@ -50,8 +50,7 @@
         <!-- Dropdown cu regiuni -->
         <div class="col-md-3 col-sm-6">
             @Html.DropDownList("regionId",
-                     ViewBag.Regions as SelectList,
-                     "All Regions",
+                     new SelectList(ViewBag.Regions as List<SelectListItem>, "Value", "Text", ViewBag.RegionId?.ToString() ?? "0"),
                      new { @class = "form-select" })
         </div>
 

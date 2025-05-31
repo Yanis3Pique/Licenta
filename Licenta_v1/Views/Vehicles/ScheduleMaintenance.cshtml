@@ -14,10 +14,10 @@
     <div class="alert alert-danger">@TempData["Error"]</div>
 }
 
-<h2 class="text-center">@ViewBag.Title</h2>
+<h2 class="text-center">🛠️ @ViewBag.Title</h2>
 <br />
 
-<form asp-action="ScheduleMaintenance" method="post">
+<form asp-action="ScheduleMaintenance" method="post" id="schedule">
     <input type="hidden" name="id" value="@Model.Id" />
 
     <div class="form-group mb-3">
@@ -31,9 +31,101 @@
         </select>
     </div>
 
+    <div class="form-group mb-3">
+        <label for="ScheduledDate">Select Scheduled Date</label>
+        <input type="text" name="scheduledDate" id="ScheduledDate" class="form-control" placeholder="Select a date" required />
+    </div>
+
     <div class="d-flex justify-content-start align-items-center">
         <button type="submit" class="btn btn-primary me-2">Schedule</button>
         <a asp-action="Index" class="btn btn-secondary">Back to List</a>
     </div>
 </form>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+
+<script>
+    flatpickr("#ScheduledDate", {
+        altInput: true,
+        altFormat: "F j, Y",
+        dateFormat: "Y-m-d",
+        minDate: "today",
+        defaultDate: new Date().fp_incr(7),
+        disableMobile: true,
+        allowInput: true,
+        animate: true
+    });
+</script>
+
+<style>
+    .flatpickr-calendar {
+        background: #ffffff;
+        color: #222;
+        border-radius: 16px;
+        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.25);
+        font-family: 'Segoe UI', sans-serif;
+        font-size: 14px;
+        padding: 10px;
+        z-index: 9999 !important;
+        width: auto;
+        min-width: auto;
+    }
+
+    .flatpickr-months {
+        background: #e3f2fd;
+        color: #1565c0;
+        border-radius: 12px 12px 0 0;
+    }
+    .flatpickr-weekdays {
+        background: #e3f2fd;
+        color: #1565c0;
+        border-radius: 0 0 12px 12px;
+    }
+
+    .flatpickr-days {
+        width: 100% !important;
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: space-between;
+    }
+
+    .flatpickr-weekday {
+        font-weight: 600;
+        color: #1565c0;
+    }
+
+    .flatpickr-day {
+        border-radius: 8px;
+        color: #333;
+        transition: all 0.25s ease;
+    }
+
+    .flatpickr-day:hover {
+        background: #64b5f6;
+        color: white;
+        cursor: pointer;
+    }
+
+    .flatpickr-day.today {
+        border: 1px solid #1976d2;
+        background: #bbdefb;
+    }
+
+    .flatpickr-day.selected {
+        background: #1976d2;
+        color: white;
+        font-weight: bold;
+    }
+
+    #schedule {
+        max-width: 600px;
+        margin: 60px auto;
+        background: rgba(255, 255, 255, 0.3);
+        padding: 35px 45px;
+        border-radius: 20px;
+        box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+        backdrop-filter: blur(6px);
+    }
+</style>
 

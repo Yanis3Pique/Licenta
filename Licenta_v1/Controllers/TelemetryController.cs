@@ -89,6 +89,9 @@ public class TelemetryController : ControllerBase
 			return StatusCode(503, "ML service unavailable");
 		}
 
+		var activeDelivery = await _db.Deliveries
+			.Where(d => d.VehicleId == dto.VehicleId && d.Status == "In Progress")
+			.FirstOrDefaultAsync();
 
 		// 4) Persist event
 		var evt = new AggressiveEvent
@@ -101,7 +104,8 @@ public class TelemetryController : ControllerBase
 			Probabilities = prediction.Proba?.ToArray(),
 			Latitude = dto.Latitude,
 			Longitude = dto.Longitude,
-			RoadContextJson = JsonConvert.SerializeObject(roadCtx)
+			RoadContextJson = JsonConvert.SerializeObject(roadCtx),
+			DeliveryId = activeDelivery?.Id
 		};
 
 		try

@@ -144,6 +144,7 @@ namespace Licenta_v1.Controllers
 			foreach (var order in orders)
 			{
 				order.DeliveryId = delivery.Id;
+				order.EstimatedDeliveryDate = delivery.PlannedStartDate;
 				delivery.Orders.Add(order);
 				db.Orders.Update(order);
 			}
@@ -526,6 +527,7 @@ namespace Licenta_v1.Controllers
 			foreach (var order in newOrders)
 			{
 				order.DeliveryId = delivery.Id;
+				order.EstimatedDeliveryDate = delivery.PlannedStartDate;
 				delivery.Orders.Add(order);
 				db.Orders.Update(order);
 			}
@@ -1062,6 +1064,12 @@ namespace Licenta_v1.Controllers
 			{
 				TempData["Error"] = "Delivery not found.";
 				return RedirectToAction("Index");
+			}
+
+			if (delivery.Status == "Completed")
+			{
+				TempData["Error"] = "Completed deliveries cannot be deleted.";
+				return RedirectToAction("Show", new { id });
 			}
 
 			// Resetez fiecare comanda: elimin asocierea cu Delivery-ul si resetez statusul comenzii

@@ -2,6 +2,16 @@
     ViewBag.Title = "Welcome to EcoDelivery";
 }
 
+@if (TempData["Success"] != null)
+{
+    <div class="alert alert-success">@TempData["Success"]</div>
+}
+
+@if (TempData["Error"] != null)
+{
+    <div class="alert alert-danger">@TempData["Error"]</div>
+}
+
 <div class="container mt-5">
     <div class="text-center mb-5">
         <h1 class="display-4">@ViewBag.Title</h1>

@@ -750,7 +750,9 @@ namespace Licenta_v1.Controllers
 			user.LastName = newData.LastName;
 			user.HomeAddress = newData.HomeAddress;
 			user.Email = newData.Email;
+			user.NormalizedEmail = newData.Email.ToUpper();
 			user.UserName = newData.UserName;
+			user.NormalizedUserName = newData.UserName.ToUpper();
 			user.PhoneNumber = newData.PhoneNumber;
 			user.Latitude = newData.Latitude;
 			user.Longitude = newData.Longitude;

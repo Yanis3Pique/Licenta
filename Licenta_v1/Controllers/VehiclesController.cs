@@ -588,6 +588,17 @@ namespace Licenta_v1.Controllers
 				return RedirectToAction("ScheduleMaintenance", new { id });
 			}
 
+			var hasActiveDelivery = await db.Deliveries.AnyAsync(d =>
+				d.VehicleId == id &&
+				(d.Status == "In Progress" || d.Status == "Planned" || d.Status == "Up for Taking") &&
+				d.PlannedStartDate.Date == scheduledDate.Date);
+
+			if (hasActiveDelivery)
+			{
+				TempData["Error"] = "This vehicle is already assigned to a delivery on the selected date.";
+				return RedirectToAction("ScheduleMaintenance", new { id });
+			}
+
 			bool duplicate = await db.Maintenances.AnyAsync(m =>
 				m.VehicleId == id &&
 				m.MaintenanceType.ToString() == selectedMaintenanceType &&

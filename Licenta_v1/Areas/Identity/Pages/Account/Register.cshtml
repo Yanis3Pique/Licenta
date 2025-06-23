@@ -47,6 +47,9 @@
 
     <div class="form-group">
         @Html.LabelFor(m => m.Input.HomeAddress)
+        <small class="text-muted d-block mb-2">
+            Please choose the address by dragging the marker on the map below.
+        </small>
         @Html.EditorFor(m => m.Input.HomeAddress, new { htmlAttributes = new { @class = "form-control", id = "homeAddress" } })
         @Html.ValidationMessageFor(m => m.Input.HomeAddress, null, new { @class = "text-danger" })
     </div>

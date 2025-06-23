@@ -1,6 +1,7 @@
 ﻿@model Licenta_v1.Models.Order
 @{
     ViewBag.Title = "Order Details";
+    var currentUserId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
 }
 
 @if (TempData["Success"] != null)
@@ -127,4 +128,21 @@
         <h4 class="text-center">Order Location</h4>
         <div id="map" style="height: 400px; width: 100%; border-radius: 10px;"></div>
     </div>
+
+    @if (User.Identity.IsAuthenticated &&
+        User.IsInRole("Client") &&
+        Model.ClientId == currentUserId &&
+        Model.Delivery == null)
+    {
+        <div class="mt-4 text-center">
+            <form asp-action="Delete" asp-route-id="@Model.Id" method="post"
+                  onsubmit="return confirm('Are you sure you want to delete this order?');"
+                  style="display:inline">
+                @Html.AntiForgeryToken()
+                <button type="submit" class="btn btn-danger">
+                    <i class="bi bi-trash"></i> Delete Order
+                </button>
+            </form>
+        </div>
+    }
 </div>

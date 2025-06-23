@@ -103,7 +103,7 @@ namespace Licenta_v1.Controllers
 				.CountAsync();
 
 			//    Decide how much penalty per event—for example, subtract 0.2 stars per event:
-			const double penaltyPerEvent = 0.2;
+			const double penaltyPerEvent = 0.02;
 
 			//    Compute the total penalty:
 			double totalPenalty = dangerousCount * penaltyPerEvent;

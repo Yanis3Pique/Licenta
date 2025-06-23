@@ -1,4 +1,5 @@
-﻿using Licenta_v1.Data;
+﻿using EllipticCurve.Utils;
+using Licenta_v1.Data;
 using Licenta_v1.Models;
 using Licenta_v1.Services;
 using Microsoft.AspNetCore.Authorization;
@@ -282,6 +283,36 @@ namespace Licenta_v1.Controllers
 				}
 			}
 			return View(order);
+		}
+
+		// POST: Orders/Delete/5
+		[HttpPost]
+		[ValidateAntiForgeryToken]
+		[Authorize(Roles = "Admin,Client,Dispecer")]
+		public async Task<IActionResult> Delete(int id)
+		{
+			var order = await db.Orders
+								.Include(o => o.Delivery)
+								.FirstOrDefaultAsync(o => o.Id == id);
+
+			if (order is null)
+				return NotFound();
+
+			if (order.DeliveryId is not null)
+			{
+				TempData["Error"] = "Order cannot be deleted because it is already assigned to a delivery.";
+				return RedirectToAction(nameof(Index));
+			}
+
+			var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+			if (order.ClientId != userId)
+				return Unauthorized();
+
+			db.Orders.Remove(order);
+			await db.SaveChangesAsync();
+
+			TempData["Success"] = "Order deleted successfully.";
+			return RedirectToAction(nameof(Index));
 		}
 
 		[NonAction]

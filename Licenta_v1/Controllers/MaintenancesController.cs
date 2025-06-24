@@ -144,6 +144,27 @@ namespace Licenta_v1.Controllers
 			return RedirectToAction(nameof(Index));
 		}
 
+		[HttpPost]
+		[ValidateAntiForgeryToken]
+		[Authorize(Roles = "Admin")]
+		public IActionResult Delete(int id)
+		{
+			var record = db.Maintenances.FirstOrDefault(m => m.Id == id);
+			if (record == null)
+				return NotFound();
+
+			if (record.Status == "Completed")
+			{
+				TempData["Error"] = "Maintenance cannot be deleted if they have already been completed.";
+				return RedirectToAction(nameof(Index));
+			}
+
+			db.Maintenances.Remove(record);
+			db.SaveChanges();
+
+			TempData["Success"] = "Maintenance deleted successfully!";
+			return RedirectToAction(nameof(Index));
+		}
 
 		// Get - Maintenance/VehicleMaintenances/id
 		[Authorize(Roles = "Admin,Dispecer")]

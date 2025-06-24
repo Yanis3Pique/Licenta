@@ -57,6 +57,19 @@ namespace Licenta_v1.Controllers
 				.Where(v => v.Status == VehicleStatus.Available && v.RegionId == user.RegionId)
 				.ToList();
 
+			var allRestrictions = db.OrderVehicleRestrictions
+				.Where(r => availableOrders.Select(o => o.Id).Contains(r.OrderId))
+				.ToList();
+
+			var restrictedMap = allRestrictions
+				.Where(r => r.Source == "Manual" || !r.IsAccessible)
+				.GroupBy(r => r.VehicleId)
+				.ToDictionary(
+				   g => g.Key,
+				   g => g.Select(r => r.OrderId).Distinct().ToList()
+				);
+
+			ViewBag.RestrictedByVehicleJson = JsonConvert.SerializeObject(restrictedMap);
 			ViewBag.AvailableOrders = availableOrders;
 			ViewBag.AvailableDrivers = availableDrivers;
 			ViewBag.AvailableVehicles = availableVehicles;

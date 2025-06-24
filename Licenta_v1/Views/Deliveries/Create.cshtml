@@ -14,6 +14,11 @@
     <div class="alert alert-success">@TempData["Success"]</div>
 }
 
+<script>
+    // plain JS object: { 2017: [5005,5007,...], 2023: [4001,4009,...], ... }
+    const RESTRICTED_BY_VEHICLE = @Html.Raw(ViewBag.RestrictedByVehicleJson);
+</script>
+
 <h2 class="text-center mb-4">Create Delivery</h2>
 
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />

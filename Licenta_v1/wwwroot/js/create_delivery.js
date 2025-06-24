@@ -91,24 +91,20 @@ document.addEventListener("DOMContentLoaded", function () {
             };
 
             marker.bindPopup(() => {
-                const currentVehicleId = parseInt(vehicleIdInput.value);
-                const isRestricted = currentVehicleId &&
-                    (marker.orderData.inaccessible.includes(currentVehicleId) ||
-                        marker.orderData.manual.includes(currentVehicleId));
+                const vid = +vehicleIdInput.value;
+                const restrictedOrders = RESTRICTED_BY_VEHICLE[vid] || [];
+                //console.log(restrictedOrders);
+                const isRestricted = restrictedOrders.includes(+marker.orderData.id);
                 const isSelected = marker.orderData.selected;
 
                 return `
-                    <strong>Order #${marker.orderData.id}</strong><br>
-                    ${marker.orderData.address}<br>
-                    <small>${marker.orderData.weight} kg, ${marker.orderData.volume} m³</small><br>
-                    ${isRestricted
-                            ? `<div class="text-danger mt-2">Not available for selected vehicle</div>`
-                            : `<button class="btn btn-sm btn-${isSelected ? 'danger' : 'success'} mt-2" onclick="toggleOrderSelection('${marker.orderData.id}')">
-                            ${isSelected ? 'Deselect' : 'Select'}
-                        </button>`
-                        }
-                `;
+                <strong>Order #${marker.orderData.id}</strong><br> ${marker.orderData.address}<br>
+                <small>${marker.orderData.weight} kg, ${marker.orderData.volume} m³</small><br>
+                ${isRestricted ? `<div class="text-danger mt-2">Not available for selected vehicle</div>`
+                    : `<button class="btn btn-sm btn-${isSelected ? 'danger' : 'success'} mt-2"
+                    onclick="toggleOrderSelection('${marker.orderData.id}')"> ${isSelected ? 'Deselect' : 'Select'} </button>`}`;
             });
+
 
             orderMarkers[orderId] = marker;
             bounds.extend(marker.getLatLng());
@@ -173,11 +169,11 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     function updateOrderAvailability() {
-        const vehicleId = parseInt(vehicleIdInput.value);
-        if (!vehicleId) return;
+        const vid = parseInt(vehicleIdInput.value, 10);
+        const restrictedOrders = RESTRICTED_BY_VEHICLE[vid] || [];
 
         Object.values(orderMarkers).forEach(marker => {
-            const isRestricted = marker.orderData.inaccessible.includes(vehicleId) || marker.orderData.manual.includes(vehicleId);
+            const isRestricted = restrictedOrders.includes(+marker.orderData.id);
             const iconUrl = isRestricted
                 ? ICON_URLS.restricted
                 : marker.orderData.selected
@@ -222,22 +218,15 @@ document.addEventListener("DOMContentLoaded", function () {
     });
 
     window.toggleOrderSelection = function (orderId) {
+        const vid = +vehicleIdInput.value;
+        const restrictedOrders = RESTRICTED_BY_VEHICLE[vid] || [];
+
+        if (restrictedOrders.includes(+orderId)) return;
+
         const marker = orderMarkers[orderId];
-        const vehicleId = parseInt(document.getElementById("selectedVehicleId").value);
-
-        if (!marker || !vehicleId) return;
-
-        const restricted = marker.orderData.inaccessible.includes(vehicleId) || marker.orderData.manual.includes(vehicleId);
-        if (restricted) return;
-
         marker.orderData.selected = !marker.orderData.selected;
 
-        // Update UI
-        const iconUrl = marker.orderData.selected ? ICON_URLS.selected : ICON_URLS.normal;
-        marker.setIcon(L.icon({ iconUrl, iconSize: [25, 41], iconAnchor: [12, 41] }));
-
-        updateCapacityVisuals();
+        updateOrderAvailability();
         marker.closePopup();
     };
-
 });

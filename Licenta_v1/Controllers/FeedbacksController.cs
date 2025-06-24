@@ -73,7 +73,6 @@ namespace Licenta_v1.Controllers
 				return View(feedback);
 			}
 
-			// 1) Verify that this feedback really belongs to a delivered order of this client:
 			var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
 
 			var order = await db.Orders
@@ -89,43 +88,31 @@ namespace Licenta_v1.Controllers
 				return RedirectToAction("Index", "Orders");
 			}
 
-			//    First, get the numerical DeliveryId:
 			int deliveryId = order.Delivery.Id;
 
-			//    Define your severity threshold for "dangerous" (e.g. SeverityScore ≥ 0.7)
 			const double dangerousThreshold = 0.7;
+			const double basePenaltyPerEvent = 0.15;   // 0.15 stele la severitate maxima
 
-			//    Count how many AggressiveEvents on that delivery meet or exceed the threshold:
-			int dangerousCount = await db.AggressiveEvents
-				.Where(e =>
-					e.DeliveryId == deliveryId &&
-					e.SeverityScore >= dangerousThreshold)
-				.CountAsync();
+			var events = await db.AggressiveEvents
+				.Where(e => e.DeliveryId == deliveryId &&
+							e.EventType != "Normal" &&
+							e.SeverityScore >= dangerousThreshold)
+				.ToListAsync();
 
-			//    Decide how much penalty per event—for example, subtract 0.2 stars per event:
-			const double penaltyPerEvent = 0.02;
-
-			//    Compute the total penalty:
-			double totalPenalty = dangerousCount * penaltyPerEvent;
-
-			//    Apply the penalty to the client's original rating:
-			double originalRating = feedback.Rating;
-			double adjustedRating = originalRating - totalPenalty;
-
-			//    Clamp so it never goes below 1:
-			if (adjustedRating < 1.0)
+			double totalPenalty = events.Sum(e =>
 			{
-				adjustedRating = 1.0;
-			}
+				double weight = (e.SeverityScore - dangerousThreshold) / (1 - dangerousThreshold);
+				return weight * basePenaltyPerEvent;
+			});
 
-			//    Finally, store that into the feedback object:
-			feedback.Rating = (int)Math.Round(adjustedRating);
+			double adjusted = Math.Max(1.0, feedback.Rating - totalPenalty);
+			feedback.Rating = (int)Math.Round(adjusted, 1);
 
-			// 3) Now save everything normally:
+			// 3) Now save everything normally
 			db.Feedbacks.Add(feedback);
 			await db.SaveChangesAsync();
 
-			// 4) Recompute the driver's average rating (this part stays exactly as you had it):
+			// 4) Recompute the driver's average rating
 
 			var driver = await db.ApplicationUsers
 				.Include(d => d.FeedbacksReceived)

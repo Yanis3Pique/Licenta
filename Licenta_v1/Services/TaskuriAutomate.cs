@@ -32,6 +32,7 @@ public class TaskuriAutomate : BackgroundService
 		await _optimizer.LoadRestrictionCacheAsync();
 
 		var lastUserCheck = DateTime.MinValue;
+		var lastMinuteCheck = DateTime.MinValue;
 
 		while (!stoppingToken.IsCancellationRequested)
 		{
@@ -59,13 +60,17 @@ public class TaskuriAutomate : BackgroundService
 				//}
 
 				// Celelalte trei metode se ruleaza la fiecare minut
-				await CheckAndScheduleMaintenance(db);
+				if ((currentTime - lastMinuteCheck).TotalMinutes >= 1)
+				{
+					await CheckAndScheduleMaintenance(db);
+					await NotifyClientOfOrderStatus(db);
+					lastMinuteCheck = currentTime;
+				}
 				await UpdateVehicles(db);
-				await NotifyClientOfOrderStatus(db);
 			}
 
-			// Astept un minut pana la urmatoarea iteratie a while-ului
-			await Task.Delay(TimeSpan.FromMinutes(1), stoppingToken);
+			// Astept 10 secunde pana la urmatoarea iteratie a while-ului
+			await Task.Delay(TimeSpan.FromSeconds(10), stoppingToken);
 		}
 	}
 

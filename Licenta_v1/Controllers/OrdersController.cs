@@ -209,7 +209,7 @@ namespace Licenta_v1.Controllers
 
 			if(!IsValidAddressInRomania(order.Address))
 			{
-				TempData["Error"] = "Invalid Address. Too remote.";
+				TempData["Error"] = "Invalid Address.";
 				ViewBag.RegionId = new SelectList(db.Regions.ToList(), "Id", "County", order.RegionId);
 				ViewBag.ClientId = client.Id;
 				return View(order);

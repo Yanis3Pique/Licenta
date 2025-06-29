@@ -18,8 +18,8 @@ document.addEventListener("DOMContentLoaded", function () {
         button.addEventListener("click", () => {
             const vehicleId = button.getAttribute("data-id");
             const label = button.getAttribute("data-name");
-            const maxWeight = parseFloat(button.getAttribute("data-maxweight")) || 1;
-            const maxVolume = parseFloat(button.getAttribute("data-maxvolume")) || 1;
+            const maxWeight = parseFloat(button.getAttribute("data-maxweight")) || 0;
+            const maxVolume = parseFloat(button.getAttribute("data-maxvolume")) || 0;
 
             totalWeight = maxWeight;
             totalVolume = maxVolume;

@@ -15,10 +15,10 @@ namespace Licenta_v1.Models
 		[Required(ErrorMessage = "The priority is mandatory.")]
 		public OrderPriority? Priority { get; set; } // (Normal, High)
 		[Required(ErrorMessage = "The weight is mandatory.")]
-		[Range(0, int.MaxValue, ErrorMessage = "Only positive number allowed.")]
+		[Range(0.01, int.MaxValue, ErrorMessage = "Only positive number allowed.")]
 		public double? Weight { get; set; }
 		[Required(ErrorMessage = "The volume is mandatory.")]
-		[Range(0, int.MaxValue, ErrorMessage = "Only positive number allowed.")]
+		[Range(0.00001, int.MaxValue, ErrorMessage = "Only positive number allowed.")]
 		public double? Volume { get; set; }
 		[Required(ErrorMessage = "The address is mandatory.")]
 		public string Address { get; set; } = string.Empty;
